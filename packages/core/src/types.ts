@@ -74,10 +74,11 @@ export interface Hunk {
   kind: 'logic' | 'generated' | 'format' | 'move';
   symbolIds: string[];
   move?: {
-    fromFileId: string;
-    fromStart: number;
-    similarity: number;
-    changedLineIndexes: number[];
+    fromFileId: string; // file the code was moved out of (same on both halves)
+    fromStart: number; // first line of the moved code in that file, old version
+    similarity: number; // 1 = moved unchanged (formatting ignored)
+    changedLineIndexes: number[]; // indexes into this hunk's `lines` that differ from the other half
+    pairHunkId: string; // the other half: the deletion for an addition and vice versa
   };
 }
 

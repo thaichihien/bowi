@@ -57,6 +57,8 @@ Done when all of §12.2 except HTML items pass, plus the 4 extra fixtures.
 
 ### M4 — HTML renderer (needs the prototype)
 
+- Also NOISE-6 (lockfile direct-dependency summary): UI-7 (P0) shows "1 new dependency: nodemailer", so it is needed here rather than in M6.
+
 - `render-html`: Preact app ported from the prototype, built by Vite + `vite-plugin-singlefile` into `template.html` at package build time. CLI injects the plan JSON escaped (`<` → `<`, also ` / `) into a `<script type="application/json">` (UI-15).
 - shiki highlighting runs in Node during render, filling `DiffLine.html` (UI-14). Only the shiki languages we need are bundled.
 - All UI P0 items (UI-1..9, 11, 14, 15, 18). Test: no `http(s)://` outside repository content, no `<script src>` / `<link href>`.

@@ -2,7 +2,7 @@
   "name": "@bowi/lang",
   "version": "0.0.0",
   "private": true,
-  "description": "web-tree-sitter loader, grammars and per-language queries (M2).",
+  "description": "Source parsing for Bowi: web-tree-sitter loader, vendored grammars and symbol queries. No dependency on @bowi/core.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -17,9 +17,14 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "grammars",
+    "queries"
   ],
+  "scripts": {
+    "vendor-grammars": "sh scripts/vendor-grammars.sh"
+  },
   "dependencies": {
-    "@bowi/core": "workspace:*"
+    "web-tree-sitter": "0.27.1"
   }
 }

@@ -336,7 +336,8 @@ export interface Hunk {
   lines: DiffLine[];
   kind: 'logic' | 'generated' | 'format' | 'move';
   symbolIds: string[];
-  move?: { fromFileId: string; fromStart: number; similarity: number; changedLineIndexes: number[] };
+  move?: { fromFileId: string; fromStart: number; similarity: number; changedLineIndexes: number[];
+          pairHunkId: string };              // both halves of a move are hunks; each points at the other
 }
 
 export interface DiffLine {
@@ -601,6 +602,11 @@ Rules for implementation:
 7. **Determinism excludes timings (M0, assumed).** GRP-12 says output is identical except `generatedAt`, but `meta.timingsMs` can never be identical across runs. Determinism checks ignore both (`comparablePlanJson` in `@bowi/core`).
 8. **email-verification fixture vs NOISE-6 (M0, open).** §12.2 requires exactly 11 changed files, so the fixture does not change `package.json` even though the lockfile adds `nodemailer`. The lockfile summary must therefore read direct dependencies from the lockfile's root entry (`packages[""]` in lockfile v3), not only from a `package.json` diff. Alternative: add the `package.json` change and make it 12 files.
 9. **Formatting-only includes semicolons (M0, assumed).** The fixture's Prettier change to `src/utils/date.ts` adds semicolons and line breaks, as in the prototype. NOISE-2's "ASTs equal ignoring whitespace and comments" must also ignore optional semicolons (and trailing commas), or the fixture would not count as formatting-only.
+10. **Comment-only edits count as formatting (M2, follows NOISE-2 as written; please confirm).** NOISE-2 says ASTs are compared ignoring comments, so a hunk that only edits comments (including JSDoc) becomes `format` noise and is collapsed. Reviewers may want doc comment changes visible. Alternative: ignore comments only when the comment text is unchanged.
+11. **TypeScript grammar gap (M2, known limitation).** `tree-sitter-typescript` 0.23.2 (latest on npm) does not parse `export type * from '…'` (TS 5.0). Files using it fall back to text-only analysis with a warning. Fix later by building the grammar from upstream master, or by tolerating errors outside the changed lines.
+12. **Migration layer vs §12.2 (M2 → M3).** SYM-4 puts `migrations/` in `schema`, while §12.2 expects the feature group's first step to be "data (entity + migration)". GRP-7 creates one step per layer, so M3 must either merge `schema` and `data` into one "Data shape" step or the acceptance test should expect schema → data. Proposal: one step for adjacent `schema` + `data`.
+13. **Move granularity (M2, assumed).** A hunk becomes `move` only if all its changed non-blank lines belong to matched moved symbols, and the same holds for its partner hunk; otherwise both halves stay `logic`. A hunk holding several moved symbols describes the first move in `move` and lists changed lines of all. Blank lines never map to symbols.
+14. **Files without hunks (M2 → M3).** Binary, mode-only and pure-rename files have no hunks, so the hunk partition (GRP-4) does not place them in any group. M3 should attach them to a group (e.g. a "Files without diff" note in the noise group) so the alphabetical view can still link them.
 
 ---
 

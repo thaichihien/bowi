@@ -9,7 +9,12 @@ import { performance } from 'node:perf_hooks';
 import type { Logger, StageReport } from '@bowi/core';
 import type { Writable } from './index.ts';
 
-const LABELS: Record<string, string> = { diff: 'Diff' };
+const LABELS: Record<string, string> = {
+  diff: 'Diff',
+  parse: 'Parsed',
+  noise: 'Noise',
+  symbols: 'Symbols',
+};
 
 export function createProgress(out: Writable, options: { quiet: boolean; verbose: boolean }) {
   const line = (label: string, summary: string, ms: number) => {

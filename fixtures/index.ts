@@ -1,4 +1,5 @@
 export { buildFixtureRepo } from './lib/git-repo.ts';
+export { scratchRepo } from './lib/scratch.ts';
 export type { BuiltFixture, FixtureCommit, FixtureSpec } from './lib/git-repo.ts';
 export { emailVerification } from './email-verification/index.ts';
 

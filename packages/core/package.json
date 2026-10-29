@@ -18,5 +18,14 @@
   },
   "files": [
     "dist"
-  ]
+  ],
+  "dependencies": {
+    "@bowi/lang": "workspace:*",
+    "picomatch": "4.0.7"
+  },
+  "devDependencies": {
+    "@bowi/fixtures": "workspace:*",
+    "@bowi/sources": "workspace:*",
+    "@types/picomatch": "^4.0.3"
+  }
 }

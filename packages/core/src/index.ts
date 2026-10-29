@@ -7,3 +7,8 @@ export type * from './snapshot.ts';
 export * from './diff/parse-unified.ts';
 export * from './stages/diff.ts';
 export * from './engine.ts';
+export * from './stages/parse.ts';
+export * from './stages/noise.ts';
+export * from './stages/symbols.ts';
+export * from './layers.ts';
+export * from './noise/generated.ts';

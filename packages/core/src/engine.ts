@@ -1,15 +1,18 @@
 /**
  * Analysis engine: runs the stages in order and assembles the ReviewPlan (§11.1).
  *
- * Input: a Snapshot from any source. Output: the plan. Milestone M1 runs stage 2 (diff/hunks);
- * later milestones add parsing, noise, symbols, graph, grouping and enrichment here.
+ * Input: a Snapshot from any source. Output: the plan. Runs stages 2–5 (diff, parse, noise,
+ * symbols); later milestones add graph, grouping and enrichment here.
  */
 
 import { performance } from 'node:perf_hooks';
 import type { Snapshot } from './snapshot.ts';
 import type { StageContext } from './stage.ts';
 import { diffStage } from './stages/diff.ts';
-import type { ReviewPlan } from './types.ts';
+import { noiseStage } from './stages/noise.ts';
+import { disposeSources, parseStage } from './stages/parse.ts';
+import { symbolStage } from './stages/symbols.ts';
+import type { Hunk, ReviewPlan } from './types.ts';
 
 export interface StageReport {
   stage: string;
@@ -47,46 +50,102 @@ export async function analyze(
     return out;
   }
 
-  const { files, hunks } = await run(
+  const diff = await run(
     'diff',
     () => diffStage(snapshot, stageCtx),
     (o) => `${o.files.length} files, ${o.hunks.length} hunks`,
   );
 
-  let additions = 0;
-  let deletions = 0;
-  for (const f of files) {
-    additions += f.additions;
-    deletions += f.deletions;
+  const parsed = await run(
+    'parse',
+    () => parseStage({ snapshot, files: diff.files }, stageCtx),
+    (o) => {
+      const languages = [
+        ...new Set(o.files.filter((f) => f.parseStatus === 'ok').map((f) => f.language!)),
+      ].sort();
+      return `${o.parsedVersions} file versions${languages.length ? ` (${languages.join(', ')})` : ''}`;
+    },
+  );
+  const { sources } = parsed;
+
+  try {
+    const noise = await run(
+      'noise',
+      () => noiseStage({ files: parsed.files, hunks: diff.hunks, sources }, stageCtx),
+      (o) => {
+        const filesWith = (kind: Hunk['kind']) =>
+          new Set(o.hunks.filter((h) => h.kind === kind).map((h) => h.fileId)).size;
+        return `${filesWith('generated')} generated · ${filesWith('format')} formatting-only · ${o.moves.length} move${o.moves.length === 1 ? '' : 's'}`;
+      },
+    );
+
+    const { files, hunks, symbols } = await run(
+      'symbols',
+      () =>
+        symbolStage(
+          { files: parsed.files, hunks: noise.hunks, sources, moves: noise.moves },
+          stageCtx,
+        ),
+      (o) => `${o.symbols.length} changed`,
+    );
+
+    return assemble({ files, hunks, symbols });
+  } finally {
+    disposeSources(sources);
   }
 
-  return {
-    schemaVersion: 1,
-    generatedAt: ctx.now().toISOString(),
-    tool: { name: 'bowi', version: options.toolVersion },
-    source: snapshot.meta,
-    stats: {
-      files: files.length,
-      hunks: hunks.length,
-      additions,
-      deletions,
-      // Until noise classification (M2) every hunk counts as logic.
-      reviewLines: additions + deletions,
-      noiseLines: 0,
-    },
+  function assemble({
     files,
     hunks,
-    symbols: [],
-    edges: [],
-    groups: [],
-    outsideRefs: [],
-    hints: [],
-    meta: {
-      ai: { enabled: false },
-      languages: [],
-      plugins: [],
-      warnings,
-      timingsMs,
-    },
-  };
+    symbols,
+  }: Pick<ReviewPlan, 'files' | 'hunks' | 'symbols'>): ReviewPlan {
+    let additions = 0;
+    let deletions = 0;
+    for (const f of files) {
+      additions += f.additions;
+      deletions += f.deletions;
+    }
+    let reviewLines = 0;
+    let noiseLines = 0;
+    for (const h of hunks) {
+      const changed = h.lines.filter((l) => l.kind !== 'context').length;
+      if (h.kind === 'logic') reviewLines += changed;
+      else if (h.kind === 'move') {
+        const edited = h.move?.changedLineIndexes.length ?? 0;
+        reviewLines += edited;
+        noiseLines += changed - edited;
+      } else noiseLines += changed;
+    }
+
+    return {
+      schemaVersion: 1,
+      generatedAt: ctx.now().toISOString(),
+      tool: { name: 'bowi', version: options.toolVersion },
+      source: snapshot.meta,
+      stats: {
+        files: files.length,
+        hunks: hunks.length,
+        additions,
+        deletions,
+        reviewLines,
+        noiseLines,
+      },
+      files,
+      hunks,
+      symbols,
+      edges: [],
+      groups: [],
+      outsideRefs: [],
+      hints: [],
+      meta: {
+        ai: { enabled: false },
+        languages: [
+          ...new Set(files.filter((f) => f.parseStatus === 'ok').map((f) => f.language!)),
+        ].sort(),
+        plugins: [],
+        warnings,
+        timingsMs,
+      },
+    };
+  }
 }
