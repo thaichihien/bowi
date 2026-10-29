@@ -181,6 +181,15 @@ describe('symbols', () => {
     ]);
   });
 
+  it('does not report a reformatted symbol that shares a hunk with a real change', async () => {
+    const p = await plan(
+      { 'src/m.ts': 'function a() {\n  return 1;\n}\nfunction b(x:number){return x}\n' },
+      { 'src/m.ts': 'function a() {\n  return 2;\n}\nfunction b(x: number) {\n  return x;\n}\n' },
+    );
+    expect(p.hunks.map((h) => h.kind)).toEqual(['logic']);
+    expect(symbolsOf(p)).toEqual(['body function a']);
+  });
+
   it('maps a new class to one symbol and imports to the file pseudo-symbol', async () => {
     const p = await plan(
       { 'src/x.ts': 'export {};\n' },

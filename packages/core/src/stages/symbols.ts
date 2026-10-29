@@ -11,6 +11,7 @@
  *   without a grammar, map to the file's pseudo-symbol (SYM-3). Blank lines map to nothing.
  * - Generated and formatting-only hunks map to no symbol; move hunks map to the moved symbol.
  * - Old and new symbols with the same qualified name in the same file are one ChangedSymbol.
+ *   One whose fingerprint did not change (only reformatted) is dropped.
  */
 
 import type { ParsedSource, SourceSymbol } from '@bowi/lang';
@@ -116,6 +117,19 @@ export const symbolStage: Stage<SymbolStageInput, SymbolStageOutput> = async (in
     e.old ??= src?.old?.symbols.find((s) => s.qualifiedName === e.qualifiedName);
     e.new ??= src?.new?.symbols.find((s) => s.qualifiedName === e.qualifiedName);
   }
+  // A symbol whose old and new versions have equal fingerprints was only reformatted, even if
+  // it shares a hunk with real changes. It is not a changed symbol; a hunk left without symbols
+  // falls back to the file pseudo-symbol.
+  for (const [id, e] of entries) {
+    if (e.moved || !e.old || !e.new || e.old.fingerprint !== e.new.fingerprint) continue;
+    entries.delete(id);
+    for (const h of hunks) {
+      if (!h.symbolIds.includes(id)) continue;
+      h.symbolIds = h.symbolIds.filter((x) => x !== id);
+      if (h.symbolIds.length === 0) touch(h.fileId, FILE_SYMBOL, h);
+    }
+  }
+
   const renamedFrom = new Map<Entry, Entry>();
   const oldOnly = [...entries.values()].filter((e) => e.old && !e.new && !e.moved);
   for (const e of entries.values()) {

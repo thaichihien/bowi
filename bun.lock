@@ -5,6 +5,7 @@
     "": {
       "name": "bowi-monorepo",
       "devDependencies": {
+        "@bowi/core": "workspace:*",
         "@eslint/js": "^10.0.1",
         "@types/node": "^20",
         "eslint": "^10.13.0",

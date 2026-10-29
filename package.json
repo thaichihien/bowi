@@ -19,9 +19,11 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "fixture": "bun fixtures/build.ts",
-    "check": "bun run typecheck && bun run lint && bun run format:check && bun run test"
+    "check": "bun run typecheck && bun run lint && bun run format:check && bun run test",
+    "show-plan": "node scripts/show-plan.ts"
   },
   "devDependencies": {
+    "@bowi/core": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@types/node": "^20",
     "eslint": "^10.13.0",
