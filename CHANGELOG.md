@@ -12,6 +12,8 @@
 - Partition invariant (every hunk in exactly one step) checked on every run; a violation exits with code 3.
 - Fixtures hub-change, no-links, rename-refactor and unsupported-language; fixtures can now be generated from code.
 - Fixed: the git helper could crash with EPIPE when git exited before reading its input.
+- `show-plan` prints groups with reasons and steps first.
+- Fixed: a symbol's own declared name no longer counts as a reference (a controller method `verifyEmail` was "using" the service's `verifyEmail` instead of calling it).
 
 ### M2 — Parsing, noise, symbols, layers
 

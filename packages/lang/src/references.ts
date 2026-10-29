@@ -2,14 +2,15 @@
  * Names used in a file, for building the change graph (GRAPH-1..3).
  *
  * - references: every identifier-like token with how it is used (call, new, type, member, key,
- *   name) and its line.
+ *   name) and its line. Names being declared (a function's or field's own name) are
+ *   `declaration`, not uses.
  * - fields: properties declared in classes, interfaces and object types.
  * - imports: module specifiers with the names they bring in.
  */
 
 import type { Node } from 'web-tree-sitter';
 
-export type ReferenceKind = 'call' | 'new' | 'type' | 'member' | 'key' | 'name';
+export type ReferenceKind = 'call' | 'new' | 'type' | 'member' | 'key' | 'name' | 'declaration';
 
 export interface Reference {
   name: string;
@@ -37,6 +38,21 @@ const IDENTIFIER_TYPES = new Set([
   'shorthand_property_identifier',
 ]);
 const FIELD_TYPES = new Set(['public_field_definition', 'field_definition', 'property_signature']);
+const DECLARATION_PARENTS = new Set([
+  'function_declaration',
+  'generator_function_declaration',
+  'function_signature',
+  'class_declaration',
+  'abstract_class_declaration',
+  'method_definition',
+  'method_signature',
+  'abstract_method_signature',
+  'interface_declaration',
+  'type_alias_declaration',
+  'enum_declaration',
+  'variable_declarator',
+  ...FIELD_TYPES,
+]);
 
 export interface NameIndex {
   references: Reference[];
@@ -83,9 +99,16 @@ export function indexNames(root: Node): NameIndex {
 }
 
 function kindOf(node: Node): ReferenceKind {
+  const parent = node.parent;
+  if (
+    parent &&
+    DECLARATION_PARENTS.has(parent.type) &&
+    (parent.childForFieldName('name') ?? parent.childForFieldName('property'))?.equals(node)
+  ) {
+    return 'declaration';
+  }
   if (node.type === 'type_identifier') return 'type';
   if (node.type === 'shorthand_property_identifier') return 'key';
-  const parent = node.parent;
   if (!parent) return 'name';
   if (parent.type === 'call_expression' && parent.childForFieldName('function')?.equals(node))
     return 'call';

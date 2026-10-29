@@ -34,6 +34,28 @@ function overview() {
   );
   for (const w of plan.meta.warnings) console.log(`! ${w}`);
 
+  section('Groups (reading order)');
+  for (const g of plan.groups) {
+    const loose =
+      g.confidence !== 'high' && g.kind !== 'noise' && g.kind !== 'move'
+        ? ` · ${g.confidence} confidence`
+        : '';
+    const deps = g.dependsOn.length ? ` · after ${g.dependsOn.join(', ')}` : '';
+    console.log(`  ${g.id} [${g.kind}] ${g.title}${loose}${deps}`);
+    for (const r of g.reasons) console.log(`       why: ${r}`);
+    if (g.summary) for (const line of g.summary.split('\n')) console.log(`       ${line}`);
+    g.steps.forEach((st, i) => {
+      const paths = [
+        ...new Set(
+          st.hunkIds.map((id) => fileById.get(plan.hunks.find((h) => h.id === id)!.fileId)!.path),
+        ),
+      ];
+      console.log(
+        `     ${i + 1}. ${st.title.padEnd(22)} ${st.hunkIds.join(' ')}  (${paths.join(', ')})`,
+      );
+    });
+  }
+
   section('Files');
   for (const f of plan.files) {
     const flags = [f.generated ? 'generated' : '', f.parseStatus !== 'ok' ? f.parseStatus : '']

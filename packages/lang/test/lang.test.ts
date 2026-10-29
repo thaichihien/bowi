@@ -101,6 +101,26 @@ describe('symbols', () => {
   });
 });
 
+describe('references', () => {
+  it('classifies uses and skips declared names', async () => {
+    const src = await parse(
+      "import { A } from './a';\nclass S { run(x: T) { this.m.send(x); new A(); f(); return { k: 1, x }; } }\n",
+    );
+    expect(src.imports).toEqual([{ source: './a', names: ['A'], line: 1 }]);
+    const kinds = Object.fromEntries(src.references.map((r) => [r.name, r.kind]));
+    expect(kinds).toMatchObject({
+      S: 'declaration',
+      run: 'declaration',
+      T: 'type',
+      m: 'member',
+      send: 'call',
+      A: 'new',
+      f: 'call',
+      k: 'key',
+    });
+  });
+});
+
 describe('fingerprints', () => {
   it('ignore whitespace, comments, semicolons, trailing commas and quote style', async () => {
     const a = await parse("const f=(a:number)=>g(a,'x')\n");

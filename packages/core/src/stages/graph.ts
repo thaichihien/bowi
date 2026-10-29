@@ -49,6 +49,7 @@ export const EDGE_WEIGHTS: Record<ChangeEdge['type'], number> = {
 /** Symbols with more structural neighbours than this count as hubs (GRAPH-10). */
 export const HUB_DEGREE = 6;
 const MIN_DOCS_NAME_LENGTH = 5;
+const REF_PRIORITY: Reference['kind'][] = ['call', 'new', 'type', 'member', 'key', 'name'];
 /** Member names too common to link a use to a changed field. */
 const COMMON_MEMBERS = new Set([
   'id',
@@ -138,9 +139,16 @@ export const graphStage: Stage<GraphStageInput, GraphStageOutput> = async (input
 
   for (const s of logic) {
     const c = code.get(s.id);
-    const refs = c
-      ? c.source.references.filter((r) => c.lines(r.line))
-      : refsOnOwnedLines(s, hunkById, lineSymbols, sources);
+    // Strongest kind of use first, so an edge's evidence says "calls" when there is a call.
+    const refs = (
+      c
+        ? c.source.references.filter((r) => c.lines(r.line))
+        : refsOnOwnedLines(s, hunkById, lineSymbols, sources)
+    )
+      .filter((r) => r.kind !== 'declaration')
+      .sort(
+        (x, y) => REF_PRIORITY.indexOf(x.kind) - REF_PRIORITY.indexOf(y.kind) || x.line - y.line,
+      );
     const isTest = s.layer === 'test';
     for (const ref of refs) {
       for (const t of targets.get(ref.name) ?? []) {
