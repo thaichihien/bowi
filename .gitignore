@@ -5,3 +5,4 @@ dist/
 coverage/
 .DS_Store
 packages/render-html/template/
+development-logs.md
