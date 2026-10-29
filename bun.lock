@@ -29,9 +29,6 @@
     "packages/cache": {
       "name": "@bowi/cache",
       "version": "0.0.0",
-      "dependencies": {
-        "@bowi/core": "workspace:*",
-      },
     },
     "packages/cli": {
       "name": "bowi",
@@ -40,6 +37,7 @@
         "bowi": "./src/bin.ts",
       },
       "dependencies": {
+        "@bowi/cache": "workspace:*",
         "@bowi/core": "workspace:*",
         "@bowi/render-html": "workspace:*",
         "@bowi/sources": "workspace:*",
@@ -106,6 +104,7 @@
       "name": "@bowi/sources",
       "version": "0.0.0",
       "dependencies": {
+        "@bowi/cache": "workspace:*",
         "@bowi/core": "workspace:*",
       },
       "devDependencies": {

@@ -18,7 +18,7 @@ import {
   type Snapshot,
   type SnapshotMeta,
 } from '@bowi/core';
-import { DIFF_FLAGS, git, gitText, resolveCommit } from './git.ts';
+import { DIFF_FLAGS, git, gitText, readBlob, resolveCommit } from './git.ts';
 
 export interface LocalSourceOptions {
   /** Any directory inside the repository. */
@@ -203,11 +203,6 @@ async function commitsBetween(
     const [sha = '', subject = ''] = line.split('\x1f');
     return { sha, subject };
   });
-}
-
-async function readBlob(root: string, rev: string, path: string): Promise<string | null> {
-  const r = await git(['cat-file', 'blob', `${rev}:${path}`], { cwd: root, okCodes: [128] });
-  return r.code === 0 ? r.stdout : null;
 }
 
 async function readWorkingFile(root: string, path: string): Promise<string | null> {

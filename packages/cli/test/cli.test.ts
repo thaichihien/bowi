@@ -1,12 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { comparablePlanJson, type ReviewPlan } from '@bowi/core';
 import { buildFixtureRepo, emailVerification } from '@bowi/fixtures';
 import { expectedChangedFiles } from '@bowi/fixtures/email-verification';
-import { run } from '../src/index.ts';
+import { run, type CliIo } from '../src/index.ts';
+import { fakeApi, fakeServer } from '../../sources/test/fake-github.ts';
 
 const roots: string[] = [];
 function tempDir(): string {
@@ -17,13 +18,22 @@ function tempDir(): string {
 afterAll(() => roots.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
 async function bowi(cwd: string, ...argv: string[]) {
+  return bowiWith({}, cwd, ...argv);
+}
+
+/** Runs the CLI with extra io: a fake GitHub, a terminal stdout, a browser opener. */
+async function bowiWith(extra: Partial<CliIo> & { tty?: boolean }, cwd: string, ...argv: string[]) {
   let stdout = '';
   let stderr = '';
   const code = await run(argv, {
     cwd,
-    stdout: { write: (s: string) => (stdout += s) },
+    env: {},
+    stdout: { write: (s: string) => (stdout += s), isTTY: !!extra.tty },
     stderr: { write: (s: string) => (stderr += s) },
     now: () => new Date('2026-01-01T00:00:00Z'),
+    // Never the real GitHub: a URL without a fake fails fast on an unreachable API.
+    github: { token: '', apiBase: 'http://127.0.0.1:9', ...extra.github },
+    ...(extra.openFile && { openFile: extra.openFile }),
   });
   return { code, stdout, stderr };
 }
@@ -131,6 +141,80 @@ describe('bowi --local (with review.html)', () => {
   });
 });
 
+describe('bowi <github-pr-url>', () => {
+  it('reviews a pull request through the GitHub source', async () => {
+    const root = tempDir();
+    const { remoteUrl, pr } = fakeServer(root);
+    const cwd = tempDir();
+    const github = { fetch: fakeApi(pr), apiBase: 'https://api.github.com', remoteUrl, token: '' };
+    const cache = join(root, 'cache');
+    const r = await bowiWith(
+      { github },
+      cwd,
+      'https://github.com/acme/api/pull/7/files',
+      '--cache-dir',
+      cache,
+      '--json-only',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stderr).toContain('✓ Resolved  PR #7 · head');
+    expect(r.stderr).toContain('✓ Fetched   head and merge base from github.com/acme/api');
+    const plan = readPlan(join(cwd, '.bowi', 'api-7'));
+    expect(plan.source).toMatchObject({
+      kind: 'github',
+      repo: 'acme/api',
+      prNumber: 7,
+      title: 'Add email verification',
+      linkedIssues: ['#12', 'acme/web#3'],
+    });
+    expect(plan.files.map((f) => f.path)).toEqual(expectedChangedFiles);
+    expect(plan.groups.map((g) => g.kind)).toEqual(['feature', 'move', 'noise']);
+    // No spinner escape codes when stderr is not a terminal.
+    expect(r.stderr).not.toContain('\x1b');
+
+    const again = await bowiWith(
+      { github },
+      cwd,
+      'https://github.com/acme/api/pull/7',
+      '--cache-dir',
+      cache,
+      '--json-only',
+    );
+    expect(again.stderr).toContain('✓ Fetched   both commits already cached');
+  });
+
+  it('exits 2 with a next step when GitHub cannot be reached', async () => {
+    const r = await bowi(tempDir(), 'https://github.com/acme/api/pull/7');
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('Could not reach the GitHub API');
+  });
+});
+
+describe('opening the report (CLI-5)', () => {
+  it('opens review.html only for a terminal and without --no-open', async () => {
+    const repo = buildFixtureRepo(emailVerification, join(tempDir(), 'repo')).dir;
+    const opened: string[] = [];
+    const openFile = (p: string) => opened.push(p);
+    await bowiWith({ openFile }, repo, '--local', '-q');
+    expect(opened).toEqual([]);
+    await bowiWith({ openFile, tty: true }, repo, '--local', '-q', '--no-open');
+    expect(opened).toEqual([]);
+    await bowiWith({ openFile, tty: true }, repo, '--local', '-q');
+    expect(opened).toEqual([join(repo, '.bowi', 'repo-feature-email-verification', 'review.html')]);
+  });
+});
+
+describe('bowi cache clear', () => {
+  it('deletes the cache folder', async () => {
+    const dir = join(tempDir(), 'cache');
+    mkdirSync(join(dir, 'repos'), { recursive: true });
+    const r = await bowi(tempDir(), 'cache', 'clear', '--cache-dir', dir);
+    expect(r.code).toBe(0);
+    expect(r.stderr).toContain(`Cleared ${dir}`);
+    expect(existsSync(dir)).toBe(false);
+  });
+});
+
 describe('bowi usage and errors', () => {
   it('exits 1 with a next step when given nothing to review', async () => {
     const r = await bowi(tempDir());
@@ -142,7 +226,6 @@ describe('bowi usage and errors', () => {
     const url = 'https://github.com/o/r/pull/1';
     expect((await bowi(tempDir(), url, '--local')).code).toBe(1);
     expect((await bowi(tempDir(), 'https://example.com/x')).code).toBe(1);
-    expect((await bowi(tempDir(), url)).code).toBe(1);
     expect((await bowi(tempDir(), '--frobnicate')).code).toBe(1);
   });
 

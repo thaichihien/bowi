@@ -1,2 +1,14 @@
 export { openLocalSnapshot, type LocalSourceOptions } from './local.ts';
-export { DIFF_FLAGS, git, gitText, resolveCommit, GitError } from './git.ts';
+export {
+  fetchPullRequest,
+  linkedIssues,
+  openGithubSnapshot,
+  parsePullRequestUrl,
+  resolveToken,
+  type GithubOptions,
+  type GithubSnapshot,
+  type GithubSnapshotOptions,
+  type PullRequestInfo,
+  type PullRequestRef,
+} from './github.ts';
+export { DIFF_FLAGS, git, gitText, readBlob, resolveCommit, GitError } from './git.ts';

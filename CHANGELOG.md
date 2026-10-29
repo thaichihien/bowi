@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### M5 — GitHub pull requests, cache, progress
+
+- `bowi https://github.com/<owner>/<repo>/pull/<n>` (also `/files`, `?…`, `#…` URLs): PR metadata, merge base (compare API) and commit subjects from the GitHub REST API; code from git, computed locally (never the PR files API).
+- Repository cache: a bare, blobless, shallow repository per GitHub repository; only the head and merge-base commits are fetched (by SHA), and `git diff` downloads just the blobs it needs. A second run of the same PR fetches nothing. A lock keeps concurrent runs apart. `--cache-dir <dir>` and `bowi cache clear`.
+- Token from `GITHUB_TOKEN`, else `gh auth token`; optional for public repositories, passed to git through environment config (never on the command line). Clear errors with next steps for not found / private, rejected token, rate limit and network problems (exit code 2).
+- Terminal progress: a spinner while a slow stage runs (API, fetch), replaced by the usual `✓` line; plain lines in pipes and CI.
+- `review.html` opens in the browser after a run at a terminal; `--no-open` to skip.
+- Output folder for PRs: `.bowi/<repo>-<pr>/`. New `source.linkedIssues` from closing keywords in the description.
+- Changed: edits to comment text are no longer formatting-only noise (comment layout still is); see requirement.md §15 #10.
+
 ### M4 — HTML report
 
 - `bowi --local` now writes `review.html` next to `review-plan.json` (skip it with `--json-only`): one self-contained page, all JS and CSS inlined, no network requests.

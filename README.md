@@ -2,7 +2,14 @@
 
 **Bowi** (short for _bowerbird_) turns a pull request into a guided review: related changes grouped together, foundations before the code that uses them, noise collapsed, and every group explained with evidence. The result is one self-contained `review.html`.
 
-Status: early development. `bowi --local` produces a grouped `review.html` for the current branch. See [docs/requirement.md](docs/requirement.md) and [docs/plan.md](docs/plan.md).
+Status: early development.
+
+```bash
+bowi https://github.com/<owner>/<repo>/pull/<n>   # review a GitHub pull request
+bowi --local [--base <branch>]                    # review the current branch, including uncommitted work
+```
+
+Both write `review-plan.json` and `review.html` to `.bowi/<repo>-<pr-or-branch>/` and open the page. Private repositories need `GITHUB_TOKEN` or `gh auth login`. Fetched code is cached (`bowi cache clear` removes it). See [docs/requirement.md](docs/requirement.md) and [docs/plan.md](docs/plan.md).
 
 ## Development
 

@@ -115,3 +115,18 @@ export async function resolveCommit(rev: string, cwd: string): Promise<string | 
   });
   return r.code === 0 ? r.stdout.trim() : null;
 }
+
+/** File contents at a revision, or null if the path does not exist there. */
+export async function readBlob(
+  cwd: string,
+  rev: string,
+  path: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<string | null> {
+  const r = await git(['cat-file', 'blob', `${rev}:${path}`], {
+    cwd,
+    okCodes: [128],
+    ...(env && { env }),
+  });
+  return r.code === 0 ? r.stdout : null;
+}

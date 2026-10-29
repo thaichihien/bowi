@@ -5,9 +5,12 @@
  * in-process; bin.ts only wires it to the real process.
  */
 
+import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { platform } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Command, CommanderError } from 'commander';
+import { clearCache, defaultCacheDir } from '@bowi/cache';
 import {
   analyze,
   BowiError,
@@ -18,20 +21,33 @@ import {
   type Snapshot,
 } from '@bowi/core';
 import { renderHtml } from '@bowi/render-html';
-import { openLocalSnapshot } from '@bowi/sources';
-import { createProgress } from './progress.ts';
+import {
+  fetchPullRequest,
+  openGithubSnapshot,
+  openLocalSnapshot,
+  parsePullRequestUrl,
+  resolveToken,
+  type GithubOptions,
+} from '@bowi/sources';
+import { createProgress, type Progress } from './progress.ts';
 
 export const VERSION = '0.0.0';
 
 export interface Writable {
   write(chunk: string): unknown;
+  isTTY?: boolean;
 }
 
 export interface CliIo {
   cwd: string;
   stdout: Writable;
   stderr: Writable;
+  env?: NodeJS.ProcessEnv;
   now?: () => Date;
+  /** Opens the report in a browser (CLI-5). Default: the system opener. */
+  openFile?: (path: string) => void;
+  /** For tests: GitHub API access and where to clone from. */
+  github?: GithubOptions & { remoteUrl?: string };
 }
 
 interface CliOptions {
@@ -40,15 +56,18 @@ interface CliOptions {
   out?: string;
   jsonOnly?: boolean;
   untracked: boolean;
+  open: boolean;
+  cacheDir?: string;
   quiet?: boolean;
   verbose?: boolean;
 }
 
-const PR_URL = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+\/?$/;
-
 export async function run(argv: string[], io: CliIo): Promise<number> {
+  if (argv[0] === 'cache') return runCache(argv.slice(1), io);
+
   const program = new Command('bowi')
     .description('Turn a pull request into a guided, grouped review.')
+    .usage('<github-pr-url> | --local [options]\n       bowi cache clear')
     .argument('[pr-url]', 'GitHub pull request URL, e.g. https://github.com/owner/repo/pull/123')
     .option('--local', 'review the current repository: merge base of --base vs the working tree')
     .option(
@@ -58,6 +77,8 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
     .option('--out <dir>', 'output folder (default: ./.bowi/<repo>-<pr-or-branch>/)')
     .option('--json-only', 'write only review-plan.json, not review.html')
     .option('--no-untracked', 'with --local, leave out untracked files')
+    .option('--no-open', 'do not open review.html in the browser')
+    .option('--cache-dir <dir>', `cache folder (default: ${defaultCacheDir(io.env)})`)
     .option('-q, --quiet', 'print nothing but errors')
     .option('-v, --verbose', 'print more detail')
     .version(VERSION)
@@ -105,8 +126,11 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
     const htmlPath = join(outDir, 'review.html');
     await writeFile(htmlPath, html);
     progress.done(`Wrote ${htmlPath}`);
+    // CLI-5: only for a person at a terminal, never for scripts or pipes.
+    if (opts.open && io.stdout.isTTY) (io.openFile ?? openWithSystem)(htmlPath);
     return 0;
   } catch (e) {
+    progress.fail();
     if (e instanceof BowiError) {
       io.stderr.write(`error: ${e.message}\n`);
       if (e.hint) io.stderr.write(`  ${e.hint}\n`);
@@ -118,11 +142,39 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
   }
 }
 
+/** `bowi cache clear [--cache-dir <dir>]` (CLI-10). */
+async function runCache(argv: string[], io: CliIo): Promise<number> {
+  const program = new Command('bowi cache')
+    .description('Manage the cache of fetched repositories.')
+    .exitOverride()
+    .configureOutput({
+      writeOut: (s) => io.stdout.write(s),
+      writeErr: (s) => io.stderr.write(s),
+    });
+  program
+    .command('clear')
+    .description('delete everything Bowi has cached')
+    .option('--cache-dir <dir>', 'cache folder')
+    .action(async (o: { cacheDir?: string }) => {
+      const dir = o.cacheDir ? resolve(io.cwd, o.cacheDir) : defaultCacheDir(io.env);
+      await clearCache(dir);
+      io.stderr.write(`Cleared ${dir}\n`);
+    });
+  try {
+    await program.parseAsync(argv, { from: 'user' });
+    if (argv.length === 0) program.help();
+    return 0;
+  } catch (e) {
+    if (e instanceof CommanderError) return e.exitCode === 0 ? 0 : 1;
+    throw e;
+  }
+}
+
 async function openSnapshot(
   target: string | undefined,
   opts: CliOptions,
   io: CliIo,
-  progress: ReturnType<typeof createProgress>,
+  progress: Progress,
 ): Promise<Snapshot> {
   if (target && opts.local) {
     throw new UsageError('Pass either a PR URL or --local, not both.');
@@ -134,15 +186,35 @@ async function openSnapshot(
     );
   }
   if (target) {
-    if (!PR_URL.test(target)) {
+    const ref = parsePullRequestUrl(target);
+    if (!ref) {
       throw new UsageError(
         `Not a GitHub pull request URL: ${target}`,
         'Expected https://github.com/<owner>/<repo>/pull/<number>.',
       );
     }
-    throw new UsageError(
-      'GitHub PR URLs are not supported yet (milestone M5).',
-      'Use `bowi --local` for now.',
+    const token = io.github?.token ?? (await resolveToken(io.env));
+    const github: GithubOptions = { ...io.github, ...(token && { token }) };
+    const info = await progress.time(
+      'Resolved',
+      () => fetchPullRequest(ref, github),
+      (pr) =>
+        `PR #${pr.ref.number} · head ${pr.headSha.slice(0, 7)} · merge base ${pr.mergeBaseSha.slice(0, 7)}`,
+      `Asking GitHub about ${ref.owner}/${ref.repo}#${ref.number}`,
+    );
+    return progress.time(
+      'Fetched',
+      () =>
+        openGithubSnapshot(info, {
+          cacheDir: opts.cacheDir ? resolve(io.cwd, opts.cacheDir) : defaultCacheDir(io.env),
+          ...(token && { token }),
+          ...(io.github?.remoteUrl && { remoteUrl: io.github.remoteUrl }),
+        }),
+      (s) =>
+        s.fromCache
+          ? 'both commits already cached'
+          : `head and merge base from github.com/${ref.owner}/${ref.repo}`,
+      'Fetching code',
     );
   }
 
@@ -162,6 +234,18 @@ async function openSnapshot(
   );
 }
 
+function openWithSystem(path: string): void {
+  const command =
+    platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'explorer' : 'xdg-open';
+  try {
+    const child = spawn(command, [path], { detached: true, stdio: 'ignore' });
+    child.on('error', () => {}); // no opener installed: the path is printed anyway
+    child.unref();
+  } catch {
+    // ignore: the report path is already printed
+  }
+}
+
 function formatSize(bytes: number): string {
   return bytes < 1024 * 1024
     ? `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -170,8 +254,11 @@ function formatSize(bytes: number): string {
 
 function outDirFor(plan: ReviewPlan, opts: CliOptions, cwd: string): string {
   if (opts.out) return resolve(cwd, opts.out);
-  const which =
-    plan.source.prNumber !== undefined ? String(plan.source.prNumber) : plan.source.headRef;
-  const name = `${plan.source.repo}-${which}`.replace(/[^A-Za-z0-9._-]+/g, '-');
-  return resolve(cwd, '.bowi', name);
+  const s = plan.source;
+  // GitHub: "<name>-<pr>" (web-app-be-482); local: "<folder>-<branch>".
+  const name =
+    s.prNumber !== undefined
+      ? `${s.repo.slice(s.repo.indexOf('/') + 1)}-${s.prNumber}`
+      : `${s.repo}-${s.headRef}`;
+  return resolve(cwd, '.bowi', name.replace(/[^A-Za-z0-9._-]+/g, '-'));
 }

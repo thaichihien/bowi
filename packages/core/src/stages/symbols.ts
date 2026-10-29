@@ -112,7 +112,7 @@ export const symbolStage: Stage<SymbolStageInput, SymbolStageOutput> = async (in
           e[side] = symbol;
           lineSymbols.get(hunk.id)![index] = symbolId(hunk.fileId, symbol.qualifiedName);
           mapped = true;
-        } else if (parsed.isCodeLine(n)) {
+        } else if (parsed.isContentLine(n)) {
           touch(hunk.fileId, FILE_SYMBOL, hunk);
           lineSymbols.get(hunk.id)![index] = symbolId(hunk.fileId, FILE_SYMBOL);
           mapped = true;

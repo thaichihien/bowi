@@ -1,8 +1,10 @@
 /**
  * Step-by-step progress output on stderr (CLI-6, format from §11.2).
  *
- * Plain lines, one per finished stage, with timing. `--quiet` prints nothing, `--verbose` adds
- * debug lines. The full listr-style display arrives in M5.
+ * One line per finished stage with its timing. On a terminal, a stage that takes a while (a
+ * network fetch) shows a spinner line that the finished line then replaces; elsewhere (pipes,
+ * CI logs) only the finished lines are written. `--quiet` prints nothing, `--verbose` adds
+ * debug lines.
  */
 
 import { performance } from 'node:perf_hooks';
@@ -18,9 +20,31 @@ const LABELS: Record<string, string> = {
   group: 'Groups',
 };
 
+const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+/** Only stages slower than this get a spinner, so fast runs print no flicker. */
+const SPINNER_DELAY_MS = 150;
+
+export type Progress = ReturnType<typeof createProgress>;
+
 export function createProgress(out: Writable, options: { quiet: boolean; verbose: boolean }) {
+  const interactive = !!out.isTTY && !options.quiet;
+  let spinner:
+    | { timer: ReturnType<typeof setInterval> | undefined; delay: ReturnType<typeof setTimeout> }
+    | undefined;
+
+  const clearSpinner = () => {
+    if (!spinner) return;
+    clearTimeout(spinner.delay);
+    if (spinner.timer) {
+      clearInterval(spinner.timer);
+      out.write('\r\x1b[2K');
+    }
+    spinner = undefined;
+  };
+
   const line = (label: string, summary: string, ms: number) => {
     if (options.quiet) return;
+    clearSpinner();
     const time = `${(ms / 1000).toFixed(1)}s`;
     const padded = summary.length >= 46 ? `${summary}  ` : summary.padEnd(48);
     out.write(`✓ ${label.padEnd(10)}${padded}${time}\n`);
@@ -38,12 +62,32 @@ export function createProgress(out: Writable, options: { quiet: boolean; verbose
   return {
     logger,
     stage: (r: StageReport) => line(LABELS[r.stage] ?? r.stage, r.summary, r.ms),
-    async time<T>(label: string, fn: () => Promise<T>, summarize: (v: T) => string): Promise<T> {
+    /** Runs `fn` as one stage; `active` is the spinner text while it runs (terminals only). */
+    async time<T>(
+      label: string,
+      fn: () => Promise<T>,
+      summarize: (v: T) => string,
+      active?: string,
+    ): Promise<T> {
       const start = performance.now();
+      if (interactive && active) {
+        let frame = 0;
+        const s: NonNullable<typeof spinner> = {
+          timer: undefined,
+          delay: setTimeout(() => {
+            s.timer = setInterval(() => {
+              out.write(`\r\x1b[2K${FRAMES[frame++ % FRAMES.length]} ${active}…`);
+            }, 80);
+          }, SPINNER_DELAY_MS),
+        };
+        spinner = s;
+      }
       const value = await fn();
       line(label, summarize(value), performance.now() - start);
       return value;
     },
+    /** Clears a running spinner before an error message. */
+    fail: clearSpinner,
     warn: (m: string) => {
       if (!options.quiet) out.write(`! ${m}\n`);
     },

@@ -250,7 +250,7 @@ function changedFields(
     const changed = new Set<number>();
     for (const id of s.hunkIds) {
       for (const l of hunkById.get(id)!.lines) {
-        if (l.kind === 'add' && c.source.isCodeLine(l.newNo!)) changed.add(l.newNo!);
+        if (l.kind === 'add' && c.source.isContentLine(l.newNo!)) changed.add(l.newNo!);
       }
     }
     for (const f of c.source.fields) {

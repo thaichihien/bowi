@@ -14,6 +14,9 @@
     },
     {
       "path": "../render-html"
+    },
+    {
+      "path": "../cache"
     }
   ]
 }

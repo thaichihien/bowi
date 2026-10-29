@@ -7,8 +7,8 @@
  *
  * - generated: every hunk of a generated file.
  * - format: the code on the hunk's changed lines has the same structural fingerprint on both
- *   sides (whitespace, comments, `;`, `,` and quote style ignored), or only blank and comment
- *   lines changed. Files without a grammar only count blank-line changes as formatting.
+ *   sides (whitespace, `;`, `,`, quote style and comment layout ignored; comment text counts),
+ *   or only blank lines changed. Files without a grammar only count blank-line changes.
  * - move: a symbol whose lines are all deleted matches a symbol whose lines are all added,
  *   exactly (fingerprint) or with line similarity ≥ grouping.moveSimilarity. Lines that differ
  *   are listed in `changedLineIndexes` and are never treated as noise.
@@ -72,8 +72,8 @@ function isFormatOnly(h: Hunk, file: FileChange, src: FileSources | undefined): 
     return [...dels, ...adds].every((l) => l.text.trim() === '');
   }
 
-  const oldCode = dels.map((l) => l.oldNo!).filter((n) => src.old!.isCodeLine(n));
-  const newCode = adds.map((l) => l.newNo!).filter((n) => src.new!.isCodeLine(n));
+  const oldCode = dels.map((l) => l.oldNo!).filter((n) => src.old!.isContentLine(n));
+  const newCode = adds.map((l) => l.newNo!).filter((n) => src.new!.isContentLine(n));
   if (oldCode.length === 0 && newCode.length === 0) return true;
   if (oldCode.length === 0 || newCode.length === 0) return false;
   return (

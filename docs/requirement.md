@@ -292,6 +292,7 @@ export interface ReviewPlan {
     baseRef: string; headRef: string;
     baseSha: string; headSha: string; mergeBaseSha: string;
     commits: { sha: string; subject: string }[];
+    linkedIssues?: string[];                 // "#12", "owner/repo#5" from closing keywords in the description
   };
   stats: {
     files: number; hunks: number;
@@ -602,7 +603,7 @@ Rules for implementation:
 7. **Determinism excludes timings (M0, assumed).** GRP-12 says output is identical except `generatedAt`, but `meta.timingsMs` can never be identical across runs. Determinism checks ignore both (`comparablePlanJson` in `@bowi/core`).
 8. **email-verification fixture vs NOISE-6 (M0, open).** §12.2 requires exactly 11 changed files, so the fixture does not change `package.json` even though the lockfile adds `nodemailer`. The lockfile summary must therefore read direct dependencies from the lockfile's root entry (`packages[""]` in lockfile v3), not only from a `package.json` diff. Alternative: add the `package.json` change and make it 12 files.
 9. **Formatting-only includes semicolons (M0, assumed).** The fixture's Prettier change to `src/utils/date.ts` adds semicolons and line breaks, as in the prototype. NOISE-2's "ASTs equal ignoring whitespace and comments" must also ignore optional semicolons (and trailing commas), or the fixture would not count as formatting-only.
-10. **Comment-only edits count as formatting (M2, follows NOISE-2 as written; please confirm).** NOISE-2 says ASTs are compared ignoring comments, so a hunk that only edits comments (including JSDoc) becomes `format` noise and is collapsed. Reviewers may want doc comment changes visible. Alternative: ignore comments only when the comment text is unchanged.
+10. ~~**Comment-only edits count as formatting.**~~ **Changed in M5 (overrides NOISE-2's wording; veto if you disagree):** comment *text* counts, only comment layout (line prefixes, whitespace) is ignored. Evidence: on a real PR (sindresorhus/ky#874), 4 of 5 "formatting-only" files were edits to public API doc comments (e.g. how `HTTPError.data` behaves on timeouts) and would have been collapsed as noise.
 11. **TypeScript grammar gap (M2, known limitation).** `tree-sitter-typescript` 0.23.2 (latest on npm) does not parse `export type * from '…'` (TS 5.0). Files using it fall back to text-only analysis with a warning. Fix later by building the grammar from upstream master, or by tolerating errors outside the changed lines.
 12. ~~**Migration layer vs §12.2 (M2 → M3).**~~ **Decided M3:** adjacent `schema` and `data` share one "Data shape" step (Step.layer is `schema` when it contains schema files). SYM-4 puts `migrations/` in `schema`, while §12.2 expects the feature group's first step to be "data (entity + migration)". GRP-7 creates one step per layer, so M3 must either merge `schema` and `data` into one "Data shape" step or the acceptance test should expect schema → data. Proposal: one step for adjacent `schema` + `data`.
 13. **Move granularity (M2, assumed).** A hunk becomes `move` only if all its changed non-blank lines belong to matched moved symbols, and the same holds for its partner hunk; otherwise both halves stay `logic`. A hunk holding several moved symbols describes the first move in `move` and lists changed lines of all. Blank lines never map to symbols.
@@ -615,6 +616,10 @@ Rules for implementation:
 20. **Prototype parts not ported (M4).** "What to check" (judging code is a non-goal), risk chips (they become review hints in M6), the "Comment" button (posting to GitHub is phase 2) and Google Fonts (UI-1 forbids network requests; system fonts are used). The reading-order toggle (UI-10, P1) is included because the prototype has it.
 21. **Highlighting lives only in the page (M4).** `DiffLine.html` is filled for the plan embedded in `review.html`; `review-plan.json` is written without it, so the JSON stays small and renderer-neutral.
 22. **Links to a step (M4).** The page keeps the current step in the URL hash (`review.html#g1:service`, `#alpha`), so a step can be linked and reopened. Per-hunk "copy path:line" (UI-16) remains P1.
+23. **GitHub API without Octokit (M5).** The three calls (pull request, compare, PR commits) use Node's built-in `fetch`, so there is no `@octokit/rest` dependency to keep compatible with Node 20.
+24. **Fetch strategy (M5, refines SRC-3/SRC-4).** The cache repository is bare and partial (`--filter=blob:none`) but also shallow: it fetches only the head and merge-base commits by SHA with `--depth=1`; `git diff` then downloads just the blobs it needs. A large repository costs two trees, not its history. If a server refuses SHA fetches, Bowi falls back to `refs/pull/<n>/head` and the base branch with full blobless history. M6 (`co-change`, `same-commit`) deepens history when it needs it.
+25. **Parse cache deferred (PARSE-5, P1).** Parsing is 0.1–1.3 s on the PRs measured, and a parse result keeps a live tree-sitter tree that cannot be stored on disk. The repository cache already makes a second run of the same PR skip all network fetching (7 s → 3.6 s on ky#874, the rest is the API and rendering). Revisit if profiling on large PRs shows parsing dominates.
+26. **Linked issues in the plan (M5).** SRC-2 asks for linked issues but §8 had no field: added `source.linkedIssues` (closing keywords such as "Fixes #12" in the description).
 
 ---
 

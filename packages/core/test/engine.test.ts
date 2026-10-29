@@ -38,12 +38,18 @@ describe('formatting-only detection', () => {
     expect(symbolsOf(p)).toEqual(['body function b']);
   });
 
-  it('treats comment and blank-line edits as formatting (spec NOISE-2)', async () => {
+  it('treats blank-line edits as formatting but keeps comment text edits visible', async () => {
     const p = await plan(
-      { 'a.ts': 'const a = 1; // old\n\nconst b = 2;\n' },
-      { 'a.ts': 'const a = 1; // new\nconst b = 2;\n' },
+      {
+        'a.ts':
+          'const a = 1;\n\n\nconst b = 2;\n' + '\n'.repeat(10) + '// retries once\nconst c = 3;\n',
+      },
+      {
+        'a.ts':
+          'const a = 1;\nconst b = 2;\n' + '\n'.repeat(10) + '// retries twice\nconst c = 3;\n',
+      },
     );
-    expect(Object.values(kinds(p))).toEqual(['format']);
+    expect(p.hunks.map((h) => h.kind)).toEqual(['format', 'logic']);
   });
 
   it('keeps a semicolon that changes parsing as logic', async () => {

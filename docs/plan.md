@@ -65,6 +65,8 @@ Done when all of §12.2 except HTML items pass, plus the 4 extra fixtures.
 
 ### M5 — GitHub source, caching, progress
 
+- Done as planned except: API through built-in `fetch` (no Octokit), shallow SHA fetches into the cache, parse cache deferred; see requirement.md §15 #23–#25.
+
 - Token from `GITHUB_TOKEN` else `gh auth token` (SRC-2). Octokit for PR metadata + compare API merge base (SRC-3).
 - Cached partial clone (`--filter=blob:none`, bare) under `~/.cache/bowi/repos/<owner>/<repo>`, fetch only base/head/merge-base SHAs; reused across runs (SRC-4).
 - Parse cache by content hash. Progress display per §11.2 (listr2), `--no-open`, `open` only on TTY, `bowi cache clear`.

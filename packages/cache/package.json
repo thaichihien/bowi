@@ -2,7 +2,7 @@
   "name": "@bowi/cache",
   "version": "0.0.0",
   "private": true,
-  "description": "Repository, parse and AI caches (M5).",
+  "description": "Bowi's on-disk cache: location, per-repository folders, locking, clearing.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -18,8 +18,5 @@
   },
   "files": [
     "dist"
-  ],
-  "dependencies": {
-    "@bowi/core": "workspace:*"
-  }
+  ]
 }

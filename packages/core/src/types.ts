@@ -21,6 +21,7 @@ export interface ReviewPlan {
     headSha: string;
     mergeBaseSha: string;
     commits: { sha: string; subject: string }[];
+    linkedIssues?: string[]; // "#12", "owner/repo#5" from closing keywords in the description
   };
   stats: {
     files: number;

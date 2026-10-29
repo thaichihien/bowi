@@ -122,11 +122,20 @@ describe('references', () => {
 });
 
 describe('fingerprints', () => {
-  it('ignore whitespace, comments, semicolons, trailing commas and quote style', async () => {
-    const a = await parse("const f=(a:number)=>g(a,'x')\n");
-    const b = await parse('// note\nconst f = (a: number) =>\n  g(\n    a,\n    "x",\n  );\n');
+  it('ignore whitespace, semicolons, trailing commas, quote style and comment layout', async () => {
+    const a = await parse("// note  here\nconst f=(a:number)=>g(a,'x')\n");
+    const b = await parse('// note here\nconst f = (a: number) =>\n  g(\n    a,\n    "x",\n  );\n');
     expect(a.fingerprint).toBe(b.fingerprint);
-    expect(a.coverFingerprint(1, 1)).toBe(b.coverFingerprint(2, 6));
+    expect(a.coverFingerprint(2, 2)).toBe(b.coverFingerprint(2, 6));
+    const doc1 = await parse('/**\n * Returns the total.\n */\nexport const t = 1;\n');
+    const doc2 = await parse('/** Returns  the total. */\nexport const t = 1;\n');
+    expect(doc1.fingerprint).toBe(doc2.fingerprint);
+  });
+
+  it('change when comment text changes (an edited doc comment is not formatting)', async () => {
+    expect((await parse('// retries once\nf();\n')).fingerprint).not.toBe(
+      (await parse('// retries twice\nf();\n')).fingerprint,
+    );
   });
 
   it('change when a semicolon changes how code parses', async () => {
@@ -146,16 +155,16 @@ describe('fingerprints', () => {
     expect(a!.shapeFingerprint).toBe(b!.shapeFingerprint);
   });
 
-  it('know which lines hold code', async () => {
+  it('know which lines hold content', async () => {
     const src = await parse(
       'const a = 1;\n\n// comment\n/* block\n   comment */\nconst b = `x\ny`;\n',
     );
-    expect([1, 2, 3, 4, 5, 6, 7].map((n) => src.isCodeLine(n))).toEqual([
+    expect([1, 2, 3, 4, 5, 6, 7].map((n) => src.isContentLine(n))).toEqual([
       true,
       false,
-      false,
-      false,
-      false,
+      true,
+      true,
+      true,
       true,
       true,
     ]);
