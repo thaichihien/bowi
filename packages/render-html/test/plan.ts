@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -10,13 +10,16 @@ import {
 } from '@bowi/core';
 import { buildFixtureRepo, emailVerification } from '@bowi/fixtures';
 import { openLocalSnapshot } from '@bowi/sources';
+import { afterAll } from 'vitest';
+
+const roots: string[] = [];
+afterAll(() => roots.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
 /** The email-verification plan and its snapshot (for highlighting). */
 export async function fixturePlan(): Promise<{ plan: ReviewPlan; snapshot: Snapshot }> {
-  const repo = buildFixtureRepo(
-    emailVerification,
-    join(mkdtempSync(join(tmpdir(), 'bowi-render-')), 'ev'),
-  ).dir;
+  const root = mkdtempSync(join(tmpdir(), 'bowi-render-'));
+  roots.push(root);
+  const repo = buildFixtureRepo(emailVerification, join(root, 'ev')).dir;
   const snapshot = await openLocalSnapshot({ cwd: repo });
   const plan = await analyze(
     snapshot,

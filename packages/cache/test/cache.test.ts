@@ -1,8 +1,16 @@
-import { existsSync, mkdirSync, mkdtempSync, utimesSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { clearCache, defaultCacheDir, repoCacheDir, withLock } from '../src/index.ts';
+
+const roots: string[] = [];
+const tempDir = (prefix: string) => {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  roots.push(d);
+  return d;
+};
+afterAll(() => roots.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
 describe('cache locations', () => {
   it('follows XDG_CACHE_HOME and keeps repository folders safe', () => {
@@ -15,7 +23,7 @@ describe('cache locations', () => {
 
 describe('withLock', () => {
   it('runs holders one at a time and releases the lock', async () => {
-    const dir = join(mkdtempSync(join(tmpdir(), 'bowi-lock-')), 'repo.git');
+    const dir = join(tempDir('bowi-lock-'), 'repo.git');
     const events: string[] = [];
     const holder = (name: string) =>
       withLock(dir, async () => {
@@ -29,7 +37,7 @@ describe('withLock', () => {
   });
 
   it('takes over a lock abandoned for more than 10 minutes', async () => {
-    const dir = join(mkdtempSync(join(tmpdir(), 'bowi-lock-')), 'repo.git');
+    const dir = join(tempDir('bowi-lock-'), 'repo.git');
     mkdirSync(`${dir}.lock`);
     const old = new Date(Date.now() - 11 * 60_000);
     utimesSync(`${dir}.lock`, old, old);
