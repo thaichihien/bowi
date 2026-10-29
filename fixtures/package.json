@@ -1,0 +1,11 @@
+{
+  "name": "@bowi/fixtures",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Deterministic git repositories with known PRs, used by tests and the benchmark.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  }
+}

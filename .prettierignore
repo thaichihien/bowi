@@ -1,0 +1,4 @@
+docs/
+dist/
+bun.lock
+fixtures/*/files/

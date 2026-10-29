@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.bowi/
+coverage/
+.DS_Store

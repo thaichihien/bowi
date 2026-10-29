@@ -1,0 +1,32 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/core"
+    },
+    {
+      "path": "packages/cache"
+    },
+    {
+      "path": "packages/sources"
+    },
+    {
+      "path": "packages/lang"
+    },
+    {
+      "path": "packages/plugins"
+    },
+    {
+      "path": "packages/rules"
+    },
+    {
+      "path": "packages/ai"
+    },
+    {
+      "path": "packages/render-html"
+    },
+    {
+      "path": "packages/cli"
+    }
+  ]
+}

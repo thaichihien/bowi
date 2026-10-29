@@ -1,0 +1,22 @@
+{
+  "name": "@bowi/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Types, stage contract, invariants and determinism helpers for the Bowi analysis engine.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ]
+}

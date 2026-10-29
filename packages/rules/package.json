@@ -1,0 +1,25 @@
+{
+  "name": "@bowi/rules",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Review hints, reading aids only (M6).",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@bowi/core": "workspace:*"
+  }
+}
