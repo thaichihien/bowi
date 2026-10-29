@@ -9,9 +9,10 @@ import type { Tree } from 'web-tree-sitter';
 import { codeLines, coverFingerprint, fingerprint } from './fingerprint.ts';
 import type { LanguageId } from './languages.ts';
 import { loadLanguage } from './loader.ts';
+import { indexNames, type NameIndex } from './references.ts';
 import { extractSymbols, type SourceSymbol } from './symbols.ts';
 
-export interface ParsedSource {
+export interface ParsedSource extends NameIndex {
   language: LanguageId;
   /** True when the parser had to recover from syntax errors; callers fall back to text (PARSE-4). */
   hasError: boolean;
@@ -35,6 +36,7 @@ export async function parseSource(language: LanguageId, text: string): Promise<P
     language,
     hasError: root.hasError,
     symbols: extractSymbols(root, query, language, text),
+    ...indexNames(root),
     fingerprint: fingerprint(root),
     isCodeLine: (line) => lines.has(line),
     coverFingerprint: (startLine, endLine) => coverFingerprint(root, startLine - 1, endLine - 1),

@@ -73,12 +73,13 @@ export function git(args: string[], options: GitOptions): Promise<GitResult> {
         GIT_TERMINAL_PROMPT: '0',
         GIT_OPTIONAL_LOCKS: '0',
       },
-      stdio: ['pipe', 'pipe', 'pipe'],
+      // stdin only when there is input: writing to a git that already exited raises EPIPE.
+      stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
-    child.stdout.on('data', (d: Buffer) => out.push(d));
-    child.stderr.on('data', (d: Buffer) => err.push(d));
+    child.stdout!.on('data', (d: Buffer) => out.push(d));
+    child.stderr!.on('data', (d: Buffer) => err.push(d));
     child.on('error', (e: NodeJS.ErrnoException) => {
       reject(e.code === 'ENOENT' ? new Error('git is not installed or not on PATH') : e);
     });
@@ -91,7 +92,13 @@ export function git(args: string[], options: GitOptions): Promise<GitResult> {
       if (result.code === 0 || options.okCodes?.includes(result.code)) resolve(result);
       else reject(new GitError(args, result.code, result.stderr));
     });
-    child.stdin.end(options.input ?? '');
+    if (child.stdin) {
+      // git may exit before reading all input (e.g. on an error); its exit code reports that.
+      child.stdin.on('error', (e: NodeJS.ErrnoException) => {
+        if (e.code !== 'EPIPE') reject(e);
+      });
+      child.stdin.end(options.input);
+    }
   });
 }
 

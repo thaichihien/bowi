@@ -12,3 +12,6 @@ export * from './stages/noise.ts';
 export * from './stages/symbols.ts';
 export * from './layers.ts';
 export * from './noise/generated.ts';
+export * from './stages/graph.ts';
+export * from './stages/group.ts';
+export * from './invariants.ts';

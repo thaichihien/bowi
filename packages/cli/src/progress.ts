@@ -14,6 +14,8 @@ const LABELS: Record<string, string> = {
   parse: 'Parsed',
   noise: 'Noise',
   symbols: 'Symbols',
+  graph: 'Graph',
+  group: 'Groups',
 };
 
 export function createProgress(out: Writable, options: { quiet: boolean; verbose: boolean }) {

@@ -10,21 +10,23 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 export interface FixtureCommit {
   message: string;
   /** Folder (relative to the spec's `filesDir`) whose files are copied over the working tree. */
   dir?: string;
+  /** Files written over the working tree, by path (for generated fixtures). */
+  files?: Record<string, string>;
   /** Paths removed in this commit. */
   delete?: string[];
 }
 
 export interface FixtureSpec {
   name: string;
-  /** Absolute folder containing each commit's `dir`. */
-  filesDir: string;
+  /** Absolute folder containing each commit's `dir` (unused when commits only use `files`). */
+  filesDir?: string;
   baseBranch: string;
   headBranch: string;
   base: FixtureCommit[];
@@ -81,7 +83,11 @@ export function buildFixtureRepo(spec: FixtureSpec, targetDir: string): BuiltFix
 
   let commitIndex = 0;
   const commit = (c: FixtureCommit) => {
-    if (c.dir) cpSync(join(spec.filesDir, c.dir), targetDir, { recursive: true });
+    if (c.dir) cpSync(join(spec.filesDir!, c.dir), targetDir, { recursive: true });
+    for (const [path, content] of Object.entries(c.files ?? {})) {
+      mkdirSync(dirname(join(targetDir, path)), { recursive: true });
+      writeFileSync(join(targetDir, path), content);
+    }
     for (const path of c.delete ?? []) rmSync(join(targetDir, path));
     git(targetDir, ['add', '--all']);
     git(

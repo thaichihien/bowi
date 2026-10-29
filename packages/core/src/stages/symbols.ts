@@ -33,6 +33,8 @@ export interface SymbolStageOutput {
   files: FileChange[];
   hunks: Hunk[];
   symbols: ChangedSymbol[];
+  /** For each hunk, the symbol ID owning each line (by index into `lines`); null if none. */
+  lineSymbols: Map<string, (string | null)[]>;
 }
 
 const FILE_SYMBOL = '<file>';
@@ -52,6 +54,9 @@ export const symbolStage: Stage<SymbolStageInput, SymbolStageOutput> = async (in
   const fileById = new Map(files.map((f) => [f.id, f]));
   const hunks = input.hunks.map((h): Hunk => ({ ...h, symbolIds: [] }));
   const entries = new Map<string, Entry>();
+  const lineSymbols = new Map<string, (string | null)[]>(
+    hunks.map((h) => [h.id, h.lines.map(() => null)]),
+  );
 
   const touch = (fileId: string, qualifiedName: string, hunk: Hunk): Entry => {
     const id = symbolId(fileId, qualifiedName);
@@ -77,6 +82,11 @@ export const symbolStage: Stage<SymbolStageInput, SymbolStageOutput> = async (in
     if (hunk.kind === 'move') {
       for (const m of movesByHunk.get(hunk.id) ?? []) {
         const e = touch(m.to.fileId, m.to.symbol.qualifiedName, hunk);
+        const owners = lineSymbols.get(hunk.id)!;
+        hunk.lines.forEach((l, i) => {
+          if (l.kind !== 'context' && owners[i] === null)
+            owners[i] = symbolId(m.to.fileId, m.to.symbol.qualifiedName);
+        });
         e.new = m.to.symbol;
         e.old = m.from.symbol;
         e.moved = m;
@@ -87,7 +97,7 @@ export const symbolStage: Stage<SymbolStageInput, SymbolStageOutput> = async (in
     const src = input.sources.get(hunk.fileId);
     let mapped = false;
     if (src) {
-      for (const line of hunk.lines) {
+      for (const [index, line] of hunk.lines.entries()) {
         // Blank lines carry no meaning; a blank line added between two methods must not make
         // the class count as changed.
         if (line.kind === 'context' || line.text.trim() === '') continue;
@@ -100,14 +110,22 @@ export const symbolStage: Stage<SymbolStageInput, SymbolStageOutput> = async (in
         if (symbol) {
           const e = touch(hunk.fileId, symbol.qualifiedName, hunk);
           e[side] = symbol;
+          lineSymbols.get(hunk.id)![index] = symbolId(hunk.fileId, symbol.qualifiedName);
           mapped = true;
         } else if (parsed.isCodeLine(n)) {
           touch(hunk.fileId, FILE_SYMBOL, hunk);
+          lineSymbols.get(hunk.id)![index] = symbolId(hunk.fileId, FILE_SYMBOL);
           mapped = true;
         }
       }
     }
-    if (!mapped) touch(hunk.fileId, FILE_SYMBOL, hunk);
+    if (!mapped) {
+      touch(hunk.fileId, FILE_SYMBOL, hunk);
+      const owners = lineSymbols.get(hunk.id)!;
+      hunk.lines.forEach((l, i) => {
+        if (l.kind !== 'context') owners[i] = symbolId(hunk.fileId, FILE_SYMBOL);
+      });
+    }
   }
 
   // Fill in the other side of each symbol, then detect renames among one-sided symbols.
@@ -192,7 +210,22 @@ export const symbolStage: Stage<SymbolStageInput, SymbolStageOutput> = async (in
     if (first && first.kind !== 'file') h.header = displayName(first);
   }
 
-  return { files, hunks, symbols };
+  // Line owners follow renames; lines of dropped (reformatted-only) symbols have no owner.
+  const renamedIds = new Map(
+    [...renamedFrom].map(([from, to]) => [
+      symbolId(from.fileId, from.qualifiedName),
+      symbolId(to.fileId, to.qualifiedName),
+    ]),
+  );
+  for (const owners of lineSymbols.values()) {
+    owners.forEach((id, i) => {
+      if (id === null) return;
+      const final = renamedIds.get(id) ?? id;
+      owners[i] = symbolById.has(final) ? final : null;
+    });
+  }
+
+  return { files, hunks, symbols, lineSymbols };
 };
 
 export function symbolId(fileId: string, qualifiedName: string): string {

@@ -12,8 +12,8 @@ import {
   type ReviewPlan,
 } from '../src/index.ts';
 
-// requirement.md §12.2: noise and symbol checks (M2).
-describe('email-verification fixture (M2)', () => {
+// requirement.md §12.2: noise, symbol (M2) and grouping (M3) checks.
+describe('email-verification fixture', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'bowi-ev-'));
   let repo: string;
   let plan: ReviewPlan;
@@ -94,6 +94,74 @@ describe('email-verification fixture (M2)', () => {
     );
     expect(plan.meta.languages).toEqual(['typescript']);
     expect(plan.meta.warnings).toEqual([]);
+  });
+
+  // requirement.md §12.2: grouping checks (M3).
+  it('has exactly 3 groups: feature, moved code, noise', () => {
+    expect(plan.groups.map((g) => g.kind)).toEqual(['feature', 'move', 'noise']);
+    expect(plan.groups[0]!.confidence).toBe('high');
+  });
+
+  it('orders the feature steps data → service → api → test → docs', () => {
+    const steps = plan.groups[0]!.steps;
+    expect(steps.map((s) => s.title)).toEqual([
+      'Data shape',
+      'Services',
+      'Auth controller',
+      'Tests',
+      'Docs',
+    ]);
+    const pathsOf = (i: number) => [
+      ...new Set(
+        steps[i]!.hunkIds.map((id) => plan.files.find((f) => id.startsWith(`${f.id}:`))!.path),
+      ),
+    ];
+    expect(pathsOf(0).sort()).toEqual([
+      'src/migrations/1730_add_email_verified.ts',
+      'src/users/user.entity.ts',
+    ]);
+    // The mail service is used by the auth service, so it is read first.
+    expect(pathsOf(1)).toEqual(['src/mail/mail.service.ts', 'src/auth/auth.service.ts']);
+    expect(plan.groups[0]!.testsFirstStepOrder[0]).toBe(steps[3]!.id);
+  });
+
+  it('explains the feature group with the expected reasons', () => {
+    const reasons = plan.groups[0]!.reasons;
+    expect(reasons).toContain(
+      '`AuthService.register()` calls `MailService.sendVerificationEmail()`',
+    );
+    expect(
+      reasons.some(
+        (r) =>
+          r.includes('email_verified') &&
+          r.includes('`User`') &&
+          r.includes('AddEmailVerified1730'),
+      ),
+    ).toBe(true);
+  });
+
+  it('puts README.md in the feature group through a docs-mentions edge', () => {
+    const readme = file('README.md').id;
+    expect(
+      plan.groups[0]!.steps.flatMap((s) => s.hunkIds).some((id) => id.startsWith(`${readme}:`)),
+    ).toBe(true);
+    expect(
+      plan.edges.some(
+        (e) => e.type === 'docs-mentions' && e.evidence.text.includes('verify-email'),
+      ),
+    ).toBe(true);
+  });
+
+  it('puts the slugify move and the noise in their own groups', () => {
+    const [, moved, noise] = plan.groups;
+    expect(moved!.steps.flatMap((s) => s.hunkIds).sort()).toEqual(
+      [...hunksOf('src/utils/helpers.ts'), ...hunksOf('src/utils/string.ts')]
+        .map((h) => h.id)
+        .sort(),
+    );
+    expect(moved!.reasons[0]).toContain('1 line changed');
+    expect(noise!.steps.map((s) => s.title)).toEqual(['Generated files', 'Formatting only']);
+    expect(noise!.summary).toContain('package-lock.json: generated');
   });
 
   it('is deterministic', async () => {

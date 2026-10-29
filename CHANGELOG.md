@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### M3 — Change graph, grouping, reading order
+
+- Change graph: `calls`, `uses-type` (types, constants and changed fields), `tests` (references from test files, plus `x.spec.ts` ↔ `x.ts`), `same-symbol` (symbols changed in one hunk), `shared-literal` and `docs-mentions` (distinctive kebab/snake-case literals, docs naming a changed symbol). Names resolve through the calling file's imports (relative paths, `.js` → `.ts`, path aliases). Every edge has a one-sentence evidence and locations.
+- Hub down-weighting for symbols with many structural neighbours.
+- Grouping: units of symbols sharing a hunk; components over edges ≥ 0.5; Louvain split (seeded) for oversized components; a weak pass that links leftovers through down-weighted edges; then attach by strongest edge, same file, same directory, else "Other changes".
+- Groups in reading order: logic groups by dependency then size, "Moved code" (moves with edits), one noise group (generated, formatting-only, unchanged moves; files without a diff in its summary). Steps by layer (`schema` + `data` = "Data shape"), files within a step in dependency order with cycles condensed (Tarjan), tests-first order.
+- Rule-based titles, kinds (feature, refactor, fix, test, config, docs, mixed), reasons (fan-in summarized: "`Logger.log()` is called by 20 changed symbols") and confidence.
+- Partition invariant (every hunk in exactly one step) checked on every run; a violation exits with code 3.
+- Fixtures hub-change, no-links, rename-refactor and unsupported-language; fixtures can now be generated from code.
+- Fixed: the git helper could crash with EPIPE when git exited before reading its input.
+
 ### M2 — Parsing, noise, symbols, layers
 
 - `@bowi/lang`: web-tree-sitter 0.27.1 with vendored, pinned grammars (TypeScript, TSX, JavaScript/JSX, JSON; `scripts/vendor-grammars.sh`), symbol queries per language, structural fingerprints. Independent of `@bowi/core`.

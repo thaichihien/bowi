@@ -1,14 +1,16 @@
 /**
  * Analysis engine: runs the stages in order and assembles the ReviewPlan (§11.1).
  *
- * Input: a Snapshot from any source. Output: the plan. Runs stages 2–5 (diff, parse, noise,
- * symbols); later milestones add graph, grouping and enrichment here.
+ * Input: a Snapshot from any source. Output: the plan. Runs stages 2–7 (diff, parse, noise,
+ * symbols, graph, groups); enrichment (hints, AI) comes in later milestones.
  */
 
 import { performance } from 'node:perf_hooks';
 import type { Snapshot } from './snapshot.ts';
 import type { StageContext } from './stage.ts';
 import { diffStage } from './stages/diff.ts';
+import { graphStage } from './stages/graph.ts';
+import { groupStage } from './stages/group.ts';
 import { noiseStage } from './stages/noise.ts';
 import { disposeSources, parseStage } from './stages/parse.ts';
 import { symbolStage } from './stages/symbols.ts';
@@ -79,7 +81,7 @@ export async function analyze(
       },
     );
 
-    const { files, hunks, symbols } = await run(
+    const { files, hunks, symbols, lineSymbols } = await run(
       'symbols',
       () =>
         symbolStage(
@@ -89,7 +91,32 @@ export async function analyze(
       (o) => `${o.symbols.length} changed`,
     );
 
-    return assemble({ files, hunks, symbols });
+    const { edges } = await run(
+      'graph',
+      () => graphStage({ files, hunks, symbols, sources, lineSymbols }, stageCtx),
+      (o) =>
+        `${new Set(o.edges.flatMap((e) => [e.from, e.to])).size} nodes · ${o.edges.length} edges`,
+    );
+
+    const { groups } = await run(
+      'group',
+      () =>
+        groupStage(
+          {
+            source: snapshot.meta,
+            files,
+            hunks,
+            symbols,
+            edges,
+            generatedReasons: parsed.generatedReasons,
+          },
+          stageCtx,
+        ),
+      (o) =>
+        `${o.groups.length} (confidence: ${o.groups.map((g) => (g.kind === 'noise' || g.kind === 'move' ? 'n/a' : g.confidence)).join(', ')})`,
+    );
+
+    return assemble({ files, hunks, symbols, edges, groups });
   } finally {
     disposeSources(sources);
   }
@@ -98,7 +125,9 @@ export async function analyze(
     files,
     hunks,
     symbols,
-  }: Pick<ReviewPlan, 'files' | 'hunks' | 'symbols'>): ReviewPlan {
+    edges,
+    groups,
+  }: Pick<ReviewPlan, 'files' | 'hunks' | 'symbols' | 'edges' | 'groups'>): ReviewPlan {
     let additions = 0;
     let deletions = 0;
     for (const f of files) {
@@ -133,8 +162,8 @@ export async function analyze(
       files,
       hunks,
       symbols,
-      edges: [],
-      groups: [],
+      edges,
+      groups,
       outsideRefs: [],
       hints: [],
       meta: {
