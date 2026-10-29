@@ -11,16 +11,17 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -b",
-    "typecheck": "tsc -p tsconfig.check.json",
-    "test": "vitest run",
+    "build": "bun run build:ui && tsc -b",
+    "typecheck": "tsc -p tsconfig.check.json && tsc -p packages/render-html/ui/tsconfig.json && tsc -p packages/render-html/test/tsconfig.json",
+    "test": "bun run build:ui && vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "fixture": "bun fixtures/build.ts",
     "check": "bun run typecheck && bun run lint && bun run format:check && bun run test",
-    "show-plan": "node scripts/show-plan.ts"
+    "show-plan": "node scripts/show-plan.ts",
+    "build:ui": "bun run --cwd packages/render-html build:ui"
   },
   "devDependencies": {
     "@bowi/core": "workspace:*",

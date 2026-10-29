@@ -4,3 +4,4 @@ dist/
 .bowi/
 coverage/
 .DS_Store
+packages/render-html/template/

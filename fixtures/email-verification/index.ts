@@ -10,12 +10,13 @@
  * AdminUsersController.create().
  */
 
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FixtureSpec } from '../lib/git-repo.ts';
 
 export const emailVerification: FixtureSpec = {
   name: 'email-verification',
-  filesDir: fileURLToPath(new URL('./files', import.meta.url)),
+  filesDir: join(dirname(fileURLToPath(import.meta.url)), 'files'),
   baseBranch: 'main',
   headBranch: 'feature/email-verification',
   base: [{ message: 'Initial commit', dir: 'base' }],

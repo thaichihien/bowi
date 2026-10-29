@@ -7,5 +7,5 @@
     "noEmit": true
   },
   "include": ["packages/*/src", "packages/*/test", "fixtures", "*.ts", "scripts"],
-  "exclude": ["fixtures/*/files"]
+  "exclude": ["fixtures/*/files", "packages/render-html/test"]
 }

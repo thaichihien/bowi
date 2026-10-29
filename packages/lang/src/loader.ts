@@ -3,6 +3,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Language, Parser, Query } from 'web-tree-sitter';
 import { LANGUAGES, type LanguageId } from './languages.ts';
@@ -17,7 +18,7 @@ const loaded = new Map<LanguageId, Promise<LoadedLanguage>>();
 
 // Works from both src/ and dist/: grammars/ and queries/ sit next to them in the package.
 const asset = (dir: string, file: string) =>
-  fileURLToPath(new URL(`../${dir}/${file}`, import.meta.url));
+  join(dirname(fileURLToPath(import.meta.url)), '..', dir, file);
 
 export function loadLanguage(id: LanguageId): Promise<LoadedLanguage> {
   let entry = loaded.get(id);

@@ -17,9 +17,22 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "template"
   ],
   "dependencies": {
-    "@bowi/core": "workspace:*"
+    "@bowi/core": "workspace:*",
+    "shiki": "4.5.0"
+  },
+  "devDependencies": {
+    "@bowi/fixtures": "workspace:*",
+    "@bowi/sources": "workspace:*",
+    "happy-dom": "21.0.4",
+    "preact": "10.29.8",
+    "vite": "8.3.5",
+    "vite-plugin-singlefile": "2.3.4"
+  },
+  "scripts": {
+    "build:ui": "vite build"
   }
 }

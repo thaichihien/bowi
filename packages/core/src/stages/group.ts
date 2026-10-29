@@ -40,6 +40,7 @@ export interface GroupStageInput {
   symbols: ChangedSymbol[];
   edges: ChangeEdge[];
   generatedReasons: Map<string, string>;
+  generatedNotes: Map<string, string[]>;
 }
 
 export interface GroupStageOutput {
@@ -230,7 +231,7 @@ export const groupStage: Stage<GroupStageInput, GroupStageOutput> = async (input
       reasons: [],
       steps,
       testsFirstStepOrder: steps.map((s) => s.id),
-      summary: noiseSummary(files, hunks, input.generatedReasons, noDiff),
+      summary: noiseSummary(files, hunks, input.generatedReasons, input.generatedNotes, noDiff),
       dependsOn: [],
     });
   }
@@ -280,15 +281,17 @@ function noiseSummary(
   files: FileChange[],
   hunks: Hunk[],
   generatedReasons: Map<string, string>,
+  generatedNotes: Map<string, string[]>,
   noDiff: FileChange[],
 ): string {
   const lines: string[] = [];
   for (const f of files) {
     const kinds = new Set(hunks.filter((h) => h.fileId === f.id).map((h) => h.kind));
     const delta = `+${f.additions} −${f.deletions}`;
-    if (kinds.has('generated'))
+    if (kinds.has('generated')) {
       lines.push(`${f.path}: generated (${generatedReasons.get(f.id) ?? 'generated'}), ${delta}`);
-    else if (kinds.has('format'))
+      for (const note of generatedNotes.get(f.id) ?? []) lines.push(`${f.path}: ${note}`);
+    } else if (kinds.has('format'))
       lines.push(
         `${f.path}: formatting only${kinds.size > 1 ? ' in part of the file' : ''}, ${delta}`,
       );

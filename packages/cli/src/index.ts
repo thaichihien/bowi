@@ -17,6 +17,7 @@ import {
   type ReviewPlan,
   type Snapshot,
 } from '@bowi/core';
+import { renderHtml } from '@bowi/render-html';
 import { openLocalSnapshot } from '@bowi/sources';
 import { createProgress } from './progress.ts';
 
@@ -55,7 +56,7 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
       'base branch for --local (default: origin/HEAD, else main, else master)',
     )
     .option('--out <dir>', 'output folder (default: ./.bowi/<repo>-<pr-or-branch>/)')
-    .option('--json-only', 'write only review-plan.json')
+    .option('--json-only', 'write only review-plan.json, not review.html')
     .option('--no-untracked', 'with --local, leave out untracked files')
     .option('-q, --quiet', 'print nothing but errors')
     .option('-v, --verbose', 'print more detail')
@@ -91,10 +92,19 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
     await mkdir(outDir, { recursive: true });
     const planPath = join(outDir, 'review-plan.json');
     await writeFile(planPath, JSON.stringify(plan, null, 2) + '\n');
-    progress.done(`Wrote ${planPath}`);
-    if (!opts.jsonOnly) {
-      progress.note('review.html is not generated yet (renderer arrives in milestone M4).');
+    if (opts.jsonOnly) {
+      progress.done(`Wrote ${planPath}`);
+      return 0;
     }
+    // Highlighting is added to the page's copy of the plan only; review-plan.json stays lean.
+    const html = await progress.time(
+      'Rendered',
+      () => renderHtml(plan, { readFile: (version, path) => snapshot.readFile(version, path) }),
+      (page) => `review.html, ${formatSize(Buffer.byteLength(page))}`,
+    );
+    const htmlPath = join(outDir, 'review.html');
+    await writeFile(htmlPath, html);
+    progress.done(`Wrote ${htmlPath}`);
     return 0;
   } catch (e) {
     if (e instanceof BowiError) {
@@ -150,6 +160,12 @@ async function openSnapshot(
       }),
     (s) => `${s.meta.headRef} vs ${s.meta.baseRef} · merge base ${s.meta.mergeBaseSha.slice(0, 7)}`,
   );
+}
+
+function formatSize(bytes: number): string {
+  return bytes < 1024 * 1024
+    ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+    : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function outDirFor(plan: ReviewPlan, opts: CliOptions, cwd: string): string {

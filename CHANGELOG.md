@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### M4 — HTML report
+
+- `bowi --local` now writes `review.html` next to `review-plan.json` (skip it with `--json-only`): one self-contained page, all JS and CSS inlined, no network requests.
+- Page ported from `docs/prototype.html` to Preact (built with Vite + vite-plugin-singlefile into a template at build time): header with stats and "N lines need careful reading", sidebar with groups, steps and review progress, group card with kind, confidence label, reasons and hints, step view with file cards and hunks, moved-code view (unchanged lines muted, changed lines highlighted under their struck-through original), collapsed noise with "Show raw diff", outside references panel (filled in M6), alphabetical (GitHub) view linking each file to its step, dependency / tests-first order, "Mark as reviewed" and "Next", stacked layout on narrow screens, step links in the URL hash.
+- Syntax highlighting with shiki at report time on whole file versions (multi-line strings and comments stay correct); every token is HTML-escaped.
+- The embedded plan is escaped so repository content (`</script>`, `<!--`, line separators) cannot break the page.
+- Lockfile summary (NOISE-6): direct dependencies added or removed, major version changes and installed-package counts from `package-lock.json`.
+- `bun run build:ui` builds the page template; `bun run test` and `bun run build` run it first.
+
 ### M3 — Change graph, grouping, reading order
 
 - Change graph: `calls`, `uses-type` (types, constants and changed fields), `tests` (references from test files, plus `x.spec.ts` ↔ `x.ts`), `same-symbol` (symbols changed in one hunk), `shared-literal` and `docs-mentions` (distinctive kebab/snake-case literals, docs naming a changed symbol). Names resolve through the calling file's imports (relative paths, `.js` → `.ts`, path aliases). Every edge has a one-sentence evidence and locations.

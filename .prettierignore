@@ -2,3 +2,4 @@ docs/
 dist/
 bun.lock
 fixtures/*/files/
+packages/render-html/template/

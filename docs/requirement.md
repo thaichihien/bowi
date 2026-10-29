@@ -612,6 +612,9 @@ Rules for implementation:
 17. **Singleton fallback order (M3).** GRP-3 lists shared literal, same commit, same directory, co-change. Implemented now: strongest remaining (down-weighted) edge, same file, same directory; `same-commit` and `co-change` edges arrive in M6 and then take part through the edge step. Same file was added because import-line changes (file pseudo-symbol) belong with the rest of their file.
 18. **docs-mentions implemented in M3 (P1 → early).** §12.2 requires README in the feature group via a docs-mentions edge, so GRAPH-8 is built in M3: a docs hunk sharing a literal with code, or naming a changed symbol.
 19. **Group title and kind heuristics (M3).** The title uses the PR title, else the commit subject when the PR has one commit, else the most connected non-test symbol by structural edges ("New `AuthService.verifyEmail()` and 9 related changes"). Kind `refactor` also covers a signature change or rename whose other symbols are call sites updating to it (fixture hub-change). Outside references (§12.2 `AuthService.login()`) are GRAPH-11, built in M6.
+20. **Prototype parts not ported (M4).** "What to check" (judging code is a non-goal), risk chips (they become review hints in M6), the "Comment" button (posting to GitHub is phase 2) and Google Fonts (UI-1 forbids network requests; system fonts are used). The reading-order toggle (UI-10, P1) is included because the prototype has it.
+21. **Highlighting lives only in the page (M4).** `DiffLine.html` is filled for the plan embedded in `review.html`; `review-plan.json` is written without it, so the JSON stays small and renderer-neutral.
+22. **Links to a step (M4).** The page keeps the current step in the URL hash (`review.html#g1:service`, `#alpha`), so a step can be linked and reopened. Per-hunk "copy path:line" (UI-16) remains P1.
 
 ---
 

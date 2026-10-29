@@ -109,6 +109,7 @@ export async function analyze(
             symbols,
             edges,
             generatedReasons: parsed.generatedReasons,
+            generatedNotes: parsed.generatedNotes,
           },
           stageCtx,
         ),

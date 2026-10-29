@@ -11,6 +11,7 @@
 
 import { languageForPath, parseSource, type ParsedSource } from '@bowi/lang';
 import { createGeneratedMatcher, hasGeneratedHeader } from '../noise/generated.ts';
+import { NPM_LOCKFILES, summarizeNpmLockfile } from '../noise/lockfile.ts';
 import type { Snapshot } from '../snapshot.ts';
 import type { Stage } from '../stage.ts';
 import type { FileChange } from '../types.ts';
@@ -35,6 +36,8 @@ export interface ParseStageOutput {
   sources: Map<string, FileSources>;
   /** Why each generated file is generated, by file ID. */
   generatedReasons: Map<string, string>;
+  /** Extra summary lines for generated files, e.g. lockfile dependency changes (NOISE-6). */
+  generatedNotes: Map<string, string[]>;
   /** Number of file versions parsed. */
   parsedVersions: number;
 }
@@ -49,6 +52,7 @@ export const parseStage: Stage<ParseStageInput, ParseStageOutput> = async (
   );
   const sources = new Map<string, FileSources>();
   const generatedReasons = new Map<string, string>();
+  const generatedNotes = new Map<string, string[]>();
   let parsedVersions = 0;
 
   const texts = await mapLimit(files, 8, async (f) => {
@@ -77,6 +81,10 @@ export const parseStage: Stage<ParseStageInput, ParseStageOutput> = async (
     if (reason) {
       next.generated = true;
       generatedReasons.set(file.id, reason);
+      if (NPM_LOCKFILES.includes(file.path.slice(file.path.lastIndexOf('/') + 1))) {
+        const notes = summarizeNpmLockfile(text.old, text.new);
+        if (notes.length) generatedNotes.set(file.id, notes);
+      }
     }
 
     if (!language || next.generated || file.status === 'binary') {
@@ -116,7 +124,7 @@ export const parseStage: Stage<ParseStageInput, ParseStageOutput> = async (
     out.push(next);
   }
 
-  return { files: out, sources, generatedReasons, parsedVersions };
+  return { files: out, sources, generatedReasons, generatedNotes, parsedVersions };
 };
 
 function disposeFileSources(s: FileSources): void {

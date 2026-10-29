@@ -117,6 +117,20 @@ describe('bowi --local --json-only on the email-verification fixture', () => {
   });
 });
 
+describe('bowi --local (with review.html)', () => {
+  it('writes a self-contained review.html next to the plan', async () => {
+    const repo = buildFixtureRepo(emailVerification, join(tempDir(), 'repo')).dir;
+    const out = join(tempDir(), 'out');
+    const r = await bowi(repo, '--local', '--out', out);
+    expect(r.code).toBe(0);
+    expect(r.stderr).toMatch(/✓ Rendered {2}review\.html, \d+ KB/);
+    const html = readFileSync(join(out, 'review.html'), 'utf8');
+    expect(html).toContain('<title>feature/email-verification · Bowi review</title>');
+    expect(html).toContain('id="bowi-plan"');
+    expect(existsSync(join(out, 'review-plan.json'))).toBe(true);
+  });
+});
+
 describe('bowi usage and errors', () => {
   it('exits 1 with a next step when given nothing to review', async () => {
     const r = await bowi(tempDir());

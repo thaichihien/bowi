@@ -2,7 +2,7 @@
 
 **Bowi** (short for _bowerbird_) turns a pull request into a guided review: related changes grouped together, foundations before the code that uses them, noise collapsed, and every group explained with evidence. The result is one self-contained `review.html`.
 
-Status: early development (milestone M0). See [docs/requirement.md](docs/requirement.md) and [docs/plan.md](docs/plan.md).
+Status: early development. `bowi --local` produces a grouped `review.html` for the current branch. See [docs/requirement.md](docs/requirement.md) and [docs/plan.md](docs/plan.md).
 
 ## Development
 
