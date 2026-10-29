@@ -11,6 +11,7 @@ Companion to [requirement.md](requirement.md). Follows the milestone order in §
 | `--local` untracked files | Included by default; `--no-untracked` opts out |
 | License | MIT |
 | Windows | v0.2 (macOS + Linux only in v0.1, per NFR-6) |
+| Node 20 compatibility of dependencies | Check `engines.node` before adding a dependency; pin to the last major that supports Node 20 (e.g. `commander` 14, not 15). `@types/node` is pinned to 20 |
 | Package manager / dev tooling | **Bun** (1.4.4) for install, workspaces and running scripts. **Node ≥ 20 stays the supported runtime** for users: code uses only `node:` APIs, never `Bun.*`. Tests stay on vitest, run under Node, so Node compatibility is what gets tested |
 
 ## Milestones
@@ -27,7 +28,7 @@ Done when `bun run test` passes and the fixture builds deterministically.
 
 ### M1 — Local source, diff, hunks, `--json-only`
 
-- `sources/git.ts`: one `git()` helper over `execa` that always passes `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, never runs filters/scripts (SRC-7, NFR-4).
+- `sources/git.ts`: one `git()` helper over `node:child_process` (current `execa` needs Node ≥ 22) that always passes `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, sets `GIT_OPTIONAL_LOCKS=0`, and pins diff output with explicit flags (`--no-ext-diff --no-textconv`, prefixes, algorithm, context, rename limit) so neither the repo nor the user's git config can change it (SRC-7, NFR-4).
 - `sources/local.ts`: resolves base (`--base` → `origin/HEAD` → `main` → `master`), merge base, and a Snapshot whose head is the working tree. Untracked files are included via `git add -N` on a **temporary index** (`GIT_INDEX_FILE`) so the user's real index is never touched.
 - `Snapshot` interface: `{ baseSha, headSha, mergeBaseSha, readFile(version, path), diff(), commits(), meta }`; engine only sees this (SRC-1).
 - `core/stages/diff.ts`: small in-house unified-diff parser (more control than `parse-diff` over renames, copies, mode, binary). Stable IDs = `f<n>` by sorted path, `f<n>:h<m>` by order in file (DIFF-2).

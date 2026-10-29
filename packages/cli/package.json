@@ -26,6 +26,11 @@
     "bowi": "./src/bin.ts"
   },
   "dependencies": {
-    "@bowi/core": "workspace:*"
+    "@bowi/core": "workspace:*",
+    "@bowi/sources": "workspace:*",
+    "commander": "^14"
+  },
+  "devDependencies": {
+    "@bowi/fixtures": "workspace:*"
   }
 }

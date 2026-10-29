@@ -87,6 +87,7 @@ export interface DiffLine {
   oldNo?: number;
   newNo?: number;
   html?: string; // pre-highlighted by shiki at build time
+  noEol?: boolean; // line has no trailing newline ("\ No newline at end of file")
 }
 
 export interface ChangedSymbol {

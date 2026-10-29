@@ -344,6 +344,7 @@ export interface DiffLine {
   text: string;
   oldNo?: number; newNo?: number;
   html?: string;                             // pre-highlighted by shiki at build time
+  noEol?: boolean;                           // line has no trailing newline ("\ No newline at end of file")
 }
 
 export interface ChangedSymbol {
@@ -505,8 +506,8 @@ bench/           grouping quality benchmark (P1, see §12.3)
 
 | Purpose | Package |
 |---|---|
-| CLI | `commander`, `listr2` or `ora`, `open` |
-| Process / git | `execa` + system `git` |
+| CLI | `commander` (v14; v15 requires Node ≥ 22), `listr2` or `ora`, `open` |
+| Process / git | `node:child_process` + system `git` (`execa` 9.6+ requires Node ≥ 22, which conflicts with NFR-6) |
 | GitHub API | `@octokit/rest` |
 | Diff parsing | `parse-diff` (or a small in-house parser) |
 | Parsing | `web-tree-sitter` + grammar `.wasm` files |

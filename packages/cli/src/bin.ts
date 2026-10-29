@@ -1,4 +1,8 @@
 #!/usr/bin/env node
-import { VERSION } from './index.ts';
+import { run } from './index.ts';
 
-console.log(`bowi ${VERSION} — not implemented yet (milestone M0)`);
+process.exitCode = await run(process.argv.slice(2), {
+  cwd: process.cwd(),
+  stdout: process.stdout,
+  stderr: process.stderr,
+});

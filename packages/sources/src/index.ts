@@ -1,2 +1,2 @@
-// Snapshot sources: local git working tree and GitHub PRs (M1, M5).
-export {};
+export { openLocalSnapshot, type LocalSourceOptions } from './local.ts';
+export { DIFF_FLAGS, git, gitText, resolveCommit, GitError } from './git.ts';

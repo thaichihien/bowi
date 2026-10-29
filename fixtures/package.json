@@ -6,6 +6,7 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./email-verification": "./email-verification/index.ts"
   }
 }
