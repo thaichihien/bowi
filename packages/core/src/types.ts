@@ -13,14 +13,19 @@ export interface ReviewPlan {
     repo: string; // "owner/name" or local folder name
     prNumber?: number;
     title?: string;
-    description?: string;
+    description?: string; // markdown, as written on the host
+    /** Filled only in the plan embedded in review.html: `description` rendered and sanitized. */
+    descriptionHtml?: string;
     author?: string;
+    createdAt?: string; // ISO timestamp the pull request was opened
     baseRef: string;
     headRef: string;
     baseSha: string;
     headSha: string;
     mergeBaseSha: string;
-    commits: { sha: string; subject: string }[];
+    commits: Commit[]; // oldest first
+    totalCommits?: number; // set when the host listed fewer commits than the PR has
+    uncommitted?: boolean; // local: the working tree has changes not in HEAD
     linkedIssues?: string[]; // "#12", "owner/repo#5" from closing keywords in the description
   };
   stats: {
@@ -45,6 +50,22 @@ export interface ReviewPlan {
     warnings: string[]; // e.g. "src/legacy.js failed to parse; used text-only analysis"
     timingsMs: Record<string, number>;
   };
+}
+
+export interface Commit {
+  sha: string;
+  subject: string;
+  body?: string; // the message after the subject, trimmed; omitted when empty
+  author: CommitPerson;
+  authoredAt: string; // ISO timestamp with offset
+  committer?: CommitPerson; // only when it differs from the author
+  committedAt: string;
+}
+
+/** No email address: review.html may be shared. */
+export interface CommitPerson {
+  name: string;
+  login?: string; // host account, when known
 }
 
 export interface FileChange {

@@ -14,6 +14,7 @@ import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep 
 import {
   SourceError,
   UsageError,
+  type Commit,
   type FileVersion,
   type Snapshot,
   type SnapshotMeta,
@@ -48,7 +49,7 @@ export async function openLocalSnapshot(options: LocalSourceOptions): Promise<Sn
       await git(['symbolic-ref', '--short', '--quiet', 'HEAD'], { cwd: root, okCodes: [1] })
     ).stdout.trim() || 'HEAD';
 
-  const diff = await diffWorkingTree(root, mergeBaseSha, options);
+  const { diff, uncommitted } = await diffWorkingTree(root, mergeBaseSha, options);
 
   const meta: SnapshotMeta = {
     kind: 'local',
@@ -60,6 +61,7 @@ export async function openLocalSnapshot(options: LocalSourceOptions): Promise<Sn
     mergeBaseSha,
     commits: await commitsBetween(root, mergeBaseSha, headSha),
   };
+  if (uncommitted) meta.uncommitted = true;
 
   return {
     meta,
@@ -128,11 +130,12 @@ async function mergeBase(
   return r.stdout.trim();
 }
 
+/** The diff from the merge base, and whether the working tree (with untracked files) differs from HEAD. */
 async function diffWorkingTree(
   root: string,
   mergeBaseSha: string,
   options: LocalSourceOptions,
-): Promise<string> {
+): Promise<{ diff: string; uncommitted: boolean }> {
   const tempDir = await mkdtemp(join(tmpdir(), 'bowi-index-'));
   try {
     const indexPath = join(tempDir, 'index');
@@ -167,7 +170,14 @@ async function diffWorkingTree(
       }
     }
 
-    return (await git(['diff', ...DIFF_FLAGS, mergeBaseSha, '--'], { cwd: root, env })).stdout;
+    const diff = (await git(['diff', ...DIFF_FLAGS, mergeBaseSha, '--'], { cwd: root, env }))
+      .stdout;
+    const vsHead = await git(['diff', '--quiet', '--no-ext-diff', '--no-textconv', 'HEAD', '--'], {
+      cwd: root,
+      env,
+      okCodes: [1],
+    });
+    return { diff, uncommitted: vsHead.code === 1 };
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -187,22 +197,33 @@ async function realPathLoose(p: string): Promise<string> {
   }
 }
 
-async function commitsBetween(
-  root: string,
-  from: string,
-  to: string,
-): Promise<{ sha: string; subject: string }[]> {
+const FIELD = '\x1f';
+const RECORD = '\x1e';
+
+async function commitsBetween(root: string, from: string, to: string): Promise<Commit[]> {
+  const format = ['%H', '%s', '%an', '%aI', '%cn', '%cI', '%b'].join('%x1f') + '%x1e';
   const out = await gitText(
-    ['log', '--no-show-signature', '--reverse', '--format=%H%x1f%s', `${from}..${to}`],
-    {
-      cwd: root,
-    },
+    ['log', '--no-show-signature', '--reverse', `--format=${format}`, `${from}..${to}`],
+    { cwd: root },
   );
-  if (!out) return [];
-  return out.split('\n').map((line) => {
-    const [sha = '', subject = ''] = line.split('\x1f');
-    return { sha, subject };
-  });
+  return out
+    .split(RECORD)
+    .map((r) => r.replace(/^\n/, ''))
+    .filter(Boolean)
+    .map((record) => {
+      const [sha = '', subject = '', an = '', aI = '', cn = '', cI = '', body = ''] =
+        record.split(FIELD);
+      const commit: Commit = {
+        sha,
+        subject,
+        author: { name: an },
+        authoredAt: aI,
+        committedAt: cI,
+      };
+      if (body.trim()) commit.body = body.trim();
+      if (cn !== an) commit.committer = { name: cn };
+      return commit;
+    });
 }
 
 async function readWorkingFile(root: string, path: string): Promise<string | null> {

@@ -72,11 +72,16 @@ describe('fetchPullRequest', () => {
     commits: Array.from({ length: 130 }, (_, i) => ({
       sha: String(i).padStart(40, '0'),
       message: `commit ${i}\n\nbody`,
+      author: { name: 'Mona', date: '2026-01-05T10:00:00Z', login: 'octocat' },
+      committer:
+        i === 129
+          ? { name: 'GitHub', date: '2026-01-06T10:00:00Z', login: 'web-flow' }
+          : { name: 'Mona', date: '2026-01-05T10:00:00Z', login: 'octocat' },
     })),
   };
   const ref = { owner: 'acme', repo: 'api', number: 7 };
 
-  it('reads metadata, merge base and all commit subjects', async () => {
+  it('reads metadata, merge base and all commits', async () => {
     const info = await fetchPullRequest(ref, { fetch: fakeApi(pr) });
     expect(info).toMatchObject({
       title: 'Add email verification',
@@ -88,8 +93,20 @@ describe('fetchPullRequest', () => {
       mergeBaseSha: pr.mergeBaseSha,
       linkedIssues: ['#12', 'acme/web#3'],
     });
+    expect(info.createdAt).toBe('2026-01-05T09:00:00Z');
+    expect(info.totalCommits).toBe(130);
     expect(info.commits).toHaveLength(130);
-    expect(info.commits[129]).toEqual({ sha: pr.commits[129]!.sha, subject: 'commit 129' });
+    expect(info.commits[0]).toEqual({
+      sha: pr.commits[0]!.sha,
+      subject: 'commit 0',
+      body: 'body',
+      author: { name: 'Mona', login: 'octocat' },
+      authoredAt: '2026-01-05T10:00:00Z',
+      committedAt: '2026-01-05T10:00:00Z',
+    });
+    // A commit made on github.com: committed by GitHub on the author's behalf.
+    expect(info.commits[129]!.committer).toEqual({ name: 'GitHub', login: 'web-flow' });
+    expect(info.commits[129]!.committedAt).toBe('2026-01-06T10:00:00Z');
   });
 
   it('turns API failures into source errors (exit 2) with a next step', async () => {

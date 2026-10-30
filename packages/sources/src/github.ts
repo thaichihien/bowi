@@ -13,7 +13,14 @@
 import { execFile } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { repoCacheDir, withLock } from '@bowi/cache';
-import { SourceError, type FileVersion, type Snapshot, type SnapshotMeta } from '@bowi/core';
+import {
+  SourceError,
+  type Commit,
+  type CommitPerson,
+  type FileVersion,
+  type Snapshot,
+  type SnapshotMeta,
+} from '@bowi/core';
 import { DIFF_FLAGS, git, GitError, readBlob } from './git.ts';
 
 export interface PullRequestRef {
@@ -37,12 +44,15 @@ export interface PullRequestInfo {
   title: string;
   description: string;
   author?: string;
+  createdAt?: string;
   baseRef: string;
   headRef: string;
   baseSha: string;
   headSha: string;
   mergeBaseSha: string;
-  commits: { sha: string; subject: string }[];
+  commits: Commit[];
+  /** Commits in the PR; the API lists at most 250. */
+  totalCommits: number;
   linkedIssues: string[];
 }
 
@@ -79,15 +89,13 @@ export async function fetchPullRequest(
       `/repos/${ref.owner}/${ref.repo}/compare/${pr.base.sha}...${pr.head.sha}?per_page=1`,
     ),
     (async () => {
-      const list: { sha: string; subject: string }[] = [];
+      const list: Commit[] = [];
       for (let page = 1; list.length < Math.min(pr.commits, MAX_COMMITS); page++) {
         const batch = await api<CommitJson[]>(
           `/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/commits?per_page=100&page=${page}`,
         );
         if (batch.length === 0) break;
-        list.push(
-          ...batch.map((c) => ({ sha: c.sha, subject: c.commit.message.split('\n')[0] ?? '' })),
-        );
+        list.push(...batch.map(toCommit));
       }
       return list;
     })(),
@@ -105,10 +113,31 @@ export async function fetchPullRequest(
     headSha: pr.head.sha,
     mergeBaseSha: compare.merge_base_commit.sha,
     commits: commits.slice(0, MAX_COMMITS),
+    totalCommits: pr.commits,
     linkedIssues: linkedIssues(pr.body ?? ''),
   };
   if (pr.user?.login) info.author = pr.user.login;
+  if (pr.created_at) info.createdAt = pr.created_at;
   return info;
+}
+
+function toCommit(c: CommitJson): Commit {
+  const [subject = '', ...rest] = c.commit.message.split('\n');
+  const author: CommitPerson = { name: c.commit.author?.name ?? c.author?.login ?? 'unknown' };
+  if (c.author?.login) author.login = c.author.login;
+  const committer: CommitPerson = { name: c.commit.committer?.name ?? author.name };
+  if (c.committer?.login) committer.login = c.committer.login;
+  const out: Commit = {
+    sha: c.sha,
+    subject,
+    author,
+    authoredAt: c.commit.author?.date ?? '',
+    committedAt: c.commit.committer?.date ?? c.commit.author?.date ?? '',
+  };
+  const body = rest.join('\n').trim();
+  if (body) out.body = body;
+  if (committer.name !== author.name || committer.login !== author.login) out.committer = committer;
+  return out;
 }
 
 /** `Fixes #12`, `closes owner/repo#5` and similar closing keywords in the description. */
@@ -171,6 +200,8 @@ export async function openGithubSnapshot(
     commits: info.commits,
   };
   if (info.author) meta.author = info.author;
+  if (info.createdAt) meta.createdAt = info.createdAt;
+  if (info.totalCommits > info.commits.length) meta.totalCommits = info.totalCommits;
   if (info.linkedIssues.length) meta.linkedIssues = info.linkedIssues;
 
   return {
@@ -278,6 +309,7 @@ interface PullJson {
   title: string;
   body: string | null;
   user?: { login: string };
+  created_at?: string;
   commits: number;
   base: { ref: string; sha: string };
   head: { ref: string; sha: string; label?: string; repo?: { full_name: string } | null };
@@ -287,7 +319,13 @@ interface CompareJson {
 }
 interface CommitJson {
   sha: string;
-  commit: { message: string };
+  commit: {
+    message: string;
+    author?: { name: string; date: string } | null;
+    committer?: { name: string; date: string } | null;
+  };
+  author?: { login: string } | null;
+  committer?: { login: string } | null;
 }
 
 function createApi(ref: PullRequestRef, options: GithubOptions) {

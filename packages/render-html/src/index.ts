@@ -12,9 +12,11 @@ import { fileURLToPath } from 'node:url';
 import type { ReviewPlan } from '@bowi/core';
 import { jsonForScript } from './embed.ts';
 import { escapeHtml, highlightPlan, type ReadFile } from './highlight.ts';
+import { renderMarkdown } from './markdown.ts';
 
 export { highlightPlan, type ReadFile } from './highlight.ts';
 export { jsonForScript } from './embed.ts';
+export { renderMarkdown } from './markdown.ts';
 
 const PLAN_PLACEHOLDER = '"__BOWI_PLAN__"';
 const TITLE_PLACEHOLDER = '__BOWI_TITLE__';
@@ -35,7 +37,14 @@ export async function renderHtml(plan: ReviewPlan, options: RenderOptions = {}):
     }
     throw e;
   });
-  const highlighted = options.readFile ? await highlightPlan(plan, options.readFile) : plan;
+  const highlighted = options.readFile ? await highlightPlan(plan, options.readFile) : { ...plan };
+  // Like `DiffLine.html`, the rendered description exists only in the page's copy of the plan.
+  if (plan.source.description !== undefined) {
+    highlighted.source = {
+      ...plan.source,
+      descriptionHtml: renderMarkdown(plan.source.description),
+    };
+  }
   const title = `${plan.source.title ?? plan.source.headRef} · Bowi review`;
   // Function replacers: `$` sequences in repository content must not be treated as patterns.
   return template

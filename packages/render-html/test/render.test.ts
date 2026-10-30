@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { ReviewPlan, Snapshot } from '@bowi/core';
-import { jsonForScript, renderHtml } from '../src/index.ts';
+import { jsonForScript, renderHtml, renderMarkdown } from '../src/index.ts';
 import { fixturePlan } from './plan.ts';
 
 const embedded = (html: string): ReviewPlan => {
@@ -17,6 +17,50 @@ describe('jsonForScript', () => {
     const json = jsonForScript(nasty);
     for (const c of ['<', '>', '&', LS, PS]) expect(json.includes(c)).toBe(false);
     expect(JSON.parse(json)).toEqual(nasty);
+  });
+});
+
+describe('renderMarkdown', () => {
+  it('renders GitHub-flavored markdown', () => {
+    const html = renderMarkdown(
+      '## Title\n\n| a | b |\n|---|:-:|\n| 1 | 2 |\n\n- [x] done\n- [ ] todo\n\n~~old~~ https://x.dev\n\n<details><summary>More</summary>\n\nHidden\n</details>',
+    );
+    expect(html).toContain('<h2>Title</h2>');
+    expect(html).toContain('<td align="center">2</td>');
+    expect(html).toContain('<input type="checkbox" disabled checked /> done');
+    expect(html).toContain('<del>old</del>');
+    expect(html).toContain('<a href="https://x.dev" target="_blank" rel="noopener noreferrer">');
+    expect(html).toContain('<details><summary>More</summary>');
+    expect(renderMarkdown('  \n')).toBe('');
+  });
+
+  it('removes anything that could run code or load from the network (UI-1, UI-15)', () => {
+    const html = renderMarkdown(
+      [
+        '<script>alert(1)</script>',
+        '',
+        '<img src="https://x/a.png" onerror="alert(1)" alt="<b>shot</b>">',
+        '',
+        '![chart](https://x/c.png)',
+        '',
+        '<a href="javascript:alert(1)" onclick="alert(1)">js</a> <a id="app" href="#x">x</a>',
+        '',
+        '<iframe src="https://x"></iframe><style>body{}</style><form><input type="text"></form>',
+        '',
+        '<!-- template comment -->',
+        '',
+        '<div style="color:red" class="tab on">styled</div>',
+      ].join('\n'),
+    );
+    expect(html).not.toMatch(
+      /<script|<img|<iframe|<style|<form|<input|onerror|onclick|javascript:/i,
+    );
+    expect(html).not.toContain('template comment');
+    expect(html).not.toMatch(/style=|class="tab/);
+    expect(html).toContain('<a href="https://x/a.png" class="md-image"');
+    expect(html).toContain('>Image: &lt;b&gt;shot&lt;/b&gt;</a>');
+    expect(html).toContain('>Image: chart</a>');
+    expect(html).toContain('id="user-content-app"');
   });
 });
 
@@ -70,6 +114,19 @@ describe('renderHtml', () => {
     );
     expect(page.match(/<\/script>/g)).toHaveLength(2);
     expect(embedded(page).hunks[0]!.lines[0]!.text).toBe("</script><!-- $& $` $'");
+  });
+
+  it('renders the description of a pull request into the page only', async () => {
+    const pr: ReviewPlan = structuredClone(plan);
+    pr.source.kind = 'github';
+    pr.source.description = '**Hi** </script><script>alert(1)</script>';
+    const page = await renderHtml(pr);
+    expect(embedded(page).source.descriptionHtml).toBe(
+      '<p><strong>Hi</strong> &lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt;</p>',
+    );
+    expect(page.match(/<\/script>/g)).toHaveLength(2);
+    expect(pr.source.descriptionHtml).toBeUndefined();
+    expect(embedded(await renderHtml(plan)).source.descriptionHtml).toBeUndefined();
   });
 
   it('renders plain text lines without a snapshot', async () => {

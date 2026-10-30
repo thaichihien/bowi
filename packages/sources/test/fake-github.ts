@@ -16,9 +16,16 @@ export interface FakePr {
   baseSha: string;
   headSha: string;
   mergeBaseSha: string;
-  commits: { sha: string; message: string }[];
+  commits: FakeCommit[];
   title?: string;
   body?: string;
+}
+
+export interface FakeCommit {
+  sha: string;
+  message: string;
+  author?: { name: string; date: string; login?: string };
+  committer?: { name: string; date: string; login?: string };
 }
 
 const git = (cwd: string, ...args: string[]) =>
@@ -38,13 +45,19 @@ export function fakeServer(root: string): { remoteUrl: string; pr: FakePr } {
   git(server, 'update-ref', 'refs/pull/7/head', headSha);
   git(server, 'config', 'uploadpack.allowFilter', 'true');
   git(server, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
-  const commits = git(repo, 'log', '--reverse', '--format=%H%x1f%B%x1e', `${baseSha}..${headSha}`)
+  const format = '--format=%H%x1f%an%x1f%aI%x1f%cn%x1f%cI%x1f%B%x1e';
+  const commits = git(repo, 'log', '--reverse', format, `${baseSha}..${headSha}`)
     .split('\x1e')
     .map((c) => c.trim())
     .filter(Boolean)
-    .map((c) => {
-      const [sha = '', message = ''] = c.split('\x1f');
-      return { sha, message };
+    .map((c): FakeCommit => {
+      const [sha = '', an = '', aI = '', cn = '', cI = '', message = ''] = c.split('\x1f');
+      return {
+        sha,
+        message,
+        author: { name: an, date: aI, login: 'octocat' },
+        committer: { name: cn, date: cI, login: 'octocat' },
+      };
     });
   return {
     remoteUrl: `file://${server}`,
@@ -83,6 +96,7 @@ export function fakeApi(
         title: pr.title ?? 'Add email verification',
         body: pr.body ?? 'Fixes #12 and closes acme/web#3.',
         user: { login: 'octocat' },
+        created_at: '2026-01-05T09:00:00Z',
         commits: pr.commits.length,
         base: { ref: pr.baseRef, sha: pr.baseSha },
         head: {
@@ -100,9 +114,16 @@ export function fakeApi(
       const page = Number(url.searchParams.get('page') ?? '1');
       const per = Number(url.searchParams.get('per_page') ?? '30');
       return json(
-        pr.commits
-          .slice((page - 1) * per, page * per)
-          .map((c) => ({ sha: c.sha, commit: { message: c.message } })),
+        pr.commits.slice((page - 1) * per, page * per).map((c) => ({
+          sha: c.sha,
+          commit: {
+            message: c.message,
+            author: c.author ? { name: c.author.name, date: c.author.date } : null,
+            committer: c.committer ? { name: c.committer.name, date: c.committer.date } : null,
+          },
+          author: c.author?.login ? { login: c.author.login } : null,
+          committer: c.committer?.login ? { login: c.committer.login } : null,
+        })),
       );
     }
     return json({ message: 'Not Found' }, 404);

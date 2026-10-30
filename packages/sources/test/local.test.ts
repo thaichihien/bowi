@@ -54,6 +54,14 @@ describe('openLocalSnapshot on the email-verification fixture', () => {
     expect(snap.meta.commits.map((c) => c.subject)).toEqual(
       emailVerification.head.map((c) => c.message),
     );
+    expect(snap.meta.commits[0]).toEqual({
+      sha: expect.stringMatching(/^[0-9a-f]{40}$/),
+      subject: emailVerification.head[0]!.message,
+      author: { name: 'Bowi Fixtures' },
+      authoredAt: '2026-01-05T10:00:00Z',
+      committedAt: snap.meta.commits[0]!.authoredAt,
+    });
+    expect(snap.meta.uncommitted).toBeUndefined();
   });
 
   it('reads old and new file versions', async () => {
@@ -89,6 +97,7 @@ describe('openLocalSnapshot on the email-verification fixture', () => {
       );
       expect(paths).not.toContain('secret.env');
       expect(files.find((f) => f.path === 'src/new-untracked.ts')!.status).toBe('added');
+      expect((await openLocalSnapshot({ cwd: dir })).meta.uncommitted).toBe(true);
 
       const without = await diffStage(
         await openLocalSnapshot({ cwd: dir, includeUntracked: false }),
