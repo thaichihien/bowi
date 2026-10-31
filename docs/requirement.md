@@ -182,7 +182,7 @@ Priorities: **P0** = required for v0.1, **P1** = should have in v0.1, **P2** = l
 | SYM-1 | P0 | Map each hunk to its innermost enclosing symbol(s) in old and new ASTs, using tree-sitter `tags.scm`-style queries per language |
 | SYM-2 | P0 | Classify each changed symbol: `added`, `deleted`, `signature`, `body`, `renamed`, `moved` |
 | SYM-3 | P0 | Hunks outside any symbol (top-level imports, config) map to a file-level pseudo-symbol |
-| SYM-4 | P0 | Assign a layer to each file/symbol: framework plugin first, else path heuristics (`migrations/` → schema, `entities/` `models/` → data, `services/` → service, `controllers/` `routes/` `handlers/` `resolvers/` → api, `components/` `pages/` → ui, `*.spec.*` `*.test.*` `test/` → test, `*.md` `docs/` → docs, config files → config) |
+| SYM-4 | P0 | Assign a layer to each file/symbol: framework plugin first, else path heuristics (`migrations/` → schema, `entities/` `models/` → data, `helpers/` `utils/` `lib/` `common/` `shared/` and `*.helper.*` `*.utils.*` → util (since M5.5, §15 #33), `services/` → service, `controllers/` `routes/` `handlers/` `resolvers/` → api, `components/` `pages/` → ui, `*.spec.*` `*.test.*` `test/` → test, `*.md` `docs/` → docs, config files → config) |
 
 ### 7.7 Change graph
 
@@ -212,7 +212,7 @@ Edges carry `type`, `weight` (0–1) and `evidence` (a human-readable sentence p
 | GRP-4 | P0 | **Partition invariant:** every hunk is in exactly one group. Validate in code; a violation is a bug and fails the run with exit code 3 |
 | GRP-5 | P0 | Each group gets `reasons[]`: the strongest edges summarized as sentences, e.g. "`AuthService.register()` calls `MailService.sendVerificationEmail()`" |
 | GRP-6 | P0 | Each group gets `confidence`: `high` / `medium` / `low` from the count and weight of its internal edges; `low` groups are labeled "loosely grouped" in the UI |
-| GRP-7 | P0 | Steps within a group: one step per layer present, ordered by layer, then by dependency (topological sort of edges), ties broken by path. Cycles are condensed (Tarjan SCC) and shown as one step |
+| GRP-7 | P0 | Steps within a group: one step per layer present, ~~ordered by layer, then by dependency~~ ordered by dependency between steps with the layer order as the tie-break (since M5.5, §15 #33); files within a step by dependency (topological sort of edges), ties broken by path. Cycles are condensed (Tarjan SCC) and shown as one step |
 | GRP-8 | P0 | Group order: by dependency between groups, then by size of logic change (largest first), moves, then noise |
 | GRP-9 | P1 | `tests-first` order: within each group, the test step comes first |
 | GRP-10 | P0 | Rule-based group titles (no AI): based on the most connected new or changed public symbol and the layers, e.g. "New `AuthService.verifyEmail()` and 6 related changes"; use the PR title for the largest group when there is only one logic group; use commit subject when a group maps to a single commit |
@@ -347,7 +347,7 @@ export interface FileChange {
   generated: boolean;
 }
 
-export type Layer = 'schema' | 'data' | 'domain' | 'service' | 'api' | 'ui' | 'config' | 'test' | 'docs' | 'unknown';
+export type Layer = 'schema' | 'data' | 'util' | 'domain' | 'service' | 'api' | 'ui' | 'config' | 'test' | 'docs' | 'unknown';
 
 export interface Hunk {
   id: string;
@@ -648,6 +648,7 @@ Rules for implementation:
 30. **Commit times (M5.5).** "2 days ago", the day groups and the exact times are computed in the browser from the ISO timestamps, so plans stay deterministic and times show in the viewer's time zone. GitHub lists at most 250 commits per PR; the page then says "Showing the first 250 of N".
 31. **Split layout (M5.5, owner's request).** Only in the Changes tab; the Review tab stays unified (moved code has its own layout there). A run of deleted lines is paired line by line with the added lines after it. Below 900px the unified layout is shown even when split is chosen.
 32. **Review progress in the browser (M5.5 follow-up, owner's decisions 2026-10-31).** Reviewed steps and viewed files (UI-12, UI-23) are saved in `localStorage` under `bowi:progress:<repo>#<pr>` (local: `@<branch>`) plus an FNV-1a digest of the diff, so progress never carries over to code that changed, including uncommitted edits with the same head SHA. The owner was concerned about disk use: an entry is about 1–2 KB, browsers cap storage at about 5 MB per origin (Chrome treats every `file://` page as one origin), and entries not saved for 7 days are deleted whenever any report opens. Storage has no expiry of its own, so entries stay until some report is opened again.
+33. **Reading order across layers (M5.5 follow-up, owner's decision 2026-10-31).** In workflow-orchestrator#90 the services calling a new helper were read before it: steps were ordered by layer only, and the helper (`src/workflow/helpers/`) had no layer ("Other code", read late). Two changes: (a) steps are ordered by dependency between steps (a step comes after the steps whose code it calls or uses; `calls`, `uses-type`, `tests`, `framework` edges), with the layer order only as the tie-break, and steps that use each other keep the layer order; (b) a new `util` layer ("Helpers") for `helpers/`, `utils/`, `lib/`, `common/`, `shared/` folders and `helper(s)` / `util(s)` file names, placed after `data` and before `domain` and `service`. More specific layers win (`common/dto/` is data, `shared/services/` a service). Known effect: any file under a `common/` or `shared/` folder counts as a helper, e.g. `src/action/common/to-failed.action.ts` in the same PR. `Layer` gains `util` (an addition: `schemaVersion` stays 1).
 
 ---
 

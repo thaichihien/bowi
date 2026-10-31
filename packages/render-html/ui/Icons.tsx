@@ -39,6 +39,9 @@ const STEP_PATHS: Record<StepIcon, ComponentChildren> = {
       <path d="M3 3.75v8.5c0 1.1 2.24 2 5 2s5-.9 5-2v-8.5M3 8c0 1.1 2.24 2 5 2s5-.9 5-2" />
     </>
   ),
+  util: (
+    <path d="M10.1 2.1a3.25 3.25 0 00-3.9 4.3L2.2 10.4a1.4 1.4 0 002 2l4-4a3.25 3.25 0 004.3-3.9l-2 2-1.7-.4-.4-1.7z" />
+  ),
   domain: (
     <>
       <path d="M8 1.75l5.5 3v6.5L8 14.25l-5.5-3v-6.5z" />

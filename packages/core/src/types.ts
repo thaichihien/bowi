@@ -82,7 +82,17 @@ export interface FileChange {
 }
 
 export type Layer =
-  'schema' | 'data' | 'domain' | 'service' | 'api' | 'ui' | 'config' | 'test' | 'docs' | 'unknown';
+  | 'schema'
+  | 'data'
+  | 'util'
+  | 'domain'
+  | 'service'
+  | 'api'
+  | 'ui'
+  | 'config'
+  | 'test'
+  | 'docs'
+  | 'unknown';
 
 export interface Hunk {
   id: string;

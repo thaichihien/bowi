@@ -37,6 +37,7 @@ export const LARGE_FILE_LINES = 300;
 /** Icon of a step in the sidebar: its layer, or what kind of noise or move it holds. */
 export type StepIcon =
   | 'data'
+  | 'util'
   | 'domain'
   | 'service'
   | 'api'
@@ -52,6 +53,7 @@ export type StepIcon =
 const LAYER_ICONS: Record<Step['layer'], StepIcon> = {
   schema: 'data',
   data: 'data',
+  util: 'util',
   domain: 'domain',
   service: 'service',
   api: 'api',

@@ -34,6 +34,13 @@ const RULES: Rule[] = [
     'api',
     /(^|\/)(controllers?|routes?|handlers?|resolvers?|api|endpoints?)\/|\.(controller|resolver|route|routes|handler|gateway)\.[cm]?[jt]s$/,
   ],
+  // Shared helpers, read before the services that use them. After the layers above, so that
+  // `common/dto/` stays data and `shared/services/` stays a service; before `ui`, whose `app/`
+  // folder would otherwise claim `app/utils/`.
+  [
+    'util',
+    /(^|\/)(helpers?|utils?|lib|common|shared)\/|(^|\/)(helpers?|utils?)\.[cm]?[jt]sx?$|\.(helpers?|utils?)\.[cm]?[jt]sx?$/,
+  ],
   [
     'ui',
     /(^|\/)(components?|pages|views|app|screens|layouts)\/|\.(tsx|jsx|vue|svelte|css|scss|html)$/,

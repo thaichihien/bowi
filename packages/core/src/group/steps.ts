@@ -1,10 +1,12 @@
 /**
  * Steps within a group (GRP-7, GRP-9).
  *
- * One step per layer, in layer order; `schema` and `data` share one "Data shape" step. Within a
- * step, files are ordered so that what a file uses comes before it (topological order over the
- * graph's edges; cycles are condensed with Tarjan's algorithm and kept together), ties by path.
- * Hunks of one file stay together, in file order.
+ * One step per layer; `schema` and `data` share one "Data shape" step. Steps are ordered so that
+ * a step comes after the steps whose code it calls or uses, with the layer order only breaking
+ * ties: a helper called by a service is read first even when its layer comes later. Steps that
+ * use each other keep the layer order. Within a step, files are ordered the same way (topological
+ * order over the graph's edges; cycles are condensed with Tarjan's algorithm and kept together),
+ * ties by path. Hunks of one file stay together, in file order.
  */
 
 import { compareStrings } from '../determinism.ts';
@@ -13,6 +15,7 @@ import type { ChangeEdge, FileChange, Hunk, Layer, Step } from '../types.ts';
 export const LAYER_ORDER: Layer[] = [
   'schema',
   'data',
+  'util',
   'domain',
   'service',
   'api',
@@ -26,6 +29,7 @@ export const LAYER_ORDER: Layer[] = [
 const LAYER_TITLES: Record<Layer, string> = {
   schema: 'Data shape',
   data: 'Data shape',
+  util: 'Helpers',
   domain: 'Domain',
   service: 'Services',
   api: 'API',
@@ -65,7 +69,8 @@ export function buildSteps(
     dependsOn.set(from, (dependsOn.get(from) ?? new Set()).add(to));
   }
 
-  const steps: Step[] = [];
+  const layerSteps: Step[] = [];
+  const stepOfFile = new Map<string, string>();
   for (const key of LAYER_ORDER) {
     const stepHunks = byKey.get(key);
     if (!stepHunks) continue;
@@ -79,7 +84,8 @@ export function buildSteps(
         .sort((a, b) => position.get(a.id)! - position.get(b.id)!)
         .map((h) => h.id),
     );
-    steps.push({
+    for (const fileId of fileIds) stepOfFile.set(fileId, `${groupId}:${key}`);
+    layerSteps.push({
       id: `${groupId}:${key}`,
       title: stepTitle(
         key,
@@ -89,6 +95,22 @@ export function buildSteps(
       hunkIds,
     });
   }
+
+  // Dependencies between steps (GRP-7); the layer order is the tie-break.
+  const stepDeps = new Map<string, Set<string>>();
+  for (const [from, tos] of dependsOn) {
+    const fromStep = stepOfFile.get(from);
+    for (const to of tos) {
+      const toStep = stepOfFile.get(to);
+      if (!fromStep || !toStep || fromStep === toStep) continue;
+      stepDeps.set(fromStep, (stepDeps.get(fromStep) ?? new Set()).add(toStep));
+    }
+  }
+  const byId = new Map(layerSteps.map((s) => [s.id, s]));
+  const steps = topoOrder(
+    layerSteps.map((s) => s.id),
+    (id) => [...(stepDeps.get(id) ?? [])],
+  ).map((id) => byId.get(id)!);
 
   const tests = steps.filter((s) => s.layer === 'test').map((s) => s.id);
   return {
