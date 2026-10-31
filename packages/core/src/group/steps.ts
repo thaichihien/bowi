@@ -154,7 +154,9 @@ export function orderFiles(
 }
 
 /**
- * Generic: orders `nodes` (given in tie-break order) so that `deps(n)` come before `n`.
+ * Generic: orders `nodes` (given in tie-break order) so that `deps(n)` come before `n`. Nodes are
+ * taken in tie-break order, and a node's dependencies not placed yet go right before it, so a
+ * node never jumps ahead only because an earlier one is waiting for its dependencies (§15 #56).
  * Strongly connected components are kept together, members in tie-break order.
  */
 export function topoOrder<T>(nodes: T[], deps: (n: T) => T[]): T[] {
@@ -162,28 +164,24 @@ export function topoOrder<T>(nodes: T[], deps: (n: T) => T[]): T[] {
   const rank = new Map(nodes.map((n, i) => [n, i]));
   const sccOf = new Map<T, number>();
   sccs.forEach((c, i) => c.forEach((n) => sccOf.set(n, i)));
-  const sccDeps = sccs.map(
-    (c) =>
-      new Set(
-        c
-          .flatMap((n) => deps(n).map((d) => sccOf.get(d)!))
-          .filter((d) => !c.some((n) => sccOf.get(n) === d)),
-      ),
-  );
   const firstRank = sccs.map((c) => Math.min(...c.map((n) => rank.get(n)!)));
+  const byRank = (a: number, b: number) => firstRank[a]! - firstRank[b]!;
+  const sccDeps = sccs.map((c, i) =>
+    [...new Set(c.flatMap((n) => deps(n).map((d) => sccOf.get(d)!)))]
+      .filter((d) => d !== i)
+      .sort(byRank),
+  );
 
-  const done = new Set<number>();
+  // The components form a DAG, so marking before recursing cannot skip a dependency.
+  const placed = new Set<number>();
   const out: T[] = [];
-  while (done.size < sccs.length) {
-    // The earliest component whose dependencies are all placed.
-    let pick = -1;
-    for (let i = 0; i < sccs.length; i++) {
-      if (done.has(i) || [...sccDeps[i]!].some((d) => !done.has(d))) continue;
-      if (pick === -1 || firstRank[i]! < firstRank[pick]!) pick = i;
-    }
-    done.add(pick);
-    out.push(...[...sccs[pick]!].sort((a, b) => rank.get(a)! - rank.get(b)!));
-  }
+  const place = (i: number) => {
+    if (placed.has(i)) return;
+    placed.add(i);
+    for (const d of sccDeps[i]!) place(d);
+    out.push(...[...sccs[i]!].sort((a, b) => rank.get(a)! - rank.get(b)!));
+  };
+  for (const i of sccs.map((_, i) => i).sort(byRank)) place(i);
   return out;
 }
 

@@ -21,9 +21,10 @@ const RULES: Rule[] = [
     /(^|\/)(package\.json|tsconfig[^/]*\.json|\.[^/]*rc(\.[a-z]+)?|[^/]*\.config\.[a-z]+|Dockerfile|docker-compose[^/]*|\.env[^/]*|\.gitignore|\.gitattributes|\.editorconfig|Makefile)$|(^|\/)\.github\/|\.(ya?ml|toml|ini)$|(^|\/)[^/]*(lock|\.lock|-lock\.json|\.lockb)$/,
   ],
   ['schema', /(^|\/)(migrations?|schema|schemas|prisma)\/|\.(sql|prisma|graphql|gql|proto)$/],
+  // Data shapes, including type-only code: `interfaces/`, `types/`, `*.interface.ts`, `types.ts`.
   [
     'data',
-    /(^|\/)(entities|entity|models?|repositories|repository|dto|dtos)\/|\.(entity|model|repository|dto|schema)\.[cm]?[jt]s$/,
+    /(^|\/)(entities|entity|models?|repositories|repository|dto|dtos|interfaces?|types)\/|\.(entity|model|repository|dto|schema|interfaces?|types?)\.[cm]?[jt]s$|(^|\/)(interfaces?|types)\.[cm]?[jt]s$/,
   ],
   ['domain', /(^|\/)domain\//],
   [

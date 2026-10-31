@@ -10,7 +10,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { ArrowIcon, CheckIcon, Chevron, ReviewedIcon, StepIconBadge } from './Icons.tsx';
 import { FinishDialog, type FinishResult } from './Finish.tsx';
 import { Inline } from './Inline.tsx';
-import { KIND_LABELS, type FlatStep, type Model, type ReadingMode } from './model.ts';
+import { KIND_LABELS, writtenBy, type FlatStep, type Model, type ReadingMode } from './model.ts';
 import { emptyProgress, markStep, toggleViewed, viewedKey, type Progress } from './progress.ts';
 import { StepBody } from './StepView.tsx';
 
@@ -397,12 +397,20 @@ function GroupHeader({ model, group, index }: { model: Model; group: Group; inde
         <span class="muted small">
           Group {index + 1} of {model.plan.groups.length} · {files} file{files === 1 ? '' : 's'}
         </span>
+        {group.titleSource === 'ai' && (
+          <span class="ai-credit muted small">{writtenBy(model.plan.meta.ai)}</span>
+        )}
       </div>
       <h2>
         <Inline text={group.title} />
         {group.titleSource === 'ai' && <span class="chip k-ai">AI</span>}
       </h2>
-      <p class="intent">{group.intent ?? describe(model, group)}</p>
+      <p class="intent">
+        <Inline text={group.intent ?? describe(model, group)} />
+      </p>
+      {group.moveSuggestions && group.moveSuggestions.length > 0 && (
+        <MoveSuggestions model={model} group={group} />
+      )}
       {hints.length > 0 && (
         <div class="hints">
           {hints.map((h) => (
@@ -442,6 +450,55 @@ function GroupHeader({ model, group, index }: { model: Model; group: Group; inde
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * The AI's suggestions to move hunks of this group elsewhere (AI-3). Only shown: the groups stay
+ * as Bowi made them. When every hunk would go to the same group, it reads as one merge.
+ */
+function MoveSuggestions({ model, group }: { model: Model; group: Group }) {
+  const moves = group.moveSuggestions ?? [];
+  const titleOf = (id: string) => model.plan.groups.find((g) => g.id === id)?.title ?? id;
+  const all = group.steps.flatMap((s) => s.hunkIds);
+  const target = moves[0]!.toGroupId;
+  const merge =
+    moves.length === all.length && moves.every((m) => m.toGroupId === target) && all.length > 1;
+  const groupLink = (id: string) => (
+    <a href={`#${id}`}>
+      <Inline text={titleOf(id)} />
+    </a>
+  );
+  return (
+    <div class="suggestions">
+      <span class="chip k-ai">AI</span>
+      {merge ? (
+        <p>
+          Suggests reading this group together with {groupLink(target)}:{' '}
+          <Inline text={moves[0]!.reason} />
+        </p>
+      ) : (
+        <ul>
+          {moves.map((m) => {
+            const hunk = model.hunks.get(m.hunkId)!;
+            const path = model.files.get(hunk.fileId)!.path;
+            const line = hunk.newLines > 0 ? hunk.newStart : hunk.oldStart;
+            const step = group.steps.find((s) => s.hunkIds.includes(m.hunkId))!;
+            return (
+              <li key={m.hunkId}>
+                Suggests{' '}
+                <a href={`#${step.id}`}>
+                  <code>
+                    {path}:{line}
+                  </code>
+                </a>{' '}
+                belongs with {groupLink(m.toGroupId)}: <Inline text={m.reason} />
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

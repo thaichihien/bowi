@@ -19,3 +19,5 @@ export type * from './plugin.ts';
 export * from './stages/history.ts';
 export * from './stages/refs.ts';
 export * from './stages/hints.ts';
+export * from './ai.ts';
+export * from './stages/ai.ts';

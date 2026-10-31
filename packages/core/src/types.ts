@@ -41,10 +41,11 @@ export interface ReviewPlan {
   symbols: ChangedSymbol[];
   edges: ChangeEdge[];
   groups: Group[]; // already in reading order
+  overview?: string; // AI only (AI-3): a short overview of the whole pull request
   outsideRefs: OutsideReference[];
   hints: ReviewHint[];
   meta: {
-    ai: { enabled: boolean; provider?: string; model?: string };
+    ai: { enabled: boolean; provider?: string; model?: string; effort?: string };
     languages: string[];
     plugins: string[];
     /** Reading order the report opens with (CLI-7, config `order`); both orders are in `groups`. */
@@ -167,6 +168,14 @@ export interface Group {
   testsFirstStepOrder: string[]; // step ids for the tests-first mode
   summary?: string; // for noise groups
   dependsOn: string[]; // group ids
+  moveSuggestions?: MoveSuggestion[]; // AI only (AI-3): shown in the report, never applied
+}
+
+/** A hunk of this group that the AI thinks belongs to another group. */
+export interface MoveSuggestion {
+  hunkId: string;
+  toGroupId: string;
+  reason: string;
 }
 
 export interface Step {

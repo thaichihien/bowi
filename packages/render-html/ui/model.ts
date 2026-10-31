@@ -34,6 +34,20 @@ export const KIND_LABELS: Record<Group['kind'], string> = {
 /** File cards with more changed lines than this start closed (Review and Changes tabs). */
 export const LARGE_FILE_LINES = 300;
 
+const AI_PROVIDERS: Record<string, string> = { 'claude-code': 'Claude Code' };
+
+/** Credit for AI-written text: "Written by claude-sonnet-5-5 · low effort · via Claude Code". */
+export function writtenBy(ai: ReviewPlan['meta']['ai']): string {
+  const provider = ai.provider && (AI_PROVIDERS[ai.provider] ?? ai.provider);
+  return [
+    `Written by ${ai.model ?? 'AI'}`,
+    ai.effort && `${ai.effort} effort`,
+    provider && `via ${provider}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 /** Icon of a step in the sidebar: its layer, or what kind of noise or move it holds. */
 export type StepIcon =
   | 'data'

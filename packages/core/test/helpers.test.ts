@@ -54,7 +54,7 @@ describe('layers', () => {
       ['.github/workflows/ci.yml', 'config'],
       ['package-lock.json', 'config'],
       ['src/utils/date.ts', 'util'],
-      ['src/workflow/helpers/mark-workflow-failed.helper.ts', 'util'],
+      ['src/orders/helpers/mark-order-failed.helper.ts', 'util'],
       ['src/lib/http.ts', 'util'],
       ['src/common/dto/page.dto.ts', 'data'],
       ['src/shared/services/clock.service.ts', 'service'],
@@ -65,6 +65,13 @@ describe('layers', () => {
       ['packages/core/src/engine.ts', 'unknown'],
       ['packages/api/package.json', 'config'],
       ['src/domain/order.ts', 'domain'],
+      ['src/orders/interfaces/order-event.interface.ts', 'data'],
+      ['src/types/index.ts', 'data'],
+      ['src/auth/auth.interface.ts', 'data'],
+      ['src/auth/auth.types.ts', 'data'],
+      ['packages/core/src/types.ts', 'data'],
+      ['src/common/interfaces/page.ts', 'data'],
+      ['src/typescript.ts', 'unknown'],
     ];
     expect(cases.map(([p]) => [p, layer(p)])).toEqual(cases);
   });

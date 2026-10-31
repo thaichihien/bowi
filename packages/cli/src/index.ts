@@ -10,14 +10,18 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { platform } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Command, CommanderError, Option } from 'commander';
+import { checkClaudeCode, claudeCode, createEnricher } from '@bowi/ai';
 import { clearCache, defaultCacheDir } from '@bowi/cache';
 import {
+  AiError,
   analyze,
   BowiError,
   createStageContext,
   DEFAULT_CONFIG,
   parseConfig,
   UsageError,
+  type AiEnricher,
+  type BowiConfig,
   type LoadedConfig,
   type ReadingOrder,
   type ReviewPlan,
@@ -54,6 +58,8 @@ export interface CliIo {
   openFile?: (path: string) => void;
   /** For tests: GitHub API access and where to clone from. */
   github?: GithubOptions & { remoteUrl?: string };
+  /** For tests: the Claude Code executable, or a whole enricher instead of Claude Code. */
+  ai?: { command?: string; enricher?: AiEnricher };
 }
 
 interface CliOptions {
@@ -65,6 +71,7 @@ interface CliOptions {
   open: boolean;
   config?: string;
   order?: ReadingOrder;
+  ai?: boolean;
   cacheDir?: string;
   quiet?: boolean;
   verbose?: boolean;
@@ -93,6 +100,11 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
         'reading order the report opens with (default: dependency)',
       ).choices(['dependency', 'tests-first']),
     )
+    .option(
+      '--ai',
+      'AI titles, intents and an overview through Claude Code (sends group diffs to Claude)',
+    )
+    .option('--no-ai', 'no AI enrichment, even when the config file turns it on')
     .option('--cache-dir <dir>', `cache folder (default: ${defaultCacheDir(io.env)})`)
     .option('-q, --quiet', 'print nothing but errors')
     .option('-v, --verbose', 'print more detail')
@@ -120,6 +132,13 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
     loaded ??= await prConfig(opts, io, snapshot);
     for (const w of loaded.warnings) progress.warn(w);
     const config = opts.order ? { ...loaded.config, order: opts.order } : loaded.config;
+    const enricher = await aiEnricher(config, opts, io);
+    if (enricher) {
+      // AI-1: say who receives code before anything is sent.
+      progress.note(
+        `AI is on: group diffs (no noise, no whole files) and the PR title and description go to ${enricher.describe()}.`,
+      );
+    }
     const plan = await analyze(
       snapshot,
       createStageContext(config, {
@@ -132,6 +151,13 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
         onStage: progress.stage,
         plugins: defaultPlugins,
         hintRules: defaultRules,
+        ...(enricher && {
+          ai: {
+            enricher,
+            concurrency: config.ai.concurrency,
+            timeoutMs: config.ai.timeoutSeconds * 1000,
+          },
+        }),
       },
     );
     for (const w of plan.meta.warnings) progress.warn(w);
@@ -198,6 +224,45 @@ async function runCache(argv: string[], io: CliIo): Promise<number> {
 }
 
 /**
+ * The AI enricher when AI is on (`--ai`, or `ai.enabled` in the config, unless `--no-ai`).
+ * Checks first that Claude Code is installed, so a run does not fail after the analysis.
+ */
+async function aiEnricher(
+  config: BowiConfig,
+  opts: CliOptions,
+  io: CliIo,
+): Promise<AiEnricher | undefined> {
+  if (!(opts.ai ?? config.ai.enabled)) return undefined;
+  if (io.ai?.enricher) return io.ai.enricher;
+  if (config.ai.provider !== 'claude-code') {
+    throw new UsageError(
+      `The AI provider "${config.ai.provider}" is not available yet.`,
+      'Set "ai": { "provider": "claude-code" } in the config file, or run without --ai.',
+    );
+  }
+  const options = {
+    model: config.ai.model,
+    effort: config.ai.effort,
+    ...(io.ai?.command && { command: io.ai.command }),
+    ...(io.env && { env: io.env }),
+  };
+  try {
+    await checkClaudeCode(options);
+  } catch (e) {
+    if (e instanceof AiError) throw new UsageError(e.message, e.hint);
+    throw e;
+  }
+  return createEnricher({
+    transport: claudeCode(options),
+    cacheDir: join(cacheDirOf(opts, io), 'ai'),
+  });
+}
+
+function cacheDirOf(opts: CliOptions, io: CliIo): string {
+  return opts.cacheDir ? resolve(io.cwd, opts.cacheDir) : defaultCacheDir(io.env);
+}
+
+/**
  * Config for --local (CLI-9): `--config <path>`, else `.bowi.json` at the repository root (the
  * working tree, like the code being reviewed), else the defaults.
  */
@@ -211,7 +276,8 @@ async function localConfig(opts: CliOptions, io: CliIo): Promise<LoadedConfig> {
 /**
  * Config for a pull request: `--config <path>`, else `.bowi.json` as it is on the base side
  * (merge base). Never the PR's own version: a pull request must not be able to change how it is
- * presented, e.g. mark its own code as generated noise.
+ * presented, e.g. mark its own code as generated noise. Its `ai` settings are ignored too: the
+ * repository must not turn AI on, or pick the model, on the reviewer's own Claude account.
  */
 async function prConfig(opts: CliOptions, io: CliIo, snapshot: Snapshot): Promise<LoadedConfig> {
   if (opts.config) return configFile(resolve(io.cwd, opts.config), opts.config);
@@ -220,7 +286,13 @@ async function prConfig(opts: CliOptions, io: CliIo, snapshot: Snapshot): Promis
     text === null ? { config: DEFAULT_CONFIG, warnings: [] } : parseConfig(text, '.bowi.json');
   // The pull request already names its base branch.
   const { base: _ignored, ...config } = loaded.config;
-  return { ...loaded, config };
+  const warnings = [...loaded.warnings];
+  if (JSON.stringify(config.ai) !== JSON.stringify(DEFAULT_CONFIG.ai)) {
+    warnings.push(
+      '.bowi.json: "ai" settings of the repository are ignored for pull requests (use --ai, or --config with your own file)',
+    );
+  }
+  return { warnings, config: { ...config, ai: DEFAULT_CONFIG.ai } };
 }
 
 async function configFile(path: string, label: string): Promise<LoadedConfig> {
@@ -270,7 +342,7 @@ async function openSnapshot(
       'Fetched',
       () =>
         openGithubSnapshot(info, {
-          cacheDir: opts.cacheDir ? resolve(io.cwd, opts.cacheDir) : defaultCacheDir(io.env),
+          cacheDir: cacheDirOf(opts, io),
           ...(token && { token }),
           ...(io.github?.remoteUrl && { remoteUrl: io.github.remoteUrl }),
         }),

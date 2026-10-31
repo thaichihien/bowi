@@ -22,6 +22,7 @@
     "check": "bun run typecheck && bun run lint && bun run format:check && bun run test",
     "show-plan": "node scripts/show-plan.ts",
     "build:ui": "bun run --cwd packages/render-html build:ui",
+    "dev:ui": "bun run --cwd packages/render-html dev:ui",
     "bench": "node bench/src/main.ts",
     "bench:select": "node bench/src/main.ts select"
   },

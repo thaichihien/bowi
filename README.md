@@ -13,6 +13,12 @@ Both write `review-plan.json` and `review.html` to `.bowi/<repo>-<pr-or-branch>/
 
 In the report, `j` / `k` move to the next and previous step and `r` marks the current step reviewed.
 
+### AI titles and intents (optional)
+
+With `--ai`, Bowi asks Claude, through your local [Claude Code](https://claude.com/claude-code) and its login (no API key), to title each group, explain in 1–3 sentences what it does, and write an overview of the whole change (in the Description tab). It may also suggest that a hunk belongs to another group; suggestions are shown on the group card, never applied. AI-written text is marked "AI" in the report. Off by default.
+
+Sent: each group's diff (only lines near changes; never generated files, formatting-only changes, moved code or whole files), its symbols and links, and the PR title, description and commit subjects. Claude Code runs in an empty folder with no tools and without your CLAUDE.md, hooks or plugins. Answers are checked before use and cached, so a second run asks nothing. If a call fails, that group keeps Bowi's own title.
+
 ## What Bowi understands
 
 Best supported today: **TypeScript and JavaScript projects, especially NestJS backends**, where every feature applies. Other TypeScript/JavaScript projects (React, Next.js, Express, libraries) get everything except framework-specific layers, links and hints. Files in other languages are still shown, grouped and never dropped, but as plain text.
@@ -41,19 +47,19 @@ Generated files are collapsed as noise, never removed: lockfiles (npm, Yarn, pnp
 
 Each group is split into steps by layer. Steps are read in dependency order (code before the steps that call it); when two steps do not depend on each other, the order below decides. A file's layer comes from your `.bowi.json` `layers` first, then from NestJS decorators, then from its path (the first matching row in the order test, docs, config, schema, data, domain, service, API, helpers, UI).
 
-| Step          | Layer     | Path rules                                                                                                                                                               | NestJS decorators                                                                                                      |
-| ------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| Data shape    | `schema`  | `migrations/`, `schema/`, `schemas/`, `prisma/`; `.sql` `.prisma` `.graphql` `.gql` `.proto`                                                                             | Classes implementing `MigrationInterface` (TypeORM)                                                                    |
-| Data shape    | `data`    | `entities/`, `models/`, `repositories/`, `dto/`; `*.entity.ts`, `*.model.ts`, `*.repository.ts`, `*.dto.ts`, `*.schema.ts`                                               | `@Entity`, `@Schema`, `@ObjectType`, `@InputType`, `@ArgsType`; DTO classes with validation decorators (`@IsEmail`, …) |
-| Helpers       | `util`    | `helpers/`, `utils/`, `lib/`, `common/`, `shared/`; `helpers.ts`, `utils.ts`, `*.helper.ts`, `*.util.ts`                                                                 |                                                                                                                        |
-| Domain        | `domain`  | `domain/`                                                                                                                                                                |                                                                                                                        |
-| Services      | `service` | `services/`, `jobs/`, `workers/`, `processors/`, `queues/`; `*.service.ts`, `*.processor.ts`, `*.worker.ts`, `*.job.ts`                                                  | `@Injectable`, `@Processor`                                                                                            |
-| API           | `api`     | `controllers/`, `routes/`, `handlers/`, `resolvers/`, `api/`, `endpoints/`; `*.controller.ts`, `*.resolver.ts`, `*.route(s).ts`, `*.handler.ts`, `*.gateway.ts`          | `@Controller`, `@Resolver`, `@WebSocketGateway`, `@Catch`; `@Injectable` guards, interceptors, pipes and middleware    |
-| UI            | `ui`      | `components/`, `pages/`, `views/`, `app/`, `screens/`, `layouts/`; `.tsx` `.jsx` `.vue` `.svelte` `.css` `.scss` `.html`                                                 |                                                                                                                        |
-| Other code    | `unknown` | Anything not matched                                                                                                                                                     |                                                                                                                        |
-| Configuration | `config`  | `package.json`, `tsconfig*.json`, `*.config.*`, `.*rc` files, `.env*`, `Dockerfile`, `docker-compose*`, `Makefile`, `.github/`, `.yml` `.yaml` `.toml` `.ini`, lockfiles | `@Module`                                                                                                              |
-| Tests         | `test`    | `test/`, `tests/`, `__tests__/`, `spec/`, `e2e/`; `*.spec.ts`, `*.test.ts`, `*.e2e-spec.ts` (and `.js`)                                                                  | Never: test files keep their path layer                                                                                |
-| Docs          | `docs`    | `docs/`; `.md` `.mdx` `.rst` `.adoc`; `README`, `CHANGELOG`, `CONTRIBUTING`, `LICENSE`                                                                                   |                                                                                                                        |
+| Step          | Layer     | Path rules                                                                                                                                                                                      | NestJS decorators                                                                                                      |
+| ------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Data shape    | `schema`  | `migrations/`, `schema/`, `schemas/`, `prisma/`; `.sql` `.prisma` `.graphql` `.gql` `.proto`                                                                                                    | Classes implementing `MigrationInterface` (TypeORM)                                                                    |
+| Data shape    | `data`    | `entities/`, `models/`, `repositories/`, `dto/`, `interfaces/`, `types/`; `*.entity.ts`, `*.model.ts`, `*.repository.ts`, `*.dto.ts`, `*.schema.ts`, `*.interface.ts`, `*.types.ts`, `types.ts` | `@Entity`, `@Schema`, `@ObjectType`, `@InputType`, `@ArgsType`; DTO classes with validation decorators (`@IsEmail`, …) |
+| Helpers       | `util`    | `helpers/`, `utils/`, `lib/`, `common/`, `shared/`; `helpers.ts`, `utils.ts`, `*.helper.ts`, `*.util.ts`                                                                                        |                                                                                                                        |
+| Domain        | `domain`  | `domain/`                                                                                                                                                                                       |                                                                                                                        |
+| Services      | `service` | `services/`, `jobs/`, `workers/`, `processors/`, `queues/`; `*.service.ts`, `*.processor.ts`, `*.worker.ts`, `*.job.ts`                                                                         | `@Injectable`, `@Processor`                                                                                            |
+| API           | `api`     | `controllers/`, `routes/`, `handlers/`, `resolvers/`, `api/`, `endpoints/`; `*.controller.ts`, `*.resolver.ts`, `*.route(s).ts`, `*.handler.ts`, `*.gateway.ts`                                 | `@Controller`, `@Resolver`, `@WebSocketGateway`, `@Catch`; `@Injectable` guards, interceptors, pipes and middleware    |
+| UI            | `ui`      | `components/`, `pages/`, `views/`, `app/`, `screens/`, `layouts/`; `.tsx` `.jsx` `.vue` `.svelte` `.css` `.scss` `.html`                                                                        |                                                                                                                        |
+| Other code    | `unknown` | Anything not matched                                                                                                                                                                            |                                                                                                                        |
+| Configuration | `config`  | `package.json`, `tsconfig*.json`, `*.config.*`, `.*rc` files, `.env*`, `Dockerfile`, `docker-compose*`, `Makefile`, `.github/`, `.yml` `.yaml` `.toml` `.ini`, lockfiles                        | `@Module`                                                                                                              |
+| Tests         | `test`    | `test/`, `tests/`, `__tests__/`, `spec/`, `e2e/`; `*.spec.ts`, `*.test.ts`, `*.e2e-spec.ts` (and `.js`)                                                                                         | Never: test files keep their path layer                                                                                |
+| Docs          | `docs`    | `docs/`; `.md` `.mdx` `.rst` `.adoc`; `README`, `CHANGELOG`, `CONTRIBUTING`, `LICENSE`                                                                                                          |                                                                                                                        |
 
 If a folder misleads Bowi (e.g. a service under `common/` that is not a NestJS class), set its layer in `.bowi.json`.
 
@@ -68,7 +74,8 @@ Bowi reads `.bowi.json` from the repository root (for a pull request: the file a
   "layers": { "schema": ["db/migrations/**"], "api": ["src/**/routes/**"] },
   "grouping": { "edgeThreshold": 0.5, "moveSimilarity": 0.8, "maxGroupShare": 0.4 },
   "outsideRefs": { "maxPerSymbol": 5 },
-  "order": "dependency"
+  "order": "dependency",
+  "ai": { "enabled": false, "provider": "claude-code", "model": "sonnet", "effort": "low" }
 }
 ```
 
@@ -82,6 +89,12 @@ Bowi reads `.bowi.json` from the repository root (for a pull request: the file a
 | `grouping.maxGroupShare`   | Share of all changes (0–1] above which a large group is split                                                                                           |
 | `outsideRefs.maxPerSymbol` | Unchanged callers listed per changed symbol (0–50); `0` turns the search off                                                                            |
 | `order`                    | Reading order the report opens with: `dependency` or `tests-first`. `--order` wins                                                                      |
+| `ai.enabled`               | AI titles and intents (see above). `--ai` / `--no-ai` win. Ignored in a pull request's own `.bowi.json`: only you can turn it on                        |
+| `ai.model`                 | Model for Claude Code, e.g. `sonnet` (empty: Claude Code's default)                                                                                     |
+| `ai.effort`                | `low`, `medium`, `high`, `xhigh` or `max` (empty: Claude Code's default)                                                                                |
+| `ai.concurrency`           | Calls to Claude at once (1–10, default 3)                                                                                                               |
+| `ai.timeoutSeconds`        | Time per call before that group keeps Bowi's own title (default 120)                                                                                    |
+| `ai.provider`              | `claude-code`, the only provider so far                                                                                                                 |
 
 ## Development
 
@@ -93,14 +106,15 @@ bun run check          # typecheck, lint, format check, tests
 bun run fixture email-verification /tmp/ev   # build a fixture repo to play with
 ```
 
-| Script                                      | What it does                                                                                                         |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `bun run test`                              | vitest                                                                                                               |
-| `bun run typecheck`                         | tsc over sources, tests and fixtures                                                                                 |
-| `bun run lint` / `bun run format`           | ESLint / Prettier                                                                                                    |
-| `bun run build`                             | compile every package to `dist/`                                                                                     |
-| `bun run show-plan <plan-or-dir> [hunk-id]` | print a `review-plan.json` readably (dev tool)                                                                       |
-| `bun run bench`                             | grouping benchmark: Bowi vs folder grouping on real commits (§12.3); `bun run bench explain <case>` details one case |
+| Script                                      | What it does                                                                                                                                       |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run test`                              | vitest                                                                                                                                             |
+| `bun run typecheck`                         | tsc over sources, tests and fixtures                                                                                                               |
+| `bun run lint` / `bun run format`           | ESLint / Prettier                                                                                                                                  |
+| `bun run build`                             | compile every package to `dist/`                                                                                                                   |
+| `bun run show-plan <plan-or-dir> [hunk-id]` | print a `review-plan.json` readably (dev tool)                                                                                                     |
+| `BOWI_REPORT=<review.html> bun run dev:ui`  | the report page with hot reload, for working on its look: edits to `packages/render-html/ui/` show at once; the plan comes from an existing report |
+| `bun run bench`                             | grouping benchmark: Bowi vs folder grouping on real commits (§12.3); `bun run bench explain <case>` details one case                               |
 
 Layout: `packages/*` are the workspace packages from requirement.md §11.3 (`@bowi/core`, `@bowi/sources`, …; the CLI package is `bowi`). `fixtures/` builds deterministic git repos with known PRs; each fixture's source files live in `fixtures/<name>/files/` and are excluded from lint, format and typecheck because they are test data.
 

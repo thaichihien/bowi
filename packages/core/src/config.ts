@@ -12,6 +12,9 @@ export type ReadingOrder = 'dependency' | 'tests-first';
 
 export type AiProviderId = 'claude-code' | 'anthropic' | 'openai' | 'ollama';
 
+/** Claude Code's `--effort` levels; '' leaves it to Claude Code. */
+export type AiEffort = '' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
 export interface BowiConfig {
   base?: string;
   /** Extra glob patterns treated as generated files (NOISE-1). */
@@ -26,7 +29,17 @@ export interface BowiConfig {
   /** Unchanged call sites per changed symbol (GRAPH-11); 0 turns the search off. */
   outsideRefs: { maxPerSymbol: number };
   order: ReadingOrder;
-  ai: { enabled: boolean; provider: AiProviderId; model: string };
+  ai: {
+    enabled: boolean;
+    provider: AiProviderId;
+    /** Model alias or name; '' for the provider's default. */
+    model: string;
+    effort: AiEffort;
+    /** Calls running at once. */
+    concurrency: number;
+    /** Per call. */
+    timeoutSeconds: number;
+  };
 }
 
 export const DEFAULT_CONFIG: BowiConfig = {
@@ -35,7 +48,14 @@ export const DEFAULT_CONFIG: BowiConfig = {
   grouping: { edgeThreshold: 0.5, moveSimilarity: 0.8, maxGroupShare: 0.4 },
   outsideRefs: { maxPerSymbol: 5 },
   order: 'dependency',
-  ai: { enabled: false, provider: 'claude-code', model: '' },
+  ai: {
+    enabled: false,
+    provider: 'claude-code',
+    model: '',
+    effort: '',
+    concurrency: 3,
+    timeoutSeconds: 120,
+  },
 };
 
 const LAYERS: Layer[] = [
@@ -73,6 +93,9 @@ const configSchema = z.object({
       enabled: z.boolean().optional(),
       provider: z.enum(['claude-code', 'anthropic', 'openai', 'ollama']).optional(),
       model: z.string().optional(),
+      effort: z.enum(['', 'low', 'medium', 'high', 'xhigh', 'max']).optional(),
+      concurrency: z.number().int().min(1).max(10).optional(),
+      timeoutSeconds: z.number().int().min(10).max(1800).optional(),
     })
     .optional(),
 });
@@ -116,9 +139,6 @@ export function parseConfig(text: string, label: string): LoadedConfig {
     if (LAYERS.includes(layer as Layer)) layers[layer as Layer] = globs;
     else warnings.push(`${label}: unknown layer "${layer}" in "layers" was ignored`);
   }
-  if (c.ai?.enabled) {
-    warnings.push(`${label}: AI enrichment is not available in this version; "ai" was ignored`);
-  }
 
   const d = DEFAULT_CONFIG;
   const config: BowiConfig = {
@@ -127,7 +147,7 @@ export function parseConfig(text: string, label: string): LoadedConfig {
     grouping: { ...d.grouping, ...c.grouping },
     outsideRefs: { ...d.outsideRefs, ...c.outsideRefs },
     order: c.order ?? d.order,
-    ai: { ...d.ai, ...c.ai, enabled: false },
+    ai: { ...d.ai, ...c.ai },
   };
   if (c.base) config.base = c.base;
   return { config, warnings };

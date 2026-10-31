@@ -27,7 +27,7 @@ describe('parseConfig (§10, CLI-9)', () => {
     });
   });
 
-  it('warns about unknown keys and layers, and ignores AI settings for now', () => {
+  it('warns about unknown keys and layers, and keeps AI settings', () => {
     const { config, warnings } = parseConfig(
       JSON.stringify({
         colour: 'red',
@@ -41,10 +41,29 @@ describe('parseConfig (§10, CLI-9)', () => {
       '.bowi.json: unknown setting "colour" was ignored',
       '.bowi.json: unknown setting "grouping.extra" was ignored',
       '.bowi.json: unknown layer "persistence" in "layers" was ignored',
-      '.bowi.json: AI enrichment is not available in this version; "ai" was ignored',
     ]);
     expect(config.layers).toEqual({});
-    expect(config.ai.enabled).toBe(false);
+    expect(config.ai).toEqual({ ...DEFAULT_CONFIG.ai, enabled: true, provider: 'anthropic' });
+  });
+
+  it('reads the AI model, effort, concurrency and timeout, and rejects unknown levels', () => {
+    const { config } = parseConfig(
+      JSON.stringify({
+        ai: { model: 'sonnet', effort: 'low', concurrency: 5, timeoutSeconds: 60 },
+      }),
+      '.bowi.json',
+    );
+    expect(config.ai).toEqual({
+      enabled: false,
+      provider: 'claude-code',
+      model: 'sonnet',
+      effort: 'low',
+      concurrency: 5,
+      timeoutSeconds: 60,
+    });
+    expect(() => parseConfig('{"ai":{"effort":"extreme"}}', '.bowi.json')).toThrow(
+      /\.bowi\.json has invalid settings: ai\.effort: /,
+    );
   });
 
   it('rejects wrong values and invalid JSON with a usage error naming the key', () => {

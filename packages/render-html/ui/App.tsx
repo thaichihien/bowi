@@ -1,6 +1,7 @@
 /**
  * The review page (requirement.md §7.12): a header with the pull request's facts, then four
- * tabs: Review (groups and steps in reading order), Description (PRs only), Commits and Changes
+ * tabs: Review (groups and steps in reading order), Description (PRs, and any report with an AI
+ * overview), Commits and Changes
  * (every file in GitHub's order). The reference design is the M5.5 canvas linked in docs/plan.md.
  */
 
@@ -29,7 +30,7 @@ export type Tab = 'review' | 'description' | 'commits' | 'changes';
 
 export function App({ plan, now }: { plan: ReviewPlan; now?: number }) {
   const model = useMemo(() => new Model(plan), [plan]);
-  const isPr = plan.source.kind === 'github';
+  const described = hasDescription(plan);
   const initial = useMemo(() => fromHash(model, window.location.hash), [model]);
   const [tab, setTab] = useState<Tab>(initial?.tab ?? 'review');
   // The report opens in the order chosen with --order or the config (CLI-7).
@@ -80,7 +81,7 @@ export function App({ plan, now }: { plan: ReviewPlan; now?: number }) {
     return () => window.removeEventListener('hashchange', onHash);
   }, [model]);
 
-  const shown: Tab = tab === 'description' && !isPr ? 'review' : tab;
+  const shown: Tab = tab === 'description' && !described ? 'review' : tab;
   return (
     <div class="page">
       <Header plan={plan} tab={shown} setTab={setTab} steps={flat.length} />
@@ -130,6 +131,11 @@ export function fromHash(
 }
 
 const plural = (n: number, word: string) => `${formatCount(n)} ${word}${n === 1 ? '' : 's'}`;
+
+/** A pull request always has a Description tab; local changes only when the AI wrote an overview. */
+function hasDescription(plan: ReviewPlan): boolean {
+  return plan.source.kind === 'github' || !!plan.overview;
+}
 
 function Header(props: { plan: ReviewPlan; tab: Tab; setTab: (t: Tab) => void; steps: number }) {
   const { plan } = props;
@@ -210,7 +216,7 @@ function Header(props: { plan: ReviewPlan; tab: Tab; setTab: (t: Tab) => void; s
         >
           {plural(props.steps, 'step')}
         </TabLink>
-        {isPr && (
+        {hasDescription(plan) && (
           <TabLink
             id="description"
             current={props.tab}

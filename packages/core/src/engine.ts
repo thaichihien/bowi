@@ -3,13 +3,15 @@
  *
  * Input: a Snapshot from any source, plus the framework plugins and hint rules to use. Output:
  * the plan. Stages: diff, parse, (plugin detection), noise, symbols, history, graph, groups,
- * outside references, hints. AI enrichment comes in a later milestone.
+ * AI enrichment (only with an enricher), outside references, hints.
  */
 
 import { performance } from 'node:perf_hooks';
+import type { AiEnricher } from './ai.ts';
 import type { FrameworkPlugin, HintRule } from './plugin.ts';
 import type { Snapshot } from './snapshot.ts';
 import type { StageContext } from './stage.ts';
+import { aiStage } from './stages/ai.ts';
 import { diffStage } from './stages/diff.ts';
 import { graphStage } from './stages/graph.ts';
 import { groupStage } from './stages/group.ts';
@@ -36,6 +38,8 @@ export interface AnalyzeOptions {
   plugins?: FrameworkPlugin[];
   /** Review hint rules (HINT-2). */
   hintRules?: HintRule[];
+  /** AI enrichment (AI-1): only when the user turned it on. */
+  ai?: { enricher: AiEnricher; concurrency?: number; timeoutMs?: number };
 }
 
 export async function analyze(
@@ -148,7 +152,7 @@ export async function analyze(
         `${new Set(o.edges.flatMap((e) => [e.from, e.to])).size} nodes · ${o.edges.length} edges`,
     );
 
-    const { groups } = await run(
+    const grouped = await run(
       'group',
       () =>
         groupStage(
@@ -166,6 +170,38 @@ export async function analyze(
       (o) =>
         `${o.groups.length} (confidence: ${o.groups.map((g) => (g.kind === 'noise' || g.kind === 'move' ? 'n/a' : g.confidence)).join(', ')})`,
     );
+
+    const ai = options.ai;
+    const enriched = ai
+      ? await run(
+          'ai',
+          () =>
+            aiStage(
+              {
+                source: snapshot.meta,
+                files,
+                hunks,
+                symbols,
+                edges,
+                groups: grouped.groups,
+                enricher: ai.enricher,
+                ...(ai.concurrency !== undefined && { concurrency: ai.concurrency }),
+                ...(ai.timeoutMs !== undefined && { timeoutMs: ai.timeoutMs }),
+              },
+              stageCtx,
+            ),
+          (o) =>
+            [
+              `${o.titled} of ${o.groups.filter((g) => g.kind !== 'noise' && g.kind !== 'move').length} groups titled`,
+              o.overview ? 'overview' : '',
+              o.suggested ? `${o.suggested} move${o.suggested === 1 ? '' : 's'} suggested` : '',
+              o.cached ? `${o.cached} from cache` : '',
+            ]
+              .filter(Boolean)
+              .join(' · '),
+        )
+      : undefined;
+    const groups = enriched?.groups ?? grouped.groups;
 
     const refs = await run(
       'refs',
@@ -205,8 +241,25 @@ export async function analyze(
     );
 
     return assemble(
-      { files, hunks, symbols, edges, groups, outsideRefs: refs.outsideRefs, hints },
+      {
+        files,
+        hunks,
+        symbols,
+        edges,
+        groups,
+        ...(enriched?.overview && { overview: enriched.overview }),
+        outsideRefs: refs.outsideRefs,
+        hints,
+      },
       plugins.map((p) => p.id),
+      ai
+        ? {
+            enabled: true,
+            provider: ai.enricher.id,
+            ...(enriched?.model && { model: enriched.model }),
+            ...(ctx.config.ai.effort && { effort: ctx.config.ai.effort }),
+          }
+        : { enabled: false },
     );
   } finally {
     disposeSources(sources);
@@ -219,13 +272,15 @@ export async function analyze(
       symbols,
       edges,
       groups,
+      overview,
       outsideRefs,
       hints,
     }: Pick<
       ReviewPlan,
-      'files' | 'hunks' | 'symbols' | 'edges' | 'groups' | 'outsideRefs' | 'hints'
+      'files' | 'hunks' | 'symbols' | 'edges' | 'groups' | 'overview' | 'outsideRefs' | 'hints'
     >,
     pluginIds: string[],
+    aiMeta: ReviewPlan['meta']['ai'],
   ): ReviewPlan {
     let additions = 0;
     let deletions = 0;
@@ -263,10 +318,11 @@ export async function analyze(
       symbols,
       edges,
       groups,
+      ...(overview && { overview }),
       outsideRefs,
       hints,
       meta: {
-        ai: { enabled: false },
+        ai: aiMeta,
         languages: [
           ...new Set(files.filter((f) => f.parseStatus === 'ok').map((f) => f.language!)),
         ].sort(),

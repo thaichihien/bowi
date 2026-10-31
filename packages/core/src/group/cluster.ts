@@ -10,11 +10,15 @@
  *    group without absorbing a feature that merely calls the hub.
  * 4. Attach: a unit still alone joins the group it has the strongest edge to, else a group
  *    with code in the same file, else in the same directory, else "Other changes".
+ * 5. Glue (an added import or injected constructor parameter, see glue.ts) moves to the group
+ *    of the code using what it introduces. Done last, so the groups themselves form exactly as
+ *    without it (Louvain sees the same graph).
  */
 
 import { UndirectedGraph } from 'graphology';
 import louvainModule from 'graphology-communities-louvain';
 import type { ChangedSymbol, ChangeEdge, FileChange, Hunk } from '../types.ts';
+import { glueUnits } from './glue.ts';
 
 export const MAX_GROUP_SYMBOLS = 25;
 const LOUVAIN_SEED = 42;
@@ -29,7 +33,7 @@ export interface Cluster {
   symbolIds: string[];
   origin: ClusterOrigin;
   /** Units that joined by folder or file proximity rather than an edge. */
-  attached: { symbolIds: string[]; how: 'edge' | 'file' | 'directory' }[];
+  attached: { symbolIds: string[]; how: 'edge' | 'file' | 'directory' | 'uses' }[];
 }
 
 export interface ClusterInput {
@@ -148,11 +152,38 @@ export function clusterSymbols(input: ClusterInput): Cluster[] {
   }
   if (other.length > 0) clusters.push({ units: other, origin: 'other', attached: [] });
 
-  return clusters.map((c) => ({
-    symbolIds: c.units.flatMap((u) => units[u]!).sort((a, b) => order.get(a)! - order.get(b)!),
-    origin: c.origin,
-    attached: c.attached,
-  }));
+  // 5. Glue follows its users: the unit using it most, through glue used by glue (import of
+  // `EventEmitter2` → constructor parameter `events` → the methods calling `this.events`).
+  const glue = glueUnits(units, input.hunks, symbolById, fileById);
+  const clusterOf = new Map<number, number>();
+  clusters.forEach((c, i) => c.units.forEach((u) => clusterOf.set(u, i)));
+  for (const [g, users] of glue) {
+    // Code that uses it first; else follow the glue that uses it, until code.
+    const seen = new Set([g]);
+    let user = users.find((u) => !glue.has(u)) ?? users[0]!;
+    while (glue.has(user) && !seen.has(user)) {
+      seen.add(user);
+      const next = glue.get(user)!;
+      user = next.find((u) => !glue.has(u)) ?? next[0]!;
+    }
+    const from = clusterOf.get(g)!;
+    const to = clusterOf.get(user)!;
+    if (seen.has(user) || from === to) continue;
+    const c = clusters[from]!;
+    c.units = c.units.filter((u) => u !== g);
+    c.attached = c.attached.filter((a) => a.symbolIds !== units[g]);
+    clusters[to]!.units.push(g);
+    clusters[to]!.attached.push({ symbolIds: units[g]!, how: 'uses' });
+    clusterOf.set(g, to);
+  }
+
+  return clusters
+    .filter((c) => c.units.length > 0)
+    .map((c) => ({
+      symbolIds: c.units.flatMap((u) => units[u]!).sort((a, b) => order.get(a)! - order.get(b)!),
+      origin: c.origin,
+      attached: c.attached,
+    }));
 }
 
 /** The cluster with the most symbols in files matching `match`, earliest on ties. */

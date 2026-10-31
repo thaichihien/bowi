@@ -12,7 +12,7 @@ import {
 } from '../src/index.ts';
 
 describe('topoOrder', () => {
-  it('puts dependencies first and keeps ties in the given order', () => {
+  it('puts dependencies right before the first node that needs them', () => {
     const deps: Record<string, string[]> = {
       api: ['service'],
       service: ['data'],
@@ -20,16 +20,34 @@ describe('topoOrder', () => {
       docs: [],
     };
     expect(topoOrder(['api', 'docs', 'service', 'data'], (n) => deps[n]!)).toEqual([
-      'docs',
       'data',
       'service',
       'api',
+      'docs',
+    ]);
+  });
+
+  it('does not let an independent node jump ahead of one waiting for a dependency', () => {
+    // Seen in a real PR: Data shape uses an interface in "Other code"; UI uses nothing.
+    const deps: Record<string, string[]> = {
+      data: ['unknown'],
+      service: ['data'],
+      ui: [],
+      unknown: [],
+      test: ['service'],
+    };
+    expect(topoOrder(['data', 'service', 'ui', 'unknown', 'test'], (n) => deps[n]!)).toEqual([
+      'unknown',
+      'data',
+      'service',
+      'ui',
+      'test',
     ]);
   });
 
   it('keeps a cycle together', () => {
     const deps: Record<string, string[]> = { a: ['b'], b: ['a'], c: [], d: ['a'] };
-    expect(topoOrder(['d', 'c', 'a', 'b'], (n) => deps[n]!)).toEqual(['c', 'a', 'b', 'd']);
+    expect(topoOrder(['d', 'c', 'a', 'b'], (n) => deps[n]!)).toEqual(['a', 'b', 'd', 'c']);
   });
 });
 
@@ -71,10 +89,10 @@ describe('buildSteps', () => {
       edges,
     ).steps.map((s) => s.id);
 
-  // workflow-orchestrator#90: services call a new helper whose layer used to come last.
-  const service = file('f2', 'src/workflow/services/workflow-data.service.ts', 'service');
-  const action = file('f0', 'src/action/common/to-failed.action.ts', 'unknown');
-  const helper = file('f1', 'src/workflow/mark-failed.ts', 'unknown');
+  // Seen in a real PR: services call a new helper whose layer used to come last.
+  const service = file('f2', 'src/orders/services/order-data.service.ts', 'service');
+  const action = file('f0', 'src/steps/common/cancel.step.ts', 'unknown');
+  const helper = file('f1', 'src/orders/mark-failed.ts', 'unknown');
 
   it('reads a step before the steps that call it, whatever its layer (GRP-7)', () => {
     expect(steps([service, action, helper], [calls('f2', 'f1'), calls('f0', 'f1')])).toEqual([
@@ -92,7 +110,7 @@ describe('buildSteps', () => {
   });
 
   it('puts helpers before services', () => {
-    const util = file('f1', 'src/workflow/helpers/mark-failed.helper.ts', 'util');
+    const util = file('f1', 'src/orders/helpers/mark-failed.helper.ts', 'util');
     expect(steps([service, util], [])).toEqual(['g1:util', 'g1:service']);
   });
 });

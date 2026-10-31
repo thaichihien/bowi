@@ -397,6 +397,98 @@ describe('Description tab', () => {
     show(empty, '#description');
     expect(root.querySelector('.desc-empty')!.textContent).toBe('No description provided.');
   });
+
+  const withOverview = (plan: ReviewPlan) => {
+    const p = structuredClone(plan);
+    p.overview = 'Adds email verification: `AuthService.register()` now sends a link.';
+    p.meta.ai = { enabled: true, provider: 'claude-code', model: 'claude-sonnet-5-5' };
+    return p;
+  };
+
+  it('shows the AI overview below the pull request description', () => {
+    show(withOverview(pr), '#description');
+    const cards = [...root.querySelectorAll('.desc')];
+    expect(cards.map((c) => c.getAttribute('aria-label'))).toEqual([
+      'Pull request description',
+      'Overview written by AI',
+    ]);
+    expect(cards[1]!.querySelector('.desc-head')!.textContent).toBe(
+      'OverviewAIWritten by claude-sonnet-5-5 · via Claude Code',
+    );
+    expect(cards[1]!.querySelector('.overview code')!.textContent).toBe('AuthService.register()');
+  });
+
+  it('gives local changes a Description tab when there is an AI overview', () => {
+    show(withOverview(local), '#description');
+    expect(tabNames()).toEqual(['Review8 steps', 'Description', 'Commits4', 'Changes11']);
+    expect([...root.querySelectorAll('.desc')].map((c) => c.getAttribute('aria-label'))).toEqual([
+      'Overview written by AI',
+    ]);
+    expect(text()).not.toContain('No description provided.');
+  });
+});
+
+describe('AI move suggestions (AI-3)', () => {
+  const suggesting = (all: boolean) => {
+    const p = structuredClone(local);
+    const g1 = p.groups[0]!;
+    const hunkIds = g1.steps.flatMap((s) => s.hunkIds);
+    g1.titleSource = 'ai';
+    g1.moveSuggestions = (all ? hunkIds : hunkIds.slice(0, 1)).map((hunkId) => ({
+      hunkId,
+      toGroupId: 'g2',
+      reason: 'It uses `slugify()`.',
+    }));
+    return { p, first: p.hunks.find((h) => h.id === hunkIds[0])! };
+  };
+
+  it('lists each suggestion with links to the hunk and the other group', () => {
+    const { p, first } = suggesting(false);
+    show(p);
+    const box = root.querySelector('.group-card .suggestions')!;
+    const path = p.files.find((f) => f.id === first.fileId)!.path;
+    expect(box.textContent).toBe(
+      `AISuggests ${path}:${first.newStart} belongs with Move slugify() from helpers.ts to string.ts: It uses slugify().`,
+    );
+    const links = [...box.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+    expect(links).toEqual([
+      `#${p.groups[0]!.steps.find((s) => s.hunkIds.includes(first.id))!.id}`,
+      '#g2',
+    ]);
+  });
+
+  it('credits the AI on the right of the first line of an AI-titled group card', () => {
+    const p = structuredClone(local);
+    p.meta.ai = {
+      enabled: true,
+      provider: 'claude-code',
+      model: 'claude-sonnet-5-5',
+      effort: 'low',
+    };
+    p.groups[0]!.titleSource = 'ai';
+    show(p);
+    expect(root.querySelector('.group-meta .ai-credit')!.textContent).toBe(
+      'Written by claude-sonnet-5-5 · low effort · via Claude Code',
+    );
+    expect(root.querySelector('.header-top')!.textContent).not.toContain('Written by');
+    // Groups with Bowi's own title (moved code, noise, failed calls) have no credit.
+    show(p, '#g2');
+    expect(root.querySelector('.group-meta .ai-credit')).toBeNull();
+  });
+
+  it('shows code in an AI intent as code', () => {
+    const p = structuredClone(local);
+    p.groups[0]!.intent = 'Adds `verifyEmail()` to the service.';
+    show(p);
+    expect(root.querySelector('.group-card .intent code')!.textContent).toBe('verifyEmail()');
+  });
+
+  it('reads as one suggestion when every hunk would go to the same group', () => {
+    show(suggesting(true).p);
+    expect(root.querySelector('.group-card .suggestions')!.textContent).toBe(
+      'AISuggests reading this group together with Move slugify() from helpers.ts to string.ts: It uses slugify().',
+    );
+  });
 });
 
 describe('Commits tab', () => {

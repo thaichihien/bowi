@@ -19,6 +19,7 @@ const LABELS: Record<string, string> = {
   history: 'History',
   graph: 'Graph',
   group: 'Groups',
+  ai: 'AI',
   refs: 'Callers',
   hints: 'Hints',
 };
@@ -26,6 +27,7 @@ const LABELS: Record<string, string> = {
 /** Spinner text for engine stages that may download from the repository's host. */
 const ACTIVE: Record<string, string> = {
   history: 'Reading commit history',
+  ai: 'Asking Claude for group titles and intents',
   refs: 'Searching for unchanged callers',
 };
 

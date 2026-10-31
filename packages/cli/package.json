@@ -26,6 +26,7 @@
     "bowi": "./src/bin.ts"
   },
   "dependencies": {
+    "@bowi/ai": "workspace:*",
     "@bowi/cache": "workspace:*",
     "@bowi/core": "workspace:*",
     "@bowi/plugins": "workspace:*",

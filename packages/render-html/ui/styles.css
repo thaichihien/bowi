@@ -557,6 +557,9 @@ code {
   gap: 10px;
   align-items: center;
 }
+.group-meta .ai-credit {
+  margin-left: auto;
+}
 .group-card h2 {
   margin: 0;
   font-size: 22px;
@@ -570,7 +573,15 @@ code {
   font-size: 15px;
   line-height: 1.55;
   color: var(--text-2);
-  max-width: 75ch;
+  /* Justified, with hyphenation so long words do not leave wide gaps. */
+  text-align: justify;
+  hyphens: auto;
+}
+/* Code is never hyphenated or split: `beforeEr-ror` would read as another name. */
+.intent code,
+.overview code {
+  hyphens: none;
+  white-space: nowrap;
 }
 .hints {
   display: flex;
@@ -588,6 +599,36 @@ code {
 .hint.attention {
   background: #fff1d6;
   color: var(--edit-ink);
+}
+.suggestions {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--text-2);
+}
+.suggestions .chip {
+  margin: 0;
+  flex: none;
+  background: var(--surface);
+}
+.suggestions p,
+.suggestions ul {
+  margin: 0;
+}
+.suggestions ul {
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.suggestions a {
+  color: var(--accent-ink);
 }
 .reasons {
   border-top: 1px solid var(--border-soft);
@@ -1346,6 +1387,20 @@ button.file-head[aria-expanded='false'] {
   border-bottom: 1px solid var(--gh-border);
   font-size: 14px;
   color: var(--gh-muted);
+}
+.desc-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.overview {
+  margin: 0;
+  padding: 20px 24px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--gh-text);
+  text-align: justify;
+  hyphens: auto;
 }
 .desc-empty {
   margin: 0;

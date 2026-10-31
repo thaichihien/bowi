@@ -100,6 +100,9 @@ ARI harness from §12.3 over at least 2 TypeScript repos, baselines alphabetical
 
 ### M8 — AI enrichment via Claude Code
 
+- Done as planned except: one call per logic group plus one for the overview, run after groups and before outside references and hints; hunk moves are suggestions shown on the group card, never applied (owner's decision); `ai.effort`, `ai.concurrency`, `ai.timeoutSeconds` settings; `--safe-mode` instead of `--bare` (which ignores the Claude Code login); the notice is printed on every run with AI, not only the first; the overview is shown in the Description tab below the PR description (owner's decision), which local changes now get too when there is an overview. Decisions: requirement.md §15 #49–#55.
+- Flags verified against Claude Code 2.1.314: `-p --output-format json --tools "" --safe-mode --strict-mcp-config --disable-slash-commands --no-session-persistence --system-prompt … --json-schema …` and `--model` when configured.
+
 - `ai/provider.ts`: `interface AiProvider { id; describe(): string; enrich(req: GroupEnrichRequest): Promise<unknown> }`. Output always validated with zod by the caller, never trusted (AI-5).
 - `ai/providers/claude-code.ts`: spawns `claude -p --output-format json` with the prompt on stdin. Hardening:
   - runs in an **empty temporary cwd**, so the session cannot read the repo beyond what Bowi sends (AI-4 "never whole files");

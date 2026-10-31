@@ -37,6 +37,7 @@
     "vite-plugin-singlefile": "2.3.4"
   },
   "scripts": {
-    "build:ui": "vite build"
+    "build:ui": "vite build",
+    "dev:ui": "vite"
   }
 }

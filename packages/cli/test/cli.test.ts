@@ -7,6 +7,7 @@ import { comparablePlanJson, type ReviewPlan } from '@bowi/core';
 import { buildFixtureRepo, emailVerification } from '@bowi/fixtures';
 import { expectedChangedFiles } from '@bowi/fixtures/email-verification';
 import { run, type CliIo } from '../src/index.ts';
+import { fakeClaude } from '../../ai/test/fake-claude.ts';
 import { fakeApi, fakeServer } from '../../sources/test/fake-github.ts';
 
 const roots: string[] = [];
@@ -34,6 +35,7 @@ async function bowiWith(extra: Partial<CliIo> & { tty?: boolean }, cwd: string, 
     // Never the real GitHub: a URL without a fake fails fast on an unreachable API.
     github: { token: '', apiBase: 'http://127.0.0.1:9', ...extra.github },
     ...(extra.openFile && { openFile: extra.openFile }),
+    ...(extra.ai && { ai: extra.ai }),
   });
   return { code, stdout, stderr };
 }
@@ -189,7 +191,10 @@ describe('bowi <github-pr-url>', () => {
       ...emailVerification,
       base: [
         ...emailVerification.base,
-        { message: 'config', files: { '.bowi.json': '{"generated":["README.md"]}\n' } },
+        {
+          message: 'config',
+          files: { '.bowi.json': '{"generated":["README.md"],"ai":{"enabled":true}}\n' },
+        },
       ],
       head: [
         ...emailVerification.head,
@@ -211,6 +216,9 @@ describe('bowi <github-pr-url>', () => {
     const plan = readPlan(join(cwd, '.bowi', 'api-7'));
     const generated = plan.files.filter((f) => f.generated).map((f) => f.path);
     expect(generated).toEqual(['README.md', 'package-lock.json']);
+    // Nor can the repository turn AI on for the reviewer.
+    expect(r.stderr).toContain('! .bowi.json: "ai" settings of the repository are ignored');
+    expect(plan.meta.ai).toEqual({ enabled: false });
   });
 
   it('exits 2 with a next step when GitHub cannot be reached', async () => {
@@ -300,6 +308,75 @@ describe('configuration (CLI-7, CLI-9)', () => {
     expect(missing.code).toBe(1);
     expect(missing.stderr).toContain('Cannot read the config file');
     expect((await bowi(repo, '--local', '--order', 'random')).code).toBe(1);
+  });
+});
+
+describe('AI enrichment (CLI-8, AI-1)', () => {
+  let repo: string;
+  let claude: string;
+  beforeAll(() => {
+    repo = buildFixtureRepo(emailVerification, join(tempDir(), 'repo')).dir;
+    claude = fakeClaude(tempDir());
+  });
+
+  it('--ai titles the groups through Claude Code, says so first, and caches the answers', async () => {
+    const cache = join(tempDir(), 'cache');
+    const args = ['--local', '--json-only', '--ai', '--cache-dir', cache];
+    const out = join(tempDir(), 'out');
+    const r = await bowiWith({ ai: { command: claude } }, repo, ...args, '--out', out);
+    expect(r.code).toBe(0);
+    expect(r.stderr).toContain(
+      '  AI is on: group diffs (no noise, no whole files) and the PR title and description go to Claude through Claude Code, with your Claude Code login.',
+    );
+    expect(r.stderr).toMatch(/✓ AI {8}1 of 1 groups titled · overview {2,}\d/);
+    const plan = readPlan(out);
+    expect(plan.groups.map((g) => [g.titleSource, g.title, g.intent])).toEqual([
+      ['ai', 'AI title for g1', 'What these changes do together.'],
+      ['rule', 'Move `slugify()` from helpers.ts to string.ts', undefined],
+      ['rule', 'Generated files and formatting', undefined],
+    ]);
+    expect(plan.overview).toBe('The pull request as a whole, in a sentence.');
+    expect(plan.meta.ai).toEqual({
+      enabled: true,
+      provider: 'claude-code',
+      model: 'claude-test-1',
+    });
+
+    const again = await bowiWith({ ai: { command: claude } }, repo, ...args, '--out', out);
+    expect(again.stderr).toContain('1 of 1 groups titled · overview · 2 from cache');
+  });
+
+  it('follows the config file, and --no-ai wins over it', async () => {
+    const config = join(tempDir(), 'ai.json');
+    writeFileSync(config, JSON.stringify({ ai: { enabled: true, effort: 'low' } }));
+    const cache = join(tempDir(), 'cache');
+    const base = ['--local', '--json-only', '--config', config, '--cache-dir', cache];
+    const on = join(tempDir(), 'on');
+    expect((await bowiWith({ ai: { command: claude } }, repo, ...base, '--out', on)).code).toBe(0);
+    expect(readPlan(on).meta.ai).toMatchObject({ enabled: true, effort: 'low' });
+    const off = join(tempDir(), 'off');
+    const r = await bowiWith({ ai: { command: claude } }, repo, ...base, '--no-ai', '--out', off);
+    expect(r.stderr).not.toContain('AI');
+    expect(readPlan(off).meta.ai).toEqual({ enabled: false });
+  });
+
+  it('exits 1 with a next step when Claude Code is missing or the provider is not available', async () => {
+    const missing = await bowiWith(
+      { ai: { command: join(tempDir(), 'claude') } },
+      repo,
+      '--local',
+      '--json-only',
+      '--ai',
+    );
+    expect(missing.code).toBe(1);
+    expect(missing.stderr).toContain('error: Claude Code is not installed');
+    expect(missing.stderr).toContain('Install Claude Code');
+
+    const config = join(tempDir(), 'ai.json');
+    writeFileSync(config, JSON.stringify({ ai: { provider: 'openai' } }));
+    const other = await bowi(repo, '--local', '--json-only', '--ai', '--config', config);
+    expect(other.code).toBe(1);
+    expect(other.stderr).toContain('The AI provider "openai" is not available yet.');
   });
 });
 
