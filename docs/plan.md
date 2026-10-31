@@ -93,6 +93,11 @@ Outside references (~~`@vscode/ripgrep`, fallback~~ `git grep`, searched in a `g
 
 ARI harness from §12.3 over at least 2 TypeScript repos, baselines alphabetical and group-by-top-folder.
 
+- Done as planned, plus a third baseline (the file's own folder) and a "code hunks only" score (§15 #45). Four open-source TypeScript repositories (two NestJS applications), 37 cases; the cases and repository names stay local (`bench/cases/` is git-ignored).
+- First report: TypeScript supported, Bowi 0.51 vs folder 0.38 (§12.3).
+- Studying the weakest cases with `bun run bench explain` fixed two grouping bugs (§15 #48): Bowi 0.52.
+- The benchmark found two engine bugs, fixed here: moves paired with their own hunk or with two hunks (exit code 3), and reordered lines counted as formatting (§15 #46, #47).
+
 ### M8 — AI enrichment via Claude Code
 
 - `ai/provider.ts`: `interface AiProvider { id; describe(): string; enrich(req: GroupEnrichRequest): Promise<unknown> }`. Output always validated with zod by the caller, never trusted (AI-5).

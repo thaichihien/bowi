@@ -34,7 +34,10 @@ const STOPLIST = new Set([
   'text-html',
 ]);
 
-const IMPORT_LINE = /^\s*(import\b|export\s+(\*|\{[^}]*\})\s+from\b|.*\brequire\s*\()/;
+// First and last line of an import or re-export, also when it spans lines (`} from "./x"`):
+// module paths say nothing about which changes belong together (imports are resolved anyway).
+const IMPORT_LINE =
+  /^\s*(import\b|export\s+(\*|\{[^}]*\})\s+from\b|\}\s*from\s*['"]|.*\brequire\s*\()/;
 
 export function literalsIn(line: string): string[] {
   if (IMPORT_LINE.test(line)) return [];

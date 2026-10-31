@@ -93,13 +93,14 @@ bun run check          # typecheck, lint, format check, tests
 bun run fixture email-verification /tmp/ev   # build a fixture repo to play with
 ```
 
-| Script                                      | What it does                                   |
-| ------------------------------------------- | ---------------------------------------------- |
-| `bun run test`                              | vitest                                         |
-| `bun run typecheck`                         | tsc over sources, tests and fixtures           |
-| `bun run lint` / `bun run format`           | ESLint / Prettier                              |
-| `bun run build`                             | compile every package to `dist/`               |
-| `bun run show-plan <plan-or-dir> [hunk-id]` | print a `review-plan.json` readably (dev tool) |
+| Script                                      | What it does                                                                                                         |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `bun run test`                              | vitest                                                                                                               |
+| `bun run typecheck`                         | tsc over sources, tests and fixtures                                                                                 |
+| `bun run lint` / `bun run format`           | ESLint / Prettier                                                                                                    |
+| `bun run build`                             | compile every package to `dist/`                                                                                     |
+| `bun run show-plan <plan-or-dir> [hunk-id]` | print a `review-plan.json` readably (dev tool)                                                                       |
+| `bun run bench`                             | grouping benchmark: Bowi vs folder grouping on real commits (§12.3); `bun run bench explain <case>` details one case |
 
 Layout: `packages/*` are the workspace packages from requirement.md §11.3 (`@bowi/core`, `@bowi/sources`, …; the CLI package is `bowi`). `fixtures/` builds deterministic git repos with known PRs; each fixture's source files live in `fixtures/<name>/files/` and are excluded from lint, format and typecheck because they are test data.
 

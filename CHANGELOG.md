@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### M7 — Grouping benchmark
+
+- `bun run bench` measures how well Bowi's groups recover the original commits of real pull requests (requirement.md §12.3): runs of 3–6 clean consecutive commits from public repositories are squashed into synthetic PRs, every hunk is labeled with the commit that wrote it (`git blame`, and `git blame --reverse` for removed lines), and Bowi's groups are scored against grouping by folder with the Adjusted Rand Index (1 = the original commits exactly, 0 = chance).
+- 37 cases from four open-source TypeScript repositories, two of them NestJS applications. Cases are picked with `bun run bench:select <owner/repo> …` and kept on the machine (`bench/cases/` is git-ignored, so the repositories used are not published); every run there scores the same commits.
+- First report (TypeScript, mean ARI): Bowi 0.51, by folder 0.38, by top folder 0.10, one group (GitHub's list) 0.00. Bowi is at least as good as grouping by folder in 28 of 37 cases: TypeScript counts as supported.
+- Fixed (found by the benchmark): a PR where code moved within one hunk, or from one hunk into two, failed with exit code 3 (a hunk was placed twice). Such code is now shown as an ordinary change; a move pairs exactly two hunks.
+- Fixed: lines that only changed places (e.g. swapped `app.use()` calls) were collapsed as "Formatting only", although order can change behavior. They are now a real change; reformatting still counts as formatting.
+- `bun run bench explain <case>` shows why a case scores what it does: each group with the original commit of every hunk, the links joining different commits, and how each commit is spread over the groups.
+- Studying the weakest cases fixed two grouping bugs (overall 0.51 → 0.52; the weakest repository 0.41 → 0.44; 5 cases better, none worse): the last line of a multi-line import (`} from "../utils/test-utils"`) counted as a shared literal and tied unrelated tests together; and a test could not be linked to a changed test entity, fixture or helper it imports (application code is still never linked to test code).
+- The partial-clone helpers of the GitHub source (`ensureBareRepo`, `fetchQuiet`, `prefetchBlobs`) and the history helpers are exported from `@bowi/sources` for the benchmark.
+
 ### M6 — P1 items
 
 - **Outside references** (GRAPH-11): each step lists unchanged code that uses what the step changes, e.g. `AuthService.login()` using the changed `User` entity. Found with `git grep` (working tree with untracked files for `--local`, the head commit for pull requests) and kept only when plausible: a method must be called as `.name(` in a file that names its class; other symbols must be imported or in their own file; never on added lines, inside changed code, in imports, comments, strings or generated files. Up to 5 per symbol (`outsideRefs.maxPerSymbol`, `0` turns it off). The panel is now titled "Unchanged code that uses these changes".

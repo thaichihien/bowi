@@ -6,7 +6,8 @@
  *
  * - calls / uses-type: a changed symbol calls, instantiates, references the type of, or uses a
  *   changed field of another changed symbol that its file can see (same file or imported).
- * - tests: the same, from a symbol in a test file; plus `x.spec.ts` ↔ `x.ts` by name.
+ * - tests: the same, from a symbol in a test file; plus `x.spec.ts` ↔ `x.ts` by name. Test code
+ *   that uses a changed test helper, fixture or test entity gets a calls / uses-type edge to it.
  * - same-symbol: two symbols changed in one hunk (they cannot be separated).
  * - shared-literal / docs-mentions: the same distinctive literal in changed lines of different
  *   files, or a docs change naming a changed symbol.
@@ -145,9 +146,11 @@ export const graphStage: Stage<GraphStageInput, GraphStageOutput> = async (input
     from.fileId === to.fileId || (imported.get(from.fileId)?.has(to.fileId) ?? false);
 
   // Call and type targets by name, and changed fields by name.
+  // Test helpers, fixtures and test entities are targets too, for test code only: a new test
+  // belongs with the entity or helper it imports. Application code never depends on tests.
   const targets = new Map<string, ChangedSymbol[]>();
   for (const s of logic) {
-    if (s.kind === 'file' || s.layer === 'test') continue;
+    if (s.kind === 'file') continue;
     targets.set(s.name, [...(targets.get(s.name) ?? []), s]);
   }
   const fieldOwners = changedFields(logic, code, hunkById);
@@ -168,7 +171,8 @@ export const graphStage: Stage<GraphStageInput, GraphStageOutput> = async (input
     for (const ref of refs) {
       for (const t of targets.get(ref.name) ?? []) {
         if (t.id === s.id || !visible(s, t) || isAncestor(t, s)) continue;
-        const type = isTest ? 'tests' : edgeTypeFor(ref, t);
+        if (t.layer === 'test' && !isTest) continue;
+        const type = isTest && t.layer !== 'test' ? 'tests' : edgeTypeFor(ref, t);
         if (type)
           edges.add(s, t, type, evidence(type, s, t, ref), { fileId: s.fileId, line: ref.line });
       }
@@ -177,7 +181,8 @@ export const graphStage: Stage<GraphStageInput, GraphStageOutput> = async (input
       if ((ref.kind === 'member' || ref.kind === 'key') && !COMMON_MEMBERS.has(ref.name)) {
         for (const owner of fieldOwners.get(ref.name) ?? []) {
           if (owner.id === s.id || !visible(s, owner) || isAncestor(owner, s)) continue;
-          const type = isTest ? 'tests' : 'uses-type';
+          if (owner.layer === 'test' && !isTest) continue;
+          const type = isTest && owner.layer !== 'test' ? 'tests' : 'uses-type';
           edges.add(s, owner, type, `${show(s)} uses \`${owner.qualifiedName}.${ref.name}\``, {
             fileId: s.fileId,
             line: ref.line,

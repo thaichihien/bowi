@@ -109,6 +109,9 @@ describe('literalsIn', () => {
 
   it('ignores imports, short tokens, dates and stoplisted words', () => {
     expect(literalsIn("import { x } from '@nestjs/common-utils';")).toEqual([]);
+    // The last line of a multi-line import (benchmark: every test importing test-utils linked).
+    expect(literalsIn('} from "../../../utils/test-utils"')).toEqual([]);
+    expect(literalsIn("  } from '@nestjs/common-utils';")).toEqual([]);
     expect(literalsIn("headers['Content-Type'] = 'a-b'; v = '2026-01-01'")).toEqual([]);
   });
 });

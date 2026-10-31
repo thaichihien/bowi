@@ -6,9 +6,9 @@
  * removed: every hunk stays in the plan (NOISE-7).
  *
  * - generated: every hunk of a generated file.
- * - format: the code on the hunk's changed lines has the same structural fingerprint on both
- *   sides (whitespace, `;`, `,`, quote style and comment layout ignored; comment text counts),
- *   or only blank lines changed. Files without a grammar only count blank-line changes.
+ * - format: the code of the whole hunk (context lines included, so reordered lines differ) has
+ *   the same structural fingerprint on both sides (whitespace, `;`, `,`, quote style and comment
+ *   layout ignored; comment text counts), or only blank lines changed. Files without a grammar only count blank-line changes.
  * - move: a symbol whose lines are all deleted matches a symbol whose lines are all added,
  *   exactly (fingerprint) or with line similarity ≥ grouping.moveSimilarity. Lines that differ
  *   are listed in `changedLineIndexes` and are never treated as noise.
@@ -76,9 +76,13 @@ function isFormatOnly(h: Hunk, file: FileChange, src: FileSources | undefined): 
   const newCode = adds.map((l) => l.newNo!).filter((n) => src.new!.isContentLine(n));
   if (oldCode.length === 0 && newCode.length === 0) return true;
   if (oldCode.length === 0 || newCode.length === 0) return false;
+  // The whole hunk, context lines included: lines that keep their text but change places
+  // (swapped statements, middleware order) differ there, while reformatting does not.
+  const oldLines = h.lines.flatMap((l) => (l.oldNo !== undefined ? [l.oldNo] : []));
+  const newLines = h.lines.flatMap((l) => (l.newNo !== undefined ? [l.newNo] : []));
   return (
-    src.old.coverFingerprint(Math.min(...oldCode), Math.max(...oldCode)) ===
-    src.new.coverFingerprint(Math.min(...newCode), Math.max(...newCode))
+    src.old.coverFingerprint(Math.min(...oldLines), Math.max(...oldLines)) ===
+    src.new.coverFingerprint(Math.min(...newLines), Math.max(...newLines))
   );
 }
 
@@ -148,25 +152,35 @@ function detectMoves(
   }
 
   // A hunk becomes a move only if all its changed, non-blank lines are covered by matched
-  // regions, and the same holds for every partner hunk. Otherwise both halves stay logic.
-  const regionsByHunk = new Map<Hunk, Region[]>();
-  for (const p of pairs) {
-    for (const region of [p.r, p.a])
-      regionsByHunk.set(region.hunk, [...(regionsByHunk.get(region.hunk) ?? []), region]);
+  // regions, and the same holds for its partner. A move pairs exactly two hunks (the report shows
+  // one half under the other), so a hunk whose code moved within itself, or to or from two
+  // different hunks, stays logic. Dropping a pair can leave another hunk only partly covered, so
+  // repeat until nothing changes. Hunks left out are shown as ordinary diffs.
+  let finalPairs = pairs;
+  for (;;) {
+    const regionsByHunk = new Map<Hunk, Region[]>();
+    const partners = new Map<Hunk, Set<Hunk>>();
+    for (const p of finalPairs) {
+      for (const [self, other] of [
+        [p.r, p.a],
+        [p.a, p.r],
+      ] as const) {
+        regionsByHunk.set(self.hunk, [...(regionsByHunk.get(self.hunk) ?? []), self]);
+        partners.set(self.hunk, (partners.get(self.hunk) ?? new Set()).add(other.hunk));
+      }
+    }
+    const ok = (h: Hunk) => {
+      const others = partners.get(h)!;
+      if (others.size !== 1 || others.has(h)) return false;
+      const inRegions = new Set((regionsByHunk.get(h) ?? []).flatMap((r) => r.indexes));
+      return h.lines.every(
+        (l, i) => l.kind === 'context' || l.text.trim() === '' || inRegions.has(i),
+      );
+    };
+    const next = finalPairs.filter((p) => ok(p.r.hunk) && ok(p.a.hunk));
+    if (next.length === finalPairs.length) break;
+    finalPairs = next;
   }
-  const covered = (h: Hunk) => {
-    const inRegions = new Set((regionsByHunk.get(h) ?? []).flatMap((r) => r.indexes));
-    return h.lines.every(
-      (l, i) => l.kind === 'context' || l.text.trim() === '' || inRegions.has(i),
-    );
-  };
-  const accepted = pairs.filter((p) => covered(p.r.hunk) && covered(p.a.hunk));
-  const rejectedHunks = new Set(
-    pairs.filter((p) => !accepted.includes(p)).flatMap((p) => [p.r.hunk, p.a.hunk]),
-  );
-  const finalPairs = accepted.filter(
-    (p) => !rejectedHunks.has(p.r.hunk) && !rejectedHunks.has(p.a.hunk),
-  );
 
   const changed = new Map<Hunk, number[]>();
   for (const p of finalPairs) {

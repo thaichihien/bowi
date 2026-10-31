@@ -21,10 +21,16 @@
     "fixture": "bun fixtures/build.ts",
     "check": "bun run typecheck && bun run lint && bun run format:check && bun run test",
     "show-plan": "node scripts/show-plan.ts",
-    "build:ui": "bun run --cwd packages/render-html build:ui"
+    "build:ui": "bun run --cwd packages/render-html build:ui",
+    "bench": "node bench/src/main.ts",
+    "bench:select": "node bench/src/main.ts select"
   },
   "devDependencies": {
+    "@bowi/cache": "workspace:*",
     "@bowi/core": "workspace:*",
+    "@bowi/fixtures": "workspace:*",
+    "@bowi/plugins": "workspace:*",
+    "@bowi/sources": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@types/node": "^20",
     "eslint": "^10.13.0",

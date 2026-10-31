@@ -6,3 +6,5 @@ coverage/
 .DS_Store
 packages/render-html/template/
 development-logs.md
+# Benchmark cases name the repositories used; they stay on this machine.
+bench/cases/

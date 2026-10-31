@@ -6,6 +6,6 @@
     "declarationMap": false,
     "noEmit": true
   },
-  "include": ["packages/*/src", "packages/*/test", "fixtures", "*.ts", "scripts"],
+  "include": ["packages/*/src", "packages/*/test", "fixtures", "*.ts", "scripts", "bench"],
   "exclude": ["fixtures/*/files", "packages/render-html/test"]
 }

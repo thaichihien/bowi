@@ -12,3 +12,12 @@ export {
   type PullRequestRef,
 } from './github.ts';
 export { DIFF_FLAGS, git, gitText, readBlob, resolveCommit, GitError } from './git.ts';
+export { ensureBareRepo, fetchQuiet, prefetchBlobs } from './partial.ts';
+export {
+  BLAME_CONFIG,
+  grepArgs,
+  historyArgs,
+  parseBlame,
+  parseGrep,
+  parseHistory,
+} from './history.ts';
