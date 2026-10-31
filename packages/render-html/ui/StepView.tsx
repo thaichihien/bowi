@@ -11,12 +11,15 @@ export function StepBody({
   step,
   rawOpen,
   toggleRaw,
+  viewed,
 }: {
   model: Model;
   group: Group;
   step: Step;
   rawOpen: boolean;
   toggleRaw: () => void;
+  /** Viewed state of the step's files (`Model.viewableFiles`); only diffs of logic get it. */
+  viewed?: Viewed;
 }) {
   const hunks = model.hunksOf(step);
   if (group.kind === 'move') {
@@ -39,17 +42,29 @@ export function StepBody({
   }
   return (
     <>
-      <Files model={model} step={step} />
+      <Files model={model} step={step} viewed={viewed} />
       <OutsideRefs model={model} step={step} />
     </>
   );
 }
 
-function Files({ model, step }: { model: Model; step: Step }) {
+export interface Viewed {
+  has: (fileId: string) => boolean;
+  toggle: (fileId: string) => void;
+}
+
+function Files({ model, step, viewed }: { model: Model; step: Step; viewed?: Viewed }) {
   return (
     <>
       {model.fileBlocks(step).map((b) => (
-        <FileCard key={b.file.id + b.hunks[0]!.id} model={model} file={b.file} hunks={b.hunks} />
+        <FileCard
+          key={b.file.id + b.hunks[0]!.id}
+          model={model}
+          file={b.file}
+          hunks={b.hunks}
+          viewed={viewed?.has(b.file.id)}
+          onViewed={viewed && (() => viewed.toggle(b.file.id))}
+        />
       ))}
     </>
   );

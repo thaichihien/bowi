@@ -27,8 +27,9 @@ beforeAll(async () => {
   pr.source.descriptionHtml = renderMarkdown(pr.source.description!);
 });
 
-const show = (plan: ReviewPlan, hash = '') => {
-  localStorage.clear(); // the diff layout is remembered per viewer
+const show = (plan: ReviewPlan, hash = '', { keepStorage = false } = {}) => {
+  // The diff layout and review progress are remembered per viewer.
+  if (!keepStorage) localStorage.clear();
   window.location.hash = hash;
   document.body.innerHTML = '<div id="app"></div>';
   root = document.getElementById('app')!;
@@ -143,8 +144,67 @@ describe('Review tab', () => {
     expect(text()).toContain('1 of 8 steps reviewed');
     await click('Mark as reviewed');
     expect(text()).toContain('2 of 8 steps reviewed');
-    expect(root.querySelectorAll('.step-btn [aria-label="Reviewed"]')).toHaveLength(2);
+    expect(root.querySelectorAll('.quick-mark[aria-pressed="true"]')).toHaveLength(2);
     expect(window.location.hash).toBe('#g1:service');
+  });
+
+  it('keeps Previous, Mark as reviewed and Next in the floating bar (UI-11)', async () => {
+    const fab = () => root.querySelector('.fab')!;
+    const previous = () =>
+      fab().querySelector('button[aria-label^="Previous"]') as HTMLButtonElement;
+    expect(fab().querySelector('.fab-pos')!.textContent).toBe('Step 1 of 8 · 0 of 2 files viewed');
+    expect(previous().disabled).toBe(true);
+    await click(/^Next: Services/);
+    expect(previous().disabled).toBe(false);
+    expect(previous().getAttribute('aria-label')).toBe('Previous: Data shape');
+    await press(previous());
+    expect(root.querySelector('.step h3')!.textContent).toBe('Step 1 of 5 · Data shape');
+  });
+
+  it('marks a step from the sidebar without opening it', async () => {
+    const quick = root.querySelector('button[aria-label="Mark Tests as reviewed"]')!;
+    await press(quick);
+    expect(quick.getAttribute('aria-pressed')).toBe('true');
+    expect(text()).toContain('1 of 8 steps reviewed');
+    expect(root.querySelector('.step h3')!.textContent).toBe('Step 1 of 5 · Data shape');
+    await press(quick);
+    expect(text()).toContain('0 of 8 steps reviewed');
+  });
+
+  it('folds viewed files and reviews the step once every file is viewed (UI-23)', async () => {
+    const viewed = () => [...root.querySelectorAll('.step .viewed')] as HTMLButtonElement[];
+    const heads = () => [...root.querySelectorAll('.step .file-head')];
+    expect(viewed()).toHaveLength(2);
+    await press(viewed()[0]);
+    expect(viewed()[0]!.getAttribute('aria-pressed')).toBe('true');
+    expect(heads()[0]!.getAttribute('aria-expanded')).toBe('false');
+    expect(heads()[1]!.getAttribute('aria-expanded')).toBe('true');
+    expect(text()).toContain('0 of 8 steps reviewed');
+    await press(viewed()[1]);
+    expect(text()).toContain('1 of 8 steps reviewed');
+    expect(root.querySelector('.fab-pos')!.textContent).toContain('2 of 2 files viewed');
+    // Unviewing a file takes back the automatic mark and opens the file again.
+    await press(viewed()[1]);
+    expect(text()).toContain('0 of 8 steps reviewed');
+    expect(heads()[1]!.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('keeps a step reviewed by hand when a file is unviewed', async () => {
+    await click('Mark as reviewed');
+    const first = root.querySelector('.step .viewed') as HTMLButtonElement;
+    await press(first);
+    await press(first);
+    expect(text()).toContain('1 of 8 steps reviewed');
+  });
+
+  it('remembers progress after a reload (UI-12)', async () => {
+    await press(root.querySelector('.step .viewed'));
+    await click(/^Next: Services/);
+    show(local, '', { keepStorage: true });
+    expect(text()).toContain('1 of 8 steps reviewed');
+    const first = root.querySelector('.step .viewed')!;
+    expect(first.getAttribute('aria-pressed')).toBe('true');
+    expect(root.querySelector('.step .file-head')!.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('switches to tests-first order (UI-10)', async () => {

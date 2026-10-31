@@ -194,6 +194,12 @@ export const CheckIcon = () => (
   </Svg>
 );
 
+export const ArrowIcon = ({ dir }: { dir: 'left' | 'right' }) => (
+  <Svg size={16}>
+    <path d={dir === 'left' ? 'M10 3L5 8l5 5' : 'M6 3l5 5-5 5'} />
+  </Svg>
+);
+
 export const FolderIcon = () => (
   <Svg size={14}>
     <path d="M1.75 3.75a1 1 0 011-1h3.5l1.5 1.75h5.5a1 1 0 011 1v6.75a1 1 0 01-1 1H2.75a1 1 0 01-1-1z" />

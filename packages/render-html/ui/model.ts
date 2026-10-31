@@ -121,6 +121,15 @@ export class Model {
     return blocks;
   }
 
+  /**
+   * Files of a step shown as diffs in the Review tab, which can be marked viewed. Moved code and
+   * collapsed noise have no file cards, so their steps have none.
+   */
+  viewableFiles(group: Group, step: Step): string[] {
+    if (group.kind === 'move' || this.hunksOf(step).every((h) => h.kind !== 'logic')) return [];
+    return [...new Set(this.fileBlocks(step).map((b) => b.file.id))];
+  }
+
   groupFiles(group: Group): Set<string> {
     return new Set(group.steps.flatMap((s) => s.hunkIds.map((id) => this.hunks.get(id)!.fileId)));
   }

@@ -380,11 +380,36 @@ code {
   color: var(--text);
   min-height: 48px;
 }
-.step-btn:hover {
+.step-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 8px;
+}
+.step-row:hover {
   background: var(--hover);
 }
-.step-btn.on {
+.step-row.on {
   background: var(--accent-soft);
+}
+.quick-mark {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.quick-mark:hover {
+  background: var(--border);
+}
+.quick-mark:hover circle[fill='none'] {
+  stroke: var(--green);
 }
 .step-text {
   flex: 1 1 auto;
@@ -621,6 +646,66 @@ button.file-head:hover {
 button.file-head[aria-expanded='false'] {
   border-bottom: 0;
 }
+/* Review tab: the header row holds the open/close button and the Viewed checkbox (UI-23). */
+.file-head-row {
+  display: flex;
+  align-items: center;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-soft);
+}
+.file-head-row.closed {
+  border-bottom: 0;
+}
+.file-head-row .file-head {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-bottom: 0;
+  background: transparent;
+}
+.file-head-row .file-head .file-name {
+  background: transparent;
+}
+.is-viewed .file-head-row {
+  background: #f3f2ee;
+}
+.viewed {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 12px 0 4px;
+  border: 1px solid var(--control);
+  background: var(--surface);
+  color: var(--text-2);
+  border-radius: 6px;
+  padding: 0 10px;
+  min-height: 32px;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.viewed:hover {
+  background: #f3f2ee;
+}
+.viewed.on {
+  background: var(--add-bg);
+  border-color: #b9dcc6;
+  color: var(--add-ink);
+}
+.viewed .box {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1.5px solid #8a8983;
+  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.viewed.on .box {
+  background: var(--green);
+  border-color: var(--green);
+}
 .file-name {
   flex: 1 1 auto;
   display: flex;
@@ -798,13 +883,69 @@ button.file-head[aria-expanded='false'] {
   overflow-x: auto;
 }
 
-/* Buttons */
-.actions {
+/* Floating step actions (UI-11): always in reach while reading a long step. */
+.review-page {
+  padding-bottom: 104px;
+}
+.fab {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 20;
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: flex-end;
-  padding-top: 4px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow:
+    0 10px 30px rgba(28, 28, 26, 0.14),
+    0 2px 6px rgba(28, 28, 26, 0.08);
+  max-width: calc(100vw - 32px);
+}
+.fab .btn {
+  white-space: nowrap;
+}
+.fab .btn:disabled {
+  color: var(--faint);
+  cursor: default;
+  background: var(--surface);
+}
+.fab-pos {
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 0 6px 0 8px;
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .fab {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    max-width: none;
+    justify-content: space-between;
+  }
+  .fab-pos,
+  .fab-long {
+    display: none;
+  }
+  .fab .btn {
+    padding: 0 12px;
+    min-width: 0;
+  }
+  .fab .btn.primary > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Buttons */
+.btn:focus-visible,
+.viewed:focus-visible,
+.quick-mark:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .btn {
   display: inline-flex;

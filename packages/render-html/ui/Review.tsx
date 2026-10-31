@@ -1,13 +1,15 @@
 /**
  * Review tab: the reading-order switch and progress (UI-10, UI-11), groups and steps in the
- * sidebar (UI-3), the current group's card (UI-4) and the current step (UI-5..8).
+ * sidebar with a quick "reviewed" mark per step (UI-3), the current group's card (UI-4), the
+ * current step with Viewed files (UI-5..8, UI-23) and the floating step actions (UI-11).
  */
 
 import type { Group } from '@bowi/core/types';
 import { useState } from 'preact/hooks';
-import { Chevron, ReviewedIcon, StepIconBadge } from './Icons.tsx';
+import { ArrowIcon, CheckIcon, Chevron, ReviewedIcon, StepIconBadge } from './Icons.tsx';
 import { Inline } from './Inline.tsx';
 import { KIND_LABELS, type FlatStep, type Model, type ReadingMode } from './model.ts';
+import { markStep, toggleViewed, viewedKey, type Progress } from './progress.ts';
 import { StepBody } from './StepView.tsx';
 
 export interface Position {
@@ -28,21 +30,22 @@ export function ReviewTab(props: {
   setMode: (m: ReadingMode) => void;
   flat: FlatStep[];
   current: Position;
-  reviewed: Set<string>;
-  setReviewed: (s: Set<string>) => void;
+  progress: Progress;
+  setProgress: (p: Progress) => void;
   go: (groupIndex: number, stepId?: string) => void;
 }) {
-  const { model, mode, flat, current, reviewed, setReviewed, go } = props;
+  const { model, mode, flat, current, progress, setProgress, go } = props;
+  const { reviewed } = progress;
   const [rawOpen, setRawOpen] = useState<Set<string>>(new Set());
   const group = model.plan.groups[current.groupIndex];
   const position = flat.findIndex((f) => f.step.id === current.stepId);
   const currentStep = position >= 0 ? flat[position] : undefined;
-  const next: FlatStep | undefined = position >= 0 ? flat[position + 1] : flat[0];
   const done = flat.filter((f) => reviewed.has(f.step.id)).length;
   const pct = flat.length ? Math.round((done / flat.length) * 100) : 0;
+  const mark = (stepId: string, on: boolean) => setProgress(markStep(progress, stepId, on));
 
   return (
-    <div class="wrap tab-page">
+    <div class="wrap tab-page review-page">
       <div class="toolbar">
         <div class="toolbar-group">
           <span class="muted small">Reading order</span>
@@ -83,7 +86,14 @@ export function ReviewTab(props: {
         </div>
       </div>
       <div class="layout">
-        <Sidebar model={model} mode={mode} current={current} reviewed={reviewed} go={go} />
+        <Sidebar
+          model={model}
+          mode={mode}
+          current={current}
+          reviewed={reviewed}
+          go={go}
+          mark={mark}
+        />
         <main class="main">
           {group ? (
             <GroupHeader key={group.id} model={model} group={group} index={current.groupIndex} />
@@ -91,52 +101,18 @@ export function ReviewTab(props: {
             <div class="card group-card">This pull request has no changes to review.</div>
           )}
           {group && currentStep && currentStep.groupIndex === current.groupIndex && (
-            <section class="step" aria-label="Current step">
-              <div class="step-head">
-                <div class="step-title">
-                  <StepIconBadge kind={model.stepIcon(group, currentStep.step)} />
-                  <h3>
-                    Step{' '}
-                    {model.stepsOf(group, mode).findIndex((s) => s.id === currentStep.step.id) + 1}{' '}
-                    of {model.stepsOf(group, mode).length} ·{' '}
-                    <Inline text={currentStep.step.title} />
-                  </h3>
-                </div>
-                <span class="muted small">{model.stepSubtitle(currentStep.step)}</span>
-              </div>
-              <StepBody
-                key={currentStep.step.id}
-                model={model}
-                group={group}
-                step={currentStep.step}
-                rawOpen={rawOpen.has(currentStep.step.id)}
-                toggleRaw={() => setRawOpen(toggle(rawOpen, currentStep.step.id))}
-              />
-              <div class="actions">
-                <button
-                  class={reviewed.has(currentStep.step.id) ? 'btn done' : 'btn'}
-                  aria-pressed={reviewed.has(currentStep.step.id)}
-                  onClick={() => setReviewed(toggle(reviewed, currentStep.step.id))}
-                >
-                  {reviewed.has(currentStep.step.id) ? 'Reviewed' : 'Mark as reviewed'}
-                </button>
-                <button
-                  class="btn primary"
-                  onClick={() => {
-                    setReviewed(new Set(reviewed).add(currentStep.step.id));
-                    if (next) go(next.groupIndex, next.step.id);
-                  }}
-                >
-                  {next ? (
-                    <>
-                      Next: <Inline text={next.step.title} /> →
-                    </>
-                  ) : (
-                    'Finish review'
-                  )}
-                </button>
-              </div>
-            </section>
+            <CurrentStep
+              model={model}
+              group={group}
+              mode={mode}
+              flat={flat}
+              position={position}
+              progress={progress}
+              setProgress={setProgress}
+              rawOpen={rawOpen.has(currentStep.step.id)}
+              toggleRaw={() => setRawOpen(toggle(rawOpen, currentStep.step.id))}
+              go={go}
+            />
           )}
         </main>
       </div>
@@ -144,12 +120,112 @@ export function ReviewTab(props: {
   );
 }
 
+/** The current step, then the floating bar to mark it and move on or back (UI-11). */
+function CurrentStep(props: {
+  model: Model;
+  group: Group;
+  mode: ReadingMode;
+  flat: FlatStep[];
+  position: number;
+  progress: Progress;
+  setProgress: (p: Progress) => void;
+  rawOpen: boolean;
+  toggleRaw: () => void;
+  go: (groupIndex: number, stepId?: string) => void;
+}) {
+  const { model, group, flat, position, progress, setProgress, go } = props;
+  const step = flat[position]!.step;
+  const prev = flat[position - 1];
+  const next = flat[position + 1];
+  const steps = model.stepsOf(group, props.mode);
+  const isDone = progress.reviewed.has(step.id);
+  const files = model.viewableFiles(group, step);
+  const viewedCount = files.filter((f) => progress.viewed.has(viewedKey(step.id, f))).length;
+  return (
+    <section class="step" aria-label="Current step">
+      <div class="step-head">
+        <div class="step-title">
+          <StepIconBadge kind={model.stepIcon(group, step)} />
+          <h3>
+            Step {steps.findIndex((s) => s.id === step.id) + 1} of {steps.length} ·{' '}
+            <Inline text={step.title} />
+          </h3>
+        </div>
+        <span class="muted small">{model.stepSubtitle(step)}</span>
+      </div>
+      <StepBody
+        key={step.id}
+        model={model}
+        group={group}
+        step={step}
+        rawOpen={props.rawOpen}
+        toggleRaw={props.toggleRaw}
+        viewed={{
+          has: (fileId) => progress.viewed.has(viewedKey(step.id, fileId)),
+          toggle: (fileId) => setProgress(toggleViewed(progress, step.id, fileId, files)),
+        }}
+      />
+      <div class="fab" role="region" aria-label="Step actions">
+        <span class="fab-pos">
+          Step {position + 1} of {flat.length}
+          {files.length > 0 && (
+            <>
+              {' '}
+              · {viewedCount} of {files.length} file{files.length === 1 ? '' : 's'} viewed
+            </>
+          )}
+        </span>
+        <button
+          class="btn"
+          disabled={!prev}
+          aria-label={prev ? `Previous: ${plainTitle(prev.step.title)}` : 'Previous'}
+          title={prev ? `Previous: ${plainTitle(prev.step.title)}` : 'This is the first step'}
+          onClick={() => prev && go(prev.groupIndex, prev.step.id)}
+        >
+          <ArrowIcon dir="left" />
+          <span class="fab-long">Previous</span>
+        </button>
+        <button
+          class={isDone ? 'btn done' : 'btn'}
+          aria-pressed={isDone}
+          onClick={() => setProgress(markStep(progress, step.id, !isDone))}
+        >
+          {isDone && <CheckIcon />}
+          {isDone ? 'Reviewed' : 'Mark as reviewed'}
+        </button>
+        <button
+          class="btn primary"
+          onClick={() => {
+            setProgress(markStep(progress, step.id, true));
+            if (next) go(next.groupIndex, next.step.id);
+          }}
+        >
+          {next ? (
+            <>
+              <span>
+                <span class="fab-long">Next: </span>
+                <Inline text={next.step.title} />
+              </span>
+              <ArrowIcon dir="right" />
+            </>
+          ) : (
+            'Finish review'
+          )}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+const plainTitle = (title: string) => title.replace(/`/g, '');
+
 function Sidebar(props: {
   model: Model;
   mode: ReadingMode;
   current: Position;
   reviewed: Set<string>;
   go: (g: number, s?: string) => void;
+  mark: (stepId: string, on: boolean) => void;
 }) {
   const { model, reviewed } = props;
   return (
@@ -175,23 +251,37 @@ function Sidebar(props: {
               </span>
               <span class="muted small">{model.groupFiles(g).size} files</span>
             </button>
-            {steps.map((s, i) => (
-              <button
-                key={s.id}
-                class={s.id === props.current.stepId ? 'step-btn on' : 'step-btn'}
-                aria-current={s.id === props.current.stepId ? 'step' : undefined}
-                onClick={() => props.go(gi, s.id)}
-              >
-                <StepIconBadge kind={model.stepIcon(g, s)} />
-                <span class="step-text">
-                  <span class="step-name">
-                    {i + 1}. <Inline text={s.title} />
-                  </span>
-                  <span class="muted small">{model.stepSubtitle(s)}</span>
-                </span>
-                <ReviewedIcon done={reviewed.has(s.id)} />
-              </button>
-            ))}
+            {steps.map((s, i) => {
+              const isDone = reviewed.has(s.id);
+              const name = plainTitle(s.title);
+              return (
+                <div key={s.id} class={s.id === props.current.stepId ? 'step-row on' : 'step-row'}>
+                  <button
+                    class="step-btn"
+                    aria-current={s.id === props.current.stepId ? 'step' : undefined}
+                    onClick={() => props.go(gi, s.id)}
+                  >
+                    <StepIconBadge kind={model.stepIcon(g, s)} />
+                    <span class="step-text">
+                      <span class="step-name">
+                        {i + 1}. <Inline text={s.title} />
+                      </span>
+                      <span class="muted small">{model.stepSubtitle(s)}</span>
+                    </span>
+                  </button>
+                  {/* Marks the step without opening it. */}
+                  <button
+                    class="quick-mark"
+                    aria-pressed={isDone}
+                    aria-label={isDone ? `${name}: reviewed` : `Mark ${name} as reviewed`}
+                    title={isDone ? 'Reviewed: click to mark as not reviewed' : 'Mark as reviewed'}
+                    onClick={() => props.mark(s.id, !isDone)}
+                  >
+                    <ReviewedIcon done={isDone} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         );
       })}

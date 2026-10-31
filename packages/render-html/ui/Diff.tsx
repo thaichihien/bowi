@@ -22,11 +22,16 @@ export function FileCard({
   file,
   hunks,
   tag,
+  viewed,
+  onViewed,
 }: {
   model: Model;
   file: FileChange;
   hunks: Hunk[];
   tag?: string;
+  /** With `onViewed`, the header gets a Viewed checkbox (Review tab, UI-23). */
+  viewed?: boolean;
+  onViewed?: () => void;
 }) {
   const symbols = [...new Set(hunks.flatMap((h) => h.symbolIds))]
     .map((id) => model.symbols.get(id)!)
@@ -35,35 +40,60 @@ export function FileCard({
   const adds = hunks.reduce((n, h) => n + h.lines.filter((l) => l.kind === 'add').length, 0);
   const dels = hunks.reduce((n, h) => n + h.lines.filter((l) => l.kind === 'del').length, 0);
   const label = tag ?? fileTag(file, symbols);
-  // Open by default; a very large change starts closed so the step stays readable.
-  const [open, setOpen] = useState(adds + dels <= LARGE_FILE_LINES);
-  return (
-    <div class="card file">
-      <button class="file-head" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <Chevron open={open} />
-        <span class="file-name">
-          <span class="mono path">{file.path}</span>
-          {named.length > 0 && (
-            <span class="mono sym">
-              {named
-                .slice(0, 2)
-                .map((s) => s.qualifiedName)
-                .join(', ')}
-              {named.length > 2 ? ` +${named.length - 2}` : ''}
-            </span>
-          )}
-          {label && <span class="chip k-tag">{label}</span>}
-        </span>
-        {!open && (
-          <span class="closed-note">
-            {adds + dels > LARGE_FILE_LINES ? 'Large change, ' : ''}
-            {hunks.length} hunk{hunks.length === 1 ? '' : 's'} · {adds + dels} lines hidden
+  // Open by default; a very large change, or one already viewed, starts closed.
+  const [open, setOpen] = useState(!viewed && adds + dels <= LARGE_FILE_LINES);
+  const head = (
+    <button class="file-head" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <Chevron open={open} />
+      <span class="file-name">
+        <span class="mono path">{file.path}</span>
+        {named.length > 0 && (
+          <span class="mono sym">
+            {named
+              .slice(0, 2)
+              .map((s) => s.qualifiedName)
+              .join(', ')}
+            {named.length > 2 ? ` +${named.length - 2}` : ''}
           </span>
         )}
-        <span class="mono delta">
-          <span class="plus">+{adds}</span> <span class="minus">−{dels}</span>
+        {label && <span class="chip k-tag">{label}</span>}
+      </span>
+      {!open && (
+        <span class="closed-note">
+          {adds + dels > LARGE_FILE_LINES ? 'Large change, ' : ''}
+          {hunks.length} hunk{hunks.length === 1 ? '' : 's'} · {adds + dels} lines hidden
         </span>
-      </button>
+      )}
+      <span class="mono delta">
+        <span class="plus">+{adds}</span> <span class="minus">−{dels}</span>
+      </span>
+    </button>
+  );
+  return (
+    <div class={viewed ? 'card file is-viewed' : 'card file'}>
+      {onViewed ? (
+        <div class={open ? 'file-head-row' : 'file-head-row closed'}>
+          {head}
+          <button
+            class={viewed ? 'viewed on' : 'viewed'}
+            aria-pressed={!!viewed}
+            aria-label={`Viewed: ${file.path}`}
+            title={viewed ? 'Viewed: click to mark as not viewed' : 'Mark as viewed and collapse'}
+            onClick={() => {
+              // Viewing folds the file away; marking it not viewed opens it again.
+              setOpen(!!viewed);
+              onViewed();
+            }}
+          >
+            <span class="box" aria-hidden="true">
+              {viewed && <CheckMark />}
+            </span>
+            Viewed
+          </button>
+        </div>
+      ) : (
+        head
+      )}
       {open && (
         <div class="hunks">
           {hunks.map((h) => (
@@ -77,6 +107,20 @@ export function FileCard({
         </div>
       )}
     </div>
+  );
+}
+
+function CheckMark() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+      <path
+        d="M2 5.2l2 2 4-4.4"
+        stroke="#fff"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </svg>
   );
 }
 

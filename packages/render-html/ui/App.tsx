@@ -22,6 +22,7 @@ import {
 import { DiffBlocks } from './Diff.tsx';
 import { Inline } from './Inline.tsx';
 import { formatCount, Model, type ReadingMode } from './model.ts';
+import { loadProgress, progressKey, saveProgress, type Progress } from './progress.ts';
 import { ReviewTab, type Position } from './Review.tsx';
 
 export type Tab = 'review' | 'description' | 'commits' | 'changes';
@@ -36,7 +37,15 @@ export function App({ plan, now }: { plan: ReviewPlan; now?: number }) {
   const [current, setCurrent] = useState<Position>(
     initial?.current ?? { groupIndex: 0, stepId: flat[0]?.step.id },
   );
-  const [reviewed, setReviewed] = useState<Set<string>>(new Set());
+  // Reviewed steps and viewed files, kept in the browser for a week (UI-12).
+  const storeKey = useMemo(() => progressKey(plan), [plan]);
+  const [progress, setProgressState] = useState<Progress>(() =>
+    loadProgress(storeKey, now ?? Date.now()),
+  );
+  const setProgress = (p: Progress) => {
+    setProgressState(p);
+    saveProgress(storeKey, p, Date.now());
+  };
 
   const go = (groupIndex: number, stepId?: string) => {
     setCurrent({ groupIndex, stepId });
@@ -77,8 +86,8 @@ export function App({ plan, now }: { plan: ReviewPlan; now?: number }) {
           setMode={setMode}
           flat={flat}
           current={current}
-          reviewed={reviewed}
-          setReviewed={setReviewed}
+          progress={progress}
+          setProgress={setProgress}
           go={go}
         />
       )}
