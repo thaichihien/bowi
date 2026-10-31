@@ -4,20 +4,100 @@
 
 Status: early development.
 
+## Installation
+
+### Prerequisites
+
+- **git**
+- **Node 22.18 or newer** (`node --version`). Bowi runs from its TypeScript sources, which Node runs directly from 22.18 on.
+- **Bun**, to install the dependencies: `curl -fsSL https://bun.sh/install | bash` (or `brew install oven-sh/bun/bun`).
+
+### From source
+
+**1. Clone and install:**
+
 ```bash
-bowi https://github.com/<owner>/<repo>/pull/<n>   # review a GitHub pull request
-bowi --local [--base <branch>]                    # review the current branch, including uncommitted work
+git clone https://github.com/thaichihien/bowi.git
+cd bowi
+bun install          # dependencies
+bun run build:ui     # builds the report page template; Bowi cannot write review.html without it
 ```
 
-Both write `review-plan.json` and `review.html` to `.bowi/<repo>-<pr-or-branch>/` and open the page. Private repositories need `GITHUB_TOKEN` or `gh auth login`. Fetched code is cached (`bowi cache clear` removes it). See [docs/requirement.md](docs/requirement.md) and [docs/plan.md](docs/plan.md).
+**2. Add a `bowi` command.** Run this inside the clone, so the path points to it (use `~/.bashrc` for bash):
+
+```bash
+echo "alias bowi='node $PWD/packages/cli/src/bin.ts'" >> ~/.zshrc
+source ~/.zshrc
+bowi --help
+```
+
+**Update** to the latest version, inside the clone:
+
+```bash
+git pull && bun install && bun run build:ui
+```
+
+### From npm
+
+Coming later: Bowi is not published yet.
+
+## Usage
+
+In any git repository, on the branch you want to review:
+
+```bash
+bowi --local                                       # this branch against main (or origin/HEAD), uncommitted work included
+bowi --local --base develop                        # against another branch
+bowi https://github.com/<owner>/<repo>/pull/<n>    # a GitHub pull request; no clone of that repository needed
+```
+
+Both write `review-plan.json` and `review.html` to `.bowi/<repo>-<pr-or-branch>/` and open the page. Private GitHub repositories need `gh auth login` ([GitHub CLI](https://cli.github.com)) or a `GITHUB_TOKEN` environment variable; public repositories and `--local` need nothing. Fetched code is cached (`bowi cache clear` removes it). See [docs/requirement.md](docs/requirement.md) and [docs/plan.md](docs/plan.md).
 
 In the report, `j` / `k` move to the next and previous step and `r` marks the current step reviewed.
 
-### AI titles and intents (optional)
+To try Bowi on a small sample first, build the demo repository (a NestJS backend with an "email verification" branch) from inside the clone:
 
-With `--ai`, Bowi asks Claude, through your local [Claude Code](https://claude.com/claude-code) and its login (no API key), to title each group, explain in 1–3 sentences what it does, and write an overview of the whole change (in the Description tab). It may also suggest that a hunk belongs to another group; suggestions are shown on the group card, never applied. AI-written text is marked "AI" in the report. Off by default.
+```bash
+bun run fixture email-verification ~/bowi-demo
+cd ~/bowi-demo && bowi --local
+```
 
-Sent: each group's diff (only lines near changes; never generated files, formatting-only changes, moved code or whole files), its symbols and links, and the PR title, description and commit subjects. Claude Code runs in an empty folder with no tools and without your CLAUDE.md, hooks or plugins. Answers are checked before use and cached, so a second run asks nothing. If a call fails, that group keeps Bowi's own title.
+### AI enrichment (optional)
+
+With `--ai`, Bowi asks an AI model to title each group, explain in 1–3 sentences what it does, and write an overview of the whole change (in the Description tab). It may also suggest that a hunk belongs to another group; suggestions are shown on the group card, never applied. AI-written text is marked "AI" in the report, with the model that wrote it. Off by default; without it, Bowi's own titles and descriptions are used.
+
+Sent: each group's diff (only lines near changes; never generated files, formatting-only changes, moved code or whole files), its symbols and links, and the PR title, description and commit subjects. Answers are checked before use and cached, so a second run on the same changes asks nothing. If a call fails, that group keeps Bowi's own title.
+
+The AI is reached through a provider, chosen with `ai.provider` in the config:
+
+| Provider      | Status    | What it uses                                                                                     |
+| ------------- | --------- | ------------------------------------------------------------------------------------------------ |
+| `claude-code` | Available | Your local [Claude Code](https://claude.com/claude-code) and its login (no API key for Bowi)     |
+| Others        | Planned   | More providers, such as AI provider APIs with your own key and local models, will be added later |
+
+#### Set up Claude Code
+
+1. Install Claude Code: `curl -fsSL https://claude.ai/install.sh | bash` (or `npm install -g @anthropic-ai/claude-code`; see the [setup guide](https://docs.claude.com/en/docs/claude-code/setup)).
+2. Run `claude` once in a terminal and log in (a Claude subscription or an Anthropic Console account), then quit it. `claude --version` should work in the terminal you run Bowi from.
+3. Run Bowi with `--ai`:
+
+```bash
+bowi --local --ai
+```
+
+Bowi prints what it sends before the first call, and the AI line of the progress shows how many groups were titled. If `claude` is not installed, Bowi stops with exit code 1 and says how to install it; if it is not logged in or out of usage, the report is still written with Bowi's own titles and a warning says why.
+
+To pick the model and effort, or to turn AI on without `--ai`, put an `ai` section in your config file:
+
+```json
+{
+  "ai": { "enabled": true, "provider": "claude-code", "model": "sonnet", "effort": "low" }
+}
+```
+
+`model` is a Claude Code model name or alias (`sonnet`, `opus`, `haiku`; empty: Claude Code's default). `effort` is `low`, `medium`, `high`, `xhigh` or `max` (empty: Claude Code's default); lower is faster. For `--local`, the file can be the repository's `.bowi.json`. For a pull request, the repository's own file cannot turn AI on (it would send code on your account), so keep your settings in a file of your own and pass it: `bowi <pr-url> --config ~/bowi.json`. All AI keys are listed under [Configuration](#configuration).
+
+Claude Code runs hardened: in an empty temporary folder, with no tools, no MCP servers and without your CLAUDE.md, hooks or plugins, so your own setup neither sees the request nor changes the answer. It uses your Claude Code login and usage limits.
 
 ## What Bowi understands
 
@@ -89,12 +169,12 @@ Bowi reads `.bowi.json` from the repository root (for a pull request: the file a
 | `grouping.maxGroupShare`   | Share of all changes (0–1] above which a large group is split                                                                                           |
 | `outsideRefs.maxPerSymbol` | Unchanged callers listed per changed symbol (0–50); `0` turns the search off                                                                            |
 | `order`                    | Reading order the report opens with: `dependency` or `tests-first`. `--order` wins                                                                      |
-| `ai.enabled`               | AI titles and intents (see above). `--ai` / `--no-ai` win. Ignored in a pull request's own `.bowi.json`: only you can turn it on                        |
-| `ai.model`                 | Model for Claude Code, e.g. `sonnet` (empty: Claude Code's default)                                                                                     |
-| `ai.effort`                | `low`, `medium`, `high`, `xhigh` or `max` (empty: Claude Code's default)                                                                                |
-| `ai.concurrency`           | Calls to Claude at once (1–10, default 3)                                                                                                               |
+| `ai.enabled`               | AI enrichment (see above). `--ai` / `--no-ai` win. Ignored in a pull request's own `.bowi.json`: only you can turn it on                                |
+| `ai.model`                 | Model for the provider, e.g. `sonnet` for Claude Code (empty: the provider's default)                                                                   |
+| `ai.effort`                | `low`, `medium`, `high`, `xhigh` or `max` (empty: the provider's default)                                                                               |
+| `ai.concurrency`           | Calls to the AI at once (1–10, default 3)                                                                                                               |
 | `ai.timeoutSeconds`        | Time per call before that group keeps Bowi's own title (default 120)                                                                                    |
-| `ai.provider`              | `claude-code`, the only provider so far                                                                                                                 |
+| `ai.provider`              | `claude-code`, the only available provider so far                                                                                                       |
 
 ## Development
 
