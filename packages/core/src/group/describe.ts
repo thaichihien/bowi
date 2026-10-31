@@ -3,6 +3,7 @@
  * title and kind. No AI involved.
  */
 
+import { compareStrings } from '../determinism.ts';
 import { show } from '../stages/graph.ts';
 import type { ChangedSymbol, ChangeEdge, Group, Hunk, ReviewPlan } from '../types.ts';
 import type { Cluster } from './cluster.ts';
@@ -37,14 +38,23 @@ export function reasonsFor(f: GroupFacts, fileOf: (fileId: string) => string): s
     .sort(
       (a, b) => b.weight - a.weight || REASON_TYPES.indexOf(a.type) - REASON_TYPES.indexOf(b.type),
     );
+  // One reason per pair of symbols: a framework edge and a shared literal often say the same
+  // thing about an entity and its migration.
+  const pairKey = (e: ChangeEdge) => [e.from, e.to].sort(compareStrings).join('\u0000');
+  const pairs = new Set<string>();
   const picked: ChangeEdge[] = [];
+  const pick = (e: ChangeEdge) => {
+    if (picked.includes(e) || pairs.has(pairKey(e))) return;
+    picked.push(e);
+    pairs.add(pairKey(e));
+  };
   for (const type of REASON_TYPES) {
-    const best = ranked.find((e) => e.type === type);
-    if (best) picked.push(best);
+    const best = ranked.find((e) => e.type === type && !pairs.has(pairKey(e)));
+    if (best) pick(best);
   }
   for (const e of ranked) {
     if (picked.length >= MAX_REASONS) break;
-    if (!picked.includes(e)) picked.push(e);
+    pick(e);
   }
   const byId = new Map(f.symbols.map((s) => [s.id, s]));
 
@@ -75,7 +85,10 @@ export function reasonsFor(f: GroupFacts, fileOf: (fileId: string) => string): s
   }
   for (const e of ranked) {
     if (reasons.length >= MAX_REASONS) break;
-    if (!summarized.has(e) && !picked.includes(e)) reasons.push(e.evidence.text);
+    if (!summarized.has(e) && !picked.includes(e) && !pairs.has(pairKey(e))) {
+      reasons.push(e.evidence.text);
+      pairs.add(pairKey(e));
+    }
   }
 
   for (const a of f.cluster.attached) {
@@ -142,7 +155,10 @@ export function kindFor(f: GroupFacts): Group['kind'] {
  */
 export function ruleTitle(f: GroupFacts, fileOf: (fileId: string) => string): string {
   if (f.cluster.origin === 'other' && f.symbols.length > 1) return 'Other changes';
-  const candidates = f.symbols.filter((s) => s.kind !== 'file' && s.layer !== 'test');
+  // Code names the change best: not tests, and not the docs sections describing it.
+  const candidates = f.symbols.filter(
+    (s) => s.kind !== 'file' && s.kind !== 'section' && s.layer !== 'test' && s.layer !== 'docs',
+  );
   const pool = candidates.length ? candidates : f.symbols.filter((s) => s.kind !== 'file');
   if (pool.length === 0) {
     const paths = [...new Set(f.symbols.map((s) => fileOf(s.fileId)))];

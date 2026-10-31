@@ -184,6 +184,23 @@ describe('openGithubSnapshot', () => {
     expect(await gh.readFile('old', 'src/migrations/1730_add_email_verified.ts')).toBeNull();
   });
 
+  it('gives the same history and search results as the local source, fetching in batches', async () => {
+    const cacheDir = join(tempDir(), 'cache');
+    const gh = await openGithubSnapshot(info, { cacheDir, remoteUrl });
+    const local = await openLocalSnapshot({ cwd: localRepo });
+    const paths = ['src/users/user.entity.ts', 'src/auth/auth.service.ts', 'README.md'];
+    expect(await gh.blame!(paths)).toEqual(await local.blame!(paths));
+    expect(await gh.baseHistory!(300)).toEqual(await local.baseHistory!(300));
+    const words = ['User', 'register', 'verifyEmail'];
+    expect(await gh.grep!(words, ['.ts'])).toEqual(await local.grep!(words, ['.ts']));
+
+    // Everything is in the cache now: a second snapshot needs no server.
+    const again = await openGithubSnapshot(info, { cacheDir, remoteUrl: 'file:///nonexistent' });
+    expect(await again.blame!(paths)).toEqual(await local.blame!(paths));
+    expect(await again.baseHistory!(300)).toEqual(await local.baseHistory!(300));
+    expect(await again.grep!(words, ['.ts'])).toEqual(await local.grep!(words, ['.ts']));
+  });
+
   it('reports an unreachable remote as a source error', async () => {
     const e = await openGithubSnapshot(info, {
       cacheDir: join(tempDir(), 'cache'),

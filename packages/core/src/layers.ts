@@ -1,6 +1,6 @@
 /**
- * Layer assignment by path (SYM-4). Configured globs win, then these heuristics in order.
- * Framework plugins (M6) will refine layers from code, e.g. NestJS decorators.
+ * Layer assignment (SYM-4). Configured globs win, then a framework plugin's layer from the code
+ * (e.g. NestJS decorators), then these path heuristics in order.
  */
 
 import picomatch from 'picomatch';
@@ -49,12 +49,15 @@ const RULES: Rule[] = [
 
 export function createLayerResolver(
   configured: Partial<Record<Layer, string[]>>,
+  fromCode: (path: string) => Layer | undefined = () => undefined,
 ): (path: string) => Layer {
   const globs = (Object.entries(configured) as [Layer, string[]][]).flatMap(([layer, patterns]) =>
     patterns.map((p) => ({ layer, m: picomatch(p, { dot: true }) })),
   );
   return (path) => {
     for (const g of globs) if (g.m(path)) return g.layer;
+    const coded = fromCode(path);
+    if (coded) return coded;
     for (const [layer, re] of RULES) if (re.test(path)) return layer;
     return 'unknown';
   };

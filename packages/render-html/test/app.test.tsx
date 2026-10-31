@@ -28,6 +28,8 @@ beforeAll(async () => {
 });
 
 const show = (plan: ReviewPlan, hash = '', { keepStorage = false } = {}) => {
+  // Unmount the previous page, so its document listeners (keyboard) are removed.
+  if (root) render(null, root);
   // The diff layout and review progress are remembered per viewer.
   if (!keepStorage) localStorage.clear();
   window.location.hash = hash;
@@ -99,7 +101,7 @@ describe('Review tab', () => {
   it('shows the groups in order and the first step (UI-3)', () => {
     const groups = [...root.querySelectorAll('.grp .grp-title')].map((e) => e.textContent);
     expect(groups).toEqual([
-      'New AuthService.verifyEmail() and 9 related changes',
+      'New AuthService.verifyEmail() and 10 related changes',
       'Move slugify() from helpers.ts to string.ts',
       'Generated files and formatting',
     ]);
@@ -213,6 +215,9 @@ describe('Review tab', () => {
       expect(dialog.querySelector('h2')!.textContent).toBe('Review complete');
       expect(dialog.textContent).toContain('all 8 steps of feature/email-verification');
       expect(root.querySelectorAll('.fireworks .paper').length).toBeGreaterThan(100);
+      // Its check mark has its own classes: `.badge` is the Changes tab's "New file" pill.
+      expect(dialog.querySelector('.done-badge .done-badge-disc')).not.toBeNull();
+      expect(dialog.querySelector('.badge')).toBeNull();
       await click('Done');
       expect(root.querySelector('[role="dialog"]')).toBeNull();
       // Every click on Finish celebrates again.
@@ -220,6 +225,9 @@ describe('Review tab', () => {
       expect(root.querySelector('[role="dialog"] h2')!.textContent).toBe('Review complete');
       await click('See all changes');
       expect(root.querySelector('.tab.on')!.textContent).toBe('Changes11');
+      expect(
+        [...root.querySelectorAll('.gh-file .badge')].map((b) => [b.className, b.textContent]),
+      ).toContainEqual(['badge badge-added', 'New file']);
     });
 
     it('lists the steps left, without fireworks, and goes to one', async () => {
@@ -246,6 +254,30 @@ describe('Review tab', () => {
     });
   });
 
+  it('starts over after confirming: clears reviewed steps and viewed files (UI-12)', async () => {
+    const startOver = () => buttons().find((b) => b.textContent === 'Start over')!;
+    expect(startOver().disabled).toBe(true); // nothing to clear yet
+    await click(/^Next: Services/);
+    await press(root.querySelector('.step .viewed'));
+    expect(text()).toContain('1 of 8 steps reviewed');
+    expect(startOver().disabled).toBe(false);
+
+    await press(startOver());
+    expect(text()).toContain('Clear 1 reviewed step and 1 viewed file?');
+    await click('Cancel');
+    expect(text()).toContain('1 of 8 steps reviewed');
+
+    await press(startOver());
+    await click('Clear');
+    expect(text()).toContain('0 of 8 steps reviewed');
+    expect(root.querySelectorAll('.quick-mark[aria-pressed="true"]')).toHaveLength(0);
+    expect(root.querySelector('.step h3')!.textContent).toBe('Step 1 of 5 · Data shape');
+    // Also cleared in storage: a reload starts fresh.
+    show(local, '', { keepStorage: true });
+    expect(text()).toContain('0 of 8 steps reviewed');
+    expect(startOver().disabled).toBe(true);
+  });
+
   it('remembers progress after a reload (UI-12)', async () => {
     await press(root.querySelector('.step .viewed'));
     await click(/^Next: Services/);
@@ -260,6 +292,72 @@ describe('Review tab', () => {
     await click('Tests first');
     await click(/New AuthService.verifyEmail/);
     expect(root.querySelector('.step h3')!.textContent).toBe('Step 1 of 5 · Tests');
+  });
+
+  it('opens in the reading order the plan asks for (CLI-7)', () => {
+    const testsFirst = structuredClone(local);
+    testsFirst.meta.order = 'tests-first';
+    show(testsFirst);
+    expect(root.querySelector('.seg.on')!.textContent).toBe('Tests first');
+    expect(root.querySelector('.step h3')!.textContent).toBe('Step 1 of 5 · Tests');
+  });
+
+  it('moves with j and k and toggles reviewed with r (UI-13)', async () => {
+    const key = (k: string, init: KeyboardEventInit = {}, target: EventTarget = document) =>
+      act(() => {
+        target.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...init }));
+      });
+    const title = () => root.querySelector('.step h3')!.textContent;
+    // The page registers its key listener in an effect, which runs after the next frame.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await key('j');
+    expect(title()).toBe('Step 2 of 5 · Services');
+    await key('j');
+    await key('k');
+    expect(title()).toBe('Step 2 of 5 · Services');
+    expect(text()).toContain('0 of 8 steps reviewed'); // j and k never mark a step
+    await key('r');
+    expect(text()).toContain('1 of 8 steps reviewed');
+    await key('r');
+    expect(text()).toContain('0 of 8 steps reviewed');
+    // Not with a modifier, and not while typing.
+    await key('j', { metaKey: true });
+    expect(title()).toBe('Step 2 of 5 · Services');
+    const input = document.createElement('input');
+    root.appendChild(input);
+    await key('j', {}, input);
+    expect(title()).toBe('Step 2 of 5 · Services');
+    await key('k');
+    await key('k');
+    expect(title()).toBe('Step 1 of 5 · Data shape');
+  });
+
+  it('shows the hints of the group, with code in them (HINT-1)', () => {
+    const withHints = structuredClone(local);
+    withHints.hints = [
+      {
+        id: 'hint1',
+        ruleId: 'public-route',
+        severity: 'attention',
+        message: 'New route: GET /auth/verify-email',
+        target: { groupId: 'g1', stepId: 'g1:api', hunkId: withHints.hunks[0]!.id },
+      },
+      {
+        id: 'hint2',
+        ruleId: 'moved-behavior',
+        severity: 'attention',
+        message: '1 line changed inside moved code `slugify()`',
+        target: { groupId: 'g2', stepId: 'g2:move1', hunkId: withHints.hunks[0]!.id },
+      },
+    ];
+    show(withHints);
+    expect([...root.querySelectorAll('.group-card .hint')].map((h) => h.textContent)).toEqual([
+      'New route: GET /auth/verify-email',
+    ]);
+    show(withHints, '#g2');
+    const hint = root.querySelector('.group-card .hint.attention')!;
+    expect(hint.textContent).toBe('1 line changed inside moved code slugify()');
+    expect(hint.querySelector('code')!.textContent).toBe('slugify()');
   });
 
   it('shows the moved code with the changed line and its original (UI-6)', async () => {

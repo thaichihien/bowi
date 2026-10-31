@@ -299,6 +299,28 @@ code {
   background: var(--green);
   border-radius: 99px;
 }
+.progress .btn.small {
+  align-self: center;
+}
+.progress .btn:disabled {
+  color: var(--faint);
+  cursor: default;
+  background: var(--surface);
+}
+.reset-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+.btn.danger {
+  color: var(--del-ink);
+  border-color: #f0c2c2;
+}
+.btn.danger:hover {
+  background: var(--del-bg);
+}
 
 /* Review tab layout */
 .layout {
@@ -749,6 +771,9 @@ button.file-head[aria-expanded='false'] {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.hunk-name {
+  font-weight: 600;
+}
 .hunk-tags {
   color: var(--accent-ink);
 }
@@ -1085,30 +1110,30 @@ button.file-head[aria-expanded='false'] {
   flex-direction: column;
   gap: 1px;
 }
-.badge {
+.done-badge {
   position: relative;
   width: 72px;
   height: 72px;
   margin: 0 auto 18px;
 }
-.badge-disc,
-.badge-ring {
+.done-badge-disc,
+.done-badge-ring {
   position: absolute;
   inset: 0;
   border-radius: 50%;
 }
-.badge-disc {
+.done-badge-disc {
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--green);
   animation: bowi-pop 0.5s 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
 }
-.badge-ring {
+.done-badge-ring {
   border: 3px solid #2f9e57;
   animation: bowi-ring 1s 0.3s ease-out both;
 }
-.badge-tick {
+.done-badge-tick {
   stroke-dasharray: 30;
   stroke-dashoffset: 30;
   animation: bowi-draw 0.35s 0.45s ease-out forwards;
@@ -1195,14 +1220,14 @@ button.file-head[aria-expanded='false'] {
   }
   .backdrop,
   .dialog,
-  .badge-disc,
-  .badge-ring {
+  .done-badge-disc,
+  .done-badge-ring {
     animation: none;
   }
-  .badge-ring {
+  .done-badge-ring {
     opacity: 0;
   }
-  .badge-tick {
+  .done-badge-tick {
     animation: none;
     stroke-dashoffset: 0;
   }

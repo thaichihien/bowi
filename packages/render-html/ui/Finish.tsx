@@ -69,12 +69,12 @@ export function FinishDialog(props: {
           </button>
           {complete ? (
             <>
-              <div class="badge" aria-hidden="true">
-                <span class="badge-ring" />
-                <span class="badge-disc">
+              <div class="done-badge" aria-hidden="true">
+                <span class="done-badge-ring" />
+                <span class="done-badge-disc">
                   <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
                     <path
-                      class="badge-tick"
+                      class="done-badge-tick"
                       d="M10 18.5l5.5 5.5L26 13"
                       stroke="#fff"
                       stroke-width="3.2"

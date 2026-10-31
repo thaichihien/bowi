@@ -92,7 +92,7 @@ describe('email-verification fixture', () => {
     expect(plan.stats.reviewLines + plan.stats.noiseLines).toBe(
       plan.stats.additions + plan.stats.deletions,
     );
-    expect(plan.meta.languages).toEqual(['typescript']);
+    expect(plan.meta.languages).toEqual(['markdown', 'typescript']);
     expect(plan.meta.warnings).toEqual([]);
   });
 
@@ -123,6 +123,36 @@ describe('email-verification fixture', () => {
     // The mail service is used by the auth service, so it is read first.
     expect(pathsOf(1)).toEqual(['src/mail/mail.service.ts', 'src/auth/auth.service.ts']);
     expect(plan.groups[0]!.testsFirstStepOrder[0]).toBe(steps[3]!.id);
+  });
+
+  it('finds unchanged code using changed symbols, e.g. AuthService.login() using User (GRAPH-11)', () => {
+    const user = plan.symbols.find((s) => s.qualifiedName === 'User')!;
+    const refs = plan.outsideRefs.filter((r) => r.symbolId === user.id);
+    expect(refs).toContainEqual({
+      symbolId: user.id,
+      fileId: file('src/auth/auth.service.ts').id,
+      path: 'src/auth/auth.service.ts',
+      line: 59, // inside login(), which the PR does not change
+      excerpt: 'const user: User | null = await this.users.findByEmail(dto.email);',
+    });
+    expect(refs).toContainEqual(
+      expect.objectContaining({ path: 'src/admin/admin-users.controller.ts', line: 18 }),
+    );
+    expect(refs.length).toBeLessThanOrEqual(DEFAULT_CONFIG.outsideRefs.maxPerSymbol);
+    // Never a line the PR adds, never an import.
+    const added = new Set(
+      plan.hunks.flatMap((h) =>
+        h.lines
+          .filter((l) => l.kind === 'add')
+          .map((l) => `${plan.files.find((f) => f.id === h.fileId)!.path}:${l.newNo}`),
+      ),
+    );
+    expect(plan.outsideRefs.filter((r) => added.has(`${r.path}:${r.line}`))).toEqual([]);
+    expect(plan.outsideRefs.filter((r) => r.excerpt.startsWith('import '))).toEqual([]);
+  });
+
+  it('records the reading order the report opens with (CLI-7)', () => {
+    expect(plan.meta.order).toBe('dependency');
   });
 
   it('explains the feature group with the expected reasons', () => {

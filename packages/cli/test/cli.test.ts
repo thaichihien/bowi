@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -183,6 +183,36 @@ describe('bowi <github-pr-url>', () => {
     expect(again.stderr).toContain('✓ Fetched   both commits already cached');
   });
 
+  it('reads .bowi.json from the base side, never from the pull request itself', async () => {
+    const root = tempDir();
+    const { remoteUrl, pr } = fakeServer(root, {
+      ...emailVerification,
+      base: [
+        ...emailVerification.base,
+        { message: 'config', files: { '.bowi.json': '{"generated":["README.md"]}\n' } },
+      ],
+      head: [
+        ...emailVerification.head,
+        // A PR must not be able to hide its own code as generated noise.
+        { message: 'hide', files: { '.bowi.json': '{"generated":["src/**"]}\n' } },
+      ],
+    });
+    const cwd = tempDir();
+    const github = { fetch: fakeApi(pr), apiBase: 'https://api.github.com', remoteUrl, token: '' };
+    const r = await bowiWith(
+      { github },
+      cwd,
+      'https://github.com/acme/api/pull/7',
+      '--cache-dir',
+      join(root, 'cache'),
+      '--json-only',
+    );
+    expect(r.code).toBe(0);
+    const plan = readPlan(join(cwd, '.bowi', 'api-7'));
+    const generated = plan.files.filter((f) => f.generated).map((f) => f.path);
+    expect(generated).toEqual(['README.md', 'package-lock.json']);
+  });
+
   it('exits 2 with a next step when GitHub cannot be reached', async () => {
     const r = await bowi(tempDir(), 'https://github.com/acme/api/pull/7');
     expect(r.code).toBe(2);
@@ -212,6 +242,64 @@ describe('bowi cache clear', () => {
     expect(r.code).toBe(0);
     expect(r.stderr).toContain(`Cleared ${dir}`);
     expect(existsSync(dir)).toBe(false);
+  });
+});
+
+describe('configuration (CLI-7, CLI-9)', () => {
+  let repo: string;
+  beforeAll(() => {
+    repo = buildFixtureRepo(emailVerification, join(tempDir(), 'repo')).dir;
+  });
+
+  it('reads .bowi.json at the repository root and warns about unknown settings', async () => {
+    writeFileSync(
+      join(repo, '.bowi.json'),
+      JSON.stringify({ generated: ['README.md'], order: 'tests-first', colour: 'red' }),
+    );
+    const out = join(tempDir(), 'out');
+    const r = await bowi(join(repo, 'src'), '--local', '--json-only', '--out', out);
+    rmSync(join(repo, '.bowi.json'));
+    expect(r.code).toBe(0);
+    expect(r.stderr).toContain('! .bowi.json: unknown setting "colour" was ignored');
+    const plan = readPlan(out);
+    expect(plan.files.find((f) => f.path === 'README.md')!.generated).toBe(true);
+    expect(plan.meta.order).toBe('tests-first');
+  });
+
+  it('takes --config and --order, the flag winning over the file', async () => {
+    const config = join(tempDir(), 'custom.json');
+    writeFileSync(
+      config,
+      JSON.stringify({ order: 'tests-first', outsideRefs: { maxPerSymbol: 0 } }),
+    );
+    const out = join(tempDir(), 'out');
+    const r = await bowi(
+      repo,
+      '--local',
+      '--json-only',
+      '--out',
+      out,
+      '--config',
+      config,
+      '--order',
+      'dependency',
+    );
+    expect(r.code).toBe(0);
+    const plan = readPlan(out);
+    expect(plan.meta.order).toBe('dependency');
+    expect(plan.outsideRefs).toEqual([]);
+  });
+
+  it('exits 1 for an invalid or missing config file and a bad --order', async () => {
+    const config = join(tempDir(), 'bad.json');
+    writeFileSync(config, '{"grouping":{"edgeThreshold":"high"}}');
+    const bad = await bowi(repo, '--local', '--json-only', '--config', config);
+    expect(bad.code).toBe(1);
+    expect(bad.stderr).toContain('has invalid settings: grouping.edgeThreshold');
+    const missing = await bowi(repo, '--local', '--json-only', '--config', join(repo, 'nope.json'));
+    expect(missing.code).toBe(1);
+    expect(missing.stderr).toContain('Cannot read the config file');
+    expect((await bowi(repo, '--local', '--order', 'random')).code).toBe(1);
   });
 });
 

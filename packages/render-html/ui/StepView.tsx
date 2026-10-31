@@ -142,7 +142,7 @@ function OutsideRefs({ model, step }: { model: Model; step: Step }) {
   if (refs.length === 0) return null;
   return (
     <div class="card context">
-      <div class="context-title">Related code not in this PR</div>
+      <div class="context-title">Unchanged code that uses these changes</div>
       {refs.map((r, i) => (
         <div class="context-row" key={i}>
           <div>

@@ -47,6 +47,8 @@ export interface ReviewPlan {
     ai: { enabled: boolean; provider?: string; model?: string };
     languages: string[];
     plugins: string[];
+    /** Reading order the report opens with (CLI-7, config `order`); both orders are in `groups`. */
+    order?: 'dependency' | 'tests-first';
     warnings: string[]; // e.g. "src/legacy.js failed to parse; used text-only analysis"
     timingsMs: Record<string, number>;
   };

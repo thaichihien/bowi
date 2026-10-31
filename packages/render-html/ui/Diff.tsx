@@ -134,7 +134,7 @@ function HunkView({ model, hunk, wholeFile }: { model: Model; hunk: Hunk; wholeF
   return (
     <div id={`hunk-${hunk.id}`}>
       <div class="mono hunk-bar">
-        {hunkBarText(hunk)}
+        <HunkBarText hunk={hunk} />
         {tags.length > 0 && <span class="hunk-tags"> · {tags.join(' · ')}</span>}
       </div>
       <UnifiedLines hunk={hunk} />
@@ -159,8 +159,14 @@ export function Line({ line, cls, sign }: { line: DiffLine; cls: LineClass; sign
   );
 }
 
-export function hunkBarText(hunk: Hunk): string {
-  return `@@ −${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@ ${hunk.header}`;
+/** The `@@ −a,b +c,d @@` range, then the symbol or section the hunk is in, in bold. */
+export function HunkBarText({ hunk }: { hunk: Hunk }) {
+  return (
+    <>
+      @@ −{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},{hunk.newLines} @@{' '}
+      {hunk.header && <strong class="hunk-name">{hunk.header}</strong>}
+    </>
+  );
 }
 
 /** A hunk's lines one below the other (GitHub's unified layout). */

@@ -28,7 +28,9 @@
   "dependencies": {
     "@bowi/cache": "workspace:*",
     "@bowi/core": "workspace:*",
+    "@bowi/plugins": "workspace:*",
     "@bowi/render-html": "workspace:*",
+    "@bowi/rules": "workspace:*",
     "@bowi/sources": "workspace:*",
     "commander": "^14"
   },

@@ -135,6 +135,62 @@ describe('openLocalSnapshot on the email-verification fixture', () => {
   });
 });
 
+describe('history and search on the working tree', () => {
+  it('blames lines to PR commits, lists base history and greps tracked and untracked files', async () => {
+    const repo = buildFixtureRepo(emailVerification, join(tempDir(), 'repo')).dir;
+    writeFileSync(
+      join(repo, 'src/auth/auth.service.ts'),
+      readFileSync(join(repo, 'src/auth/auth.service.ts'), 'utf8') + '// verifyEmail later\n',
+    );
+    writeFileSync(join(repo, 'src/extra.ts'), 'export const x = verifyEmail;\n');
+    const snap = await openLocalSnapshot({ cwd: repo });
+    const [data, feature] = snap.meta.commits;
+
+    const blame = await snap.blame!([
+      'src/users/user.entity.ts',
+      'src/auth/auth.service.ts',
+      'src/extra.ts',
+    ]);
+    expect([...blame.keys()]).toEqual(['src/users/user.entity.ts', 'src/auth/auth.service.ts']);
+    const entity = blame.get('src/users/user.entity.ts')!;
+    expect(entity[0]).toBeNull(); // from the merge base
+    expect(entity.filter((sha) => sha === data!.sha).length).toBe(6);
+    const service = blame.get('src/auth/auth.service.ts')!;
+    expect(service.includes(feature!.sha)).toBe(true);
+    expect(service.at(-1)).toBeNull(); // not committed yet
+
+    expect(await snap.baseHistory!(300)).toEqual([
+      [
+        'README.md',
+        'package-lock.json',
+        'package.json',
+        'src/admin/admin-users.controller.ts',
+        'src/auth/auth.controller.ts',
+        'src/auth/auth.service.ts',
+        'src/mail/mail.service.ts',
+        'src/users/user.entity.ts',
+        'src/users/users.service.ts',
+        'src/utils/date.ts',
+        'src/utils/helpers.ts',
+        'src/utils/string.ts',
+        'test/auth.service.spec.ts',
+      ],
+    ]);
+
+    const matches = await snap.grep!(['verifyEmail'], ['.ts']);
+    expect(matches.map((m) => m.path)).toContain('src/extra.ts');
+    expect(matches.find((m) => m.path === 'src/extra.ts')).toEqual({
+      path: 'src/extra.ts',
+      line: 1,
+      text: 'export const x = verifyEmail;',
+    });
+    expect(matches.every((m) => m.path.endsWith('.ts') && m.text.includes('verifyEmail'))).toBe(
+      true,
+    );
+    expect(await snap.grep!(['noSuchNameAnywhere'], ['.ts'])).toEqual([]);
+  });
+});
+
 describe('openLocalSnapshot errors', () => {
   it('fails with a SourceError outside a repository', async () => {
     await expect(openLocalSnapshot({ cwd: tempDir() })).rejects.toBeInstanceOf(SourceError);

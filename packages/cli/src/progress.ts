@@ -16,8 +16,17 @@ const LABELS: Record<string, string> = {
   parse: 'Parsed',
   noise: 'Noise',
   symbols: 'Symbols',
+  history: 'History',
   graph: 'Graph',
   group: 'Groups',
+  refs: 'Callers',
+  hints: 'Hints',
+};
+
+/** Spinner text for engine stages that may download from the repository's host. */
+const ACTIVE: Record<string, string> = {
+  history: 'Reading commit history',
+  refs: 'Searching for unchanged callers',
 };
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -42,6 +51,21 @@ export function createProgress(out: Writable, options: { quiet: boolean; verbose
     spinner = undefined;
   };
 
+  const startSpinner = (active: string) => {
+    if (!interactive) return;
+    clearSpinner();
+    let frame = 0;
+    const s: NonNullable<typeof spinner> = {
+      timer: undefined,
+      delay: setTimeout(() => {
+        s.timer = setInterval(() => {
+          out.write(`\r\x1b[2K${FRAMES[frame++ % FRAMES.length]} ${active}…`);
+        }, 80);
+      }, SPINNER_DELAY_MS),
+    };
+    spinner = s;
+  };
+
   const line = (label: string, summary: string, ms: number) => {
     if (options.quiet) return;
     clearSpinner();
@@ -61,6 +85,10 @@ export function createProgress(out: Writable, options: { quiet: boolean; verbose
 
   return {
     logger,
+    stageStart: (stage: string) => {
+      const active = ACTIVE[stage];
+      if (active) startSpinner(active);
+    },
     stage: (r: StageReport) => line(LABELS[r.stage] ?? r.stage, r.summary, r.ms),
     /** Runs `fn` as one stage; `active` is the spinner text while it runs (terminals only). */
     async time<T>(
@@ -70,18 +98,7 @@ export function createProgress(out: Writable, options: { quiet: boolean; verbose
       active?: string,
     ): Promise<T> {
       const start = performance.now();
-      if (interactive && active) {
-        let frame = 0;
-        const s: NonNullable<typeof spinner> = {
-          timer: undefined,
-          delay: setTimeout(() => {
-            s.timer = setInterval(() => {
-              out.write(`\r\x1b[2K${FRAMES[frame++ % FRAMES.length]} ${active}…`);
-            }, 80);
-          }, SPINNER_DELAY_MS),
-        };
-        spinner = s;
-      }
+      if (active) startSpinner(active);
       const value = await fn();
       line(label, summarize(value), performance.now() - start);
       return value;

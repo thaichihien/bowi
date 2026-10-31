@@ -1,16 +1,17 @@
 /**
  * Review tab: the reading-order switch and progress (UI-10, UI-11), groups and steps in the
  * sidebar with a quick "reviewed" mark per step (UI-3), the current group's card (UI-4), the
- * current step with Viewed files (UI-5..8, UI-23) and the floating step actions (UI-11).
+ * current step with Viewed files (UI-5..8, UI-23), the floating step actions (UI-11) and the
+ * keyboard: `j` / `k` next and previous step, `r` toggles reviewed (UI-13).
  */
 
 import type { Group } from '@bowi/core/types';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { ArrowIcon, CheckIcon, Chevron, ReviewedIcon, StepIconBadge } from './Icons.tsx';
 import { FinishDialog, type FinishResult } from './Finish.tsx';
 import { Inline } from './Inline.tsx';
 import { KIND_LABELS, type FlatStep, type Model, type ReadingMode } from './model.ts';
-import { markStep, toggleViewed, viewedKey, type Progress } from './progress.ts';
+import { emptyProgress, markStep, toggleViewed, viewedKey, type Progress } from './progress.ts';
 import { StepBody } from './StepView.tsx';
 
 export interface Position {
@@ -40,12 +41,33 @@ export function ReviewTab(props: {
   const { reviewed } = progress;
   const [rawOpen, setRawOpen] = useState<Set<string>>(new Set());
   const [finish, setFinish] = useState<FinishResult>();
+  const [confirmReset, setConfirmReset] = useState(false);
   const group = model.plan.groups[current.groupIndex];
   const position = flat.findIndex((f) => f.step.id === current.stepId);
   const currentStep = position >= 0 ? flat[position] : undefined;
   const done = flat.filter((f) => reviewed.has(f.step.id)).length;
   const pct = flat.length ? Math.round((done / flat.length) * 100) : 0;
   const mark = (stepId: string, on: boolean) => updateProgress((p) => markStep(p, stepId, on));
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (finish || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (e.key === 'j' || e.key === 'k') {
+        const target = position < 0 ? flat[0] : flat[position + (e.key === 'j' ? 1 : -1)];
+        if (!target) return;
+        e.preventDefault();
+        go(target.groupIndex, target.step.id);
+      } else if (e.key === 'r' && currentStep) {
+        e.preventDefault();
+        const id = currentStep.step.id;
+        updateProgress((p) => markStep(p, id, !p.reviewed.has(id)));
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [finish, flat, position, currentStep, go, updateProgress]);
 
   return (
     <div class="wrap tab-page review-page">
@@ -93,6 +115,38 @@ export function ReviewTab(props: {
           >
             <div style={{ width: `${pct}%` }} />
           </div>
+          {confirmReset ? (
+            <span class="reset-confirm" role="group" aria-label="Start over">
+              <span class="small">
+                Clear {done} reviewed step{done === 1 ? '' : 's'}
+                {progress.viewed.size > 0 &&
+                  ` and ${progress.viewed.size} viewed file${progress.viewed.size === 1 ? '' : 's'}`}
+                ?
+              </span>
+              <button
+                class="btn small danger"
+                onClick={() => {
+                  updateProgress(() => emptyProgress());
+                  setConfirmReset(false);
+                  if (flat[0]) go(flat[0].groupIndex, flat[0].step.id);
+                }}
+              >
+                Clear
+              </button>
+              <button class="link-btn" onClick={() => setConfirmReset(false)}>
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              class="btn small"
+              disabled={done === 0 && progress.viewed.size === 0}
+              title="Clear reviewed steps and viewed files, and review again from the first step"
+              onClick={() => setConfirmReset(true)}
+            >
+              Start over
+            </button>
+          )}
         </div>
       </div>
       <div class="layout">
@@ -209,7 +263,7 @@ function CurrentStep(props: {
           class="btn"
           disabled={!prev}
           aria-label={prev ? `Previous: ${plainTitle(prev.step.title)}` : 'Previous'}
-          title={prev ? `Previous: ${plainTitle(prev.step.title)}` : 'This is the first step'}
+          title={prev ? `Previous: ${plainTitle(prev.step.title)} (k)` : 'This is the first step'}
           onClick={() => prev && go(prev.groupIndex, prev.step.id)}
         >
           <ArrowIcon dir="left" />
@@ -218,6 +272,7 @@ function CurrentStep(props: {
         <button
           class={isDone ? 'btn done' : 'btn'}
           aria-pressed={isDone}
+          title={isDone ? 'Mark as not reviewed (r)' : 'Mark as reviewed (r)'}
           onClick={() => updateProgress((p) => markStep(p, step.id, !p.reviewed.has(step.id)))}
         >
           {isDone && <CheckIcon />}
@@ -225,6 +280,9 @@ function CurrentStep(props: {
         </button>
         <button
           class="btn primary"
+          title={
+            next ? 'Mark as reviewed and go to the next step (j: next without marking)' : undefined
+          }
           onClick={() => {
             if (!next) return props.finish();
             updateProgress((p) => markStep(p, step.id, true));
@@ -349,7 +407,7 @@ function GroupHeader({ model, group, index }: { model: Model; group: Group; inde
         <div class="hints">
           {hints.map((h) => (
             <span key={h.id} class={`hint ${h.severity}`}>
-              {h.message}
+              <Inline text={h.message} />
             </span>
           ))}
         </div>

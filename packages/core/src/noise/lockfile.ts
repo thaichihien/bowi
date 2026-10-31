@@ -19,21 +19,40 @@ interface Lockfile {
 
 export const NPM_LOCKFILES = ['package-lock.json', 'npm-shrinkwrap.json'];
 
+/** Direct dependencies in the new lockfile's root entry that the old one did not have. */
+export function addedNpmDependencies(
+  oldText: string | null,
+  newText: string | null,
+): { name: string; dev: boolean }[] {
+  const before = parse(oldText);
+  const after = parse(newText);
+  if (!after) return [];
+  const out: { name: string; dev: boolean }[] = [];
+  for (const field of ['dependencies', 'devDependencies'] as const) {
+    const was = direct(before, field);
+    for (const name of [...direct(after, field)].sort()) {
+      if (!was.has(name)) out.push({ name, dev: field === 'devDependencies' });
+    }
+  }
+  return out;
+}
+
+function direct(l: Lockfile | null, field: 'dependencies' | 'devDependencies'): Set<string> {
+  const root = l?.packages?.[''];
+  return new Set(
+    Object.keys(
+      field === 'dependencies'
+        ? { ...root?.dependencies, ...root?.optionalDependencies }
+        : (root?.devDependencies ?? {}),
+    ),
+  );
+}
+
 /** Sentences such as "1 new direct dependency: nodemailer"; empty when unreadable (v1, invalid JSON). */
 export function summarizeNpmLockfile(oldText: string | null, newText: string | null): string[] {
   const before = parse(oldText);
   const after = parse(newText);
   if (!before && !after) return [];
-  const direct = (l: Lockfile | null, field: 'dependencies' | 'devDependencies') => {
-    const root = l?.packages?.[''];
-    return new Set(
-      Object.keys(
-        field === 'dependencies'
-          ? { ...root?.dependencies, ...root?.optionalDependencies }
-          : (root?.devDependencies ?? {}),
-      ),
-    );
-  };
   const version = (l: Lockfile | null, name: string) =>
     l?.packages?.[`node_modules/${name}`]?.version;
 

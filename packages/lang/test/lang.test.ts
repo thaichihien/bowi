@@ -7,9 +7,19 @@ const parse = (code: string, lang: Parameters<typeof parseSource>[0] = 'typescri
 describe('languageForPath', () => {
   it('maps extensions and leaves unknown files to tier 0', () => {
     expect(
-      ['a.ts', 'b.d.ts', 'c.tsx', 'd.mjs', 'e.jsx', 'f.json', 'g.rb', 'Makefile', 'dir.ts/x'].map(
-        languageForPath,
-      ),
+      [
+        'a.ts',
+        'b.d.ts',
+        'c.tsx',
+        'd.mjs',
+        'e.jsx',
+        'f.json',
+        'ci.yml',
+        'README.md',
+        'g.rb',
+        'Makefile',
+        'dir.ts/x',
+      ].map(languageForPath),
     ).toEqual([
       'typescript',
       'typescript',
@@ -17,6 +27,8 @@ describe('languageForPath', () => {
       'javascript',
       'javascript',
       'json',
+      'yaml',
+      'markdown',
       undefined,
       undefined,
       undefined,
@@ -85,6 +97,36 @@ describe('symbols', () => {
     expect(src.symbols.map((s) => s.qualifiedName)).toEqual(['deps', 'deps.a', 'name']);
   });
 
+  it('uses YAML keys up to two levels deep', async () => {
+    const src = await parse(
+      "name: ci\non:\n  push:\n    branches: [main]\njobs:\n  build:\n    steps:\n      - uses: x\n'quoted': 1\n",
+      'yaml',
+    );
+    expect(src.hasError).toBe(false);
+    expect(src.symbols.map((s) => [s.qualifiedName, s.startLine, s.endLine])).toEqual([
+      ['name', 1, 1],
+      ['on', 2, 4],
+      ['on.push', 3, 4],
+      ['jobs', 5, 8],
+      ['jobs.build', 6, 8],
+      ['quoted', 9, 9],
+    ]);
+  });
+
+  it('makes Markdown sections symbols, nested by heading level', async () => {
+    const src = await parse(
+      '# Acme\n\nIntro.\n\n## Setup\n\nRun it.\n\n### Deeper\n\nText.\n',
+      'markdown',
+    );
+    expect(
+      src.symbols.map((s) => [s.qualifiedName, s.kind, s.startLine, s.endLine, s.signature]),
+    ).toEqual([
+      ['Acme', 'section', 1, 11, '# Acme'],
+      ['Acme.Setup', 'section', 5, 11, '## Setup'],
+      ['Acme.Setup.Deeper', 'section', 9, 11, '### Deeper'],
+    ]);
+  });
+
   it('parses JavaScript and TSX', async () => {
     expect(
       (await parse('class A { m() {} }\nconst f = () => <div/>;', 'javascript')).symbols.map(
@@ -98,6 +140,71 @@ describe('symbols', () => {
 
   it('reports syntax errors', async () => {
     expect((await parse('function (')).hasError).toBe(true);
+  });
+});
+
+describe('decorators and classes', () => {
+  it('records decorator names, string arguments and targets', async () => {
+    const src = await parse(
+      [
+        "@Controller('auth')", // 1
+        'export class A extends B implements C, D<E> {', // 2
+        "  constructor(private readonly s: Svc, @InjectQueue('mail') q: Queue<Job>) {}", // 3
+        "  @Column({ name: 'x_y' }) x: string;", // 4
+        "  @Get(':id') @UseGuards(G)", // 5
+        '  get() {}', // 6
+        '}', // 7
+      ].join('\n'),
+    );
+    expect(src.decorators).toEqual([
+      {
+        name: 'Controller',
+        args: ['auth'],
+        refs: [],
+        line: 1,
+        target: { kind: 'class', name: 'A' },
+      },
+      {
+        name: 'InjectQueue',
+        args: ['mail'],
+        refs: [],
+        line: 3,
+        target: { kind: 'parameter', name: 'q', className: 'A' },
+      },
+      {
+        name: 'Column',
+        args: ['x_y'],
+        refs: [],
+        line: 4,
+        target: { kind: 'property', name: 'x', className: 'A' },
+      },
+      {
+        name: 'Get',
+        args: [':id'],
+        refs: [],
+        line: 5,
+        target: { kind: 'method', name: 'get', className: 'A' },
+      },
+      {
+        name: 'UseGuards',
+        args: [],
+        refs: ['G'],
+        line: 5,
+        target: { kind: 'method', name: 'get', className: 'A' },
+      },
+    ]);
+    expect(src.classes).toEqual([
+      {
+        name: 'A',
+        line: 2,
+        extends: ['B'],
+        implements: ['C', 'D'],
+        constructorParams: [
+          { name: 's', types: ['Svc'], line: 3 },
+          { name: 'q', types: ['Queue', 'Job'], line: 3 },
+        ],
+      },
+    ]);
   });
 });
 
@@ -153,6 +260,25 @@ describe('fingerprints', () => {
     const [b] = (await parse('function two(x) { return x + 1; }')).symbols;
     expect(a!.fingerprint).not.toBe(b!.fingerprint);
     expect(a!.shapeFingerprint).toBe(b!.shapeFingerprint);
+  });
+
+  it('ignore re-wrapped Markdown text but not edited text', async () => {
+    const a = await parse('# A\n\nOne two\nthree.\n\n- item\n  more\n', 'markdown');
+    const b = await parse('# A\n\nOne\ntwo three.\n\n- item more\n', 'markdown');
+    const c = await parse('# A\n\nOne two\nfour.\n\n- item\n  more\n', 'markdown');
+    const d = await parse('# A\n\nOne two\nthree.\n\n- item\n  less\n', 'markdown');
+    expect(a.fingerprint).toBe(b.fingerprint);
+    expect(a.fingerprint).not.toBe(c.fingerprint);
+    expect(a.fingerprint).not.toBe(d.fingerprint);
+    expect([1, 2, 3, 4, 5, 6, 7].map((n) => a.isContentLine(n))).toEqual([
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+    ]);
   });
 
   it('know which lines hold content', async () => {

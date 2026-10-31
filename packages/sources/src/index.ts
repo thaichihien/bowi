@@ -1,4 +1,4 @@
-export { openLocalSnapshot, type LocalSourceOptions } from './local.ts';
+export { openLocalSnapshot, repoRoot, type LocalSourceOptions } from './local.ts';
 export {
   fetchPullRequest,
   linkedIssues,

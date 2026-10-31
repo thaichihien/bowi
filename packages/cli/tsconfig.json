@@ -17,6 +17,12 @@
     },
     {
       "path": "../cache"
+    },
+    {
+      "path": "../plugins"
+    },
+    {
+      "path": "../rules"
     }
   ]
 }

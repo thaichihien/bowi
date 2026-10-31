@@ -6,7 +6,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { buildFixtureRepo, emailVerification } from '@bowi/fixtures';
+import { buildFixtureRepo, emailVerification, type FixtureSpec } from '@bowi/fixtures';
 
 export interface FakePr {
   owner: string;
@@ -35,9 +35,12 @@ const git = (cwd: string, ...args: string[]) =>
     env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
   }).trim();
 
-/** The email-verification fixture published as PR #7 of acme/api on a file:// server. */
-export function fakeServer(root: string): { remoteUrl: string; pr: FakePr } {
-  const repo = buildFixtureRepo(emailVerification, join(root, 'work')).dir;
+/** A fixture (default: email-verification) published as PR #7 of acme/api on a file:// server. */
+export function fakeServer(
+  root: string,
+  spec: FixtureSpec = emailVerification,
+): { remoteUrl: string; pr: FakePr } {
+  const repo = buildFixtureRepo(spec, join(root, 'work')).dir;
   const server = join(root, 'server.git');
   execFileSync('git', ['clone', '--quiet', '--bare', repo, server]);
   const headSha = git(repo, 'rev-parse', 'HEAD');

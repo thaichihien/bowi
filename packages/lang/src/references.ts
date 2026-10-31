@@ -6,6 +6,8 @@
  *   `declaration`, not uses.
  * - fields: properties declared in classes, interfaces and object types.
  * - imports: module specifiers with the names they bring in.
+ * - decorators and classes: what framework plugins need (PLG-2), e.g. `@Controller('auth')` on
+ *   a class, `@Get(':id')` on a method, the types a constructor injects.
  */
 
 import type { Node } from 'web-tree-sitter';
@@ -38,6 +40,8 @@ const IDENTIFIER_TYPES = new Set([
   'shorthand_property_identifier',
 ]);
 const FIELD_TYPES = new Set(['public_field_definition', 'field_definition', 'property_signature']);
+const CLASS_TYPES = new Set(['class_declaration', 'abstract_class_declaration', 'class']);
+const PARAMETER_TYPES = new Set(['required_parameter', 'optional_parameter']);
 const DECLARATION_PARENTS = new Set([
   'function_declaration',
   'generator_function_declaration',
@@ -54,20 +58,61 @@ const DECLARATION_PARENTS = new Set([
   ...FIELD_TYPES,
 ]);
 
+export interface DecoratorUse {
+  /** `Controller` for `@Controller('auth')`, `Get` for `@nest.Get()`. */
+  name: string;
+  /** String literals in the arguments, in order: `['auth']`, `['email_verified']` for `{ name: 'email_verified' }`. */
+  args: string[];
+  /** Identifiers passed as arguments: `['AdminGuard']` for `@UseGuards(AdminGuard)`. */
+  refs: string[];
+  /** 1-based line of the `@`. */
+  line: number;
+  target: {
+    kind: 'class' | 'method' | 'property' | 'parameter' | 'other';
+    /** The decorated name: class, method, property or parameter. */
+    name: string;
+    /** Enclosing class, for members and parameters. */
+    className?: string;
+  };
+}
+
+export interface ClassDeclaration {
+  name: string;
+  /** 1-based line of the name. */
+  line: number;
+  /** Names in `extends` and `implements`, without type arguments. */
+  extends: string[];
+  implements: string[];
+  /** Constructor parameters with the type names in their annotation (`Repository<User>` → both). */
+  constructorParams: { name: string; types: string[]; line: number }[];
+}
+
 export interface NameIndex {
   references: Reference[];
   fields: FieldDeclaration[];
   imports: ImportDeclaration[];
+  decorators: DecoratorUse[];
+  classes: ClassDeclaration[];
 }
 
 export function indexNames(root: Node): NameIndex {
   const references: Reference[] = [];
   const fields: FieldDeclaration[] = [];
   const imports: ImportDeclaration[] = [];
+  const decorators: DecoratorUse[] = [];
+  const classes: ClassDeclaration[] = [];
 
   const visit = (node: Node) => {
     const type = node.type;
     if (type === 'comment') return;
+    if (type === 'decorator') {
+      const use = decoratorUse(node);
+      if (use) decorators.push(use);
+    }
+    if (CLASS_TYPES.has(type)) {
+      const decl = classDeclaration(node);
+      if (decl) classes.push(decl);
+    }
     if (
       type === 'import_statement' ||
       (type === 'export_statement' && node.childForFieldName('source'))
@@ -95,7 +140,116 @@ export function indexNames(root: Node): NameIndex {
     for (const child of node.children) visit(child);
   };
   visit(root);
-  return { references, fields, imports };
+  return { references, fields, imports, decorators, classes };
+}
+
+function decoratorUse(node: Node): DecoratorUse | undefined {
+  const expr = node.namedChildren[0];
+  if (!expr) return undefined;
+  const callee = expr.type === 'call_expression' ? expr.childForFieldName('function') : expr;
+  const name =
+    callee?.type === 'member_expression'
+      ? callee.childForFieldName('property')?.text
+      : callee?.type === 'identifier'
+        ? callee.text
+        : undefined;
+  if (!name) return undefined;
+  const argsNode = expr.type === 'call_expression' ? expr.childForFieldName('arguments') : null;
+  const args: string[] = [];
+  const refs: string[] = [];
+  if (argsNode) {
+    for (const s of argsNode.descendantsOfType(['string', 'template_string'])) {
+      if (s && !s.descendantsOfType('template_substitution').length) args.push(stringValue(s));
+    }
+    for (const a of argsNode.namedChildren) if (a?.type === 'identifier') refs.push(a.text);
+  }
+  return { name, args, refs, line: node.startPosition.row + 1, target: decoratorTarget(node) };
+}
+
+function decoratorTarget(node: Node): DecoratorUse['target'] {
+  const parent = node.parent;
+  if (!parent) return { kind: 'other', name: '' };
+  const nameOf = (n: Node | null | undefined) =>
+    (n?.childForFieldName('name') ?? n?.childForFieldName('property'))?.text ?? '';
+  if (CLASS_TYPES.has(parent.type)) return { kind: 'class', name: nameOf(parent) };
+  if (parent.type === 'export_statement') {
+    const decl = parent.childForFieldName('declaration');
+    if (decl && CLASS_TYPES.has(decl.type)) return { kind: 'class', name: nameOf(decl) };
+    return { kind: 'other', name: '' };
+  }
+  const className = enclosingClass(parent);
+  const withClass = <T extends DecoratorUse['target']>(t: T): T =>
+    className ? { ...t, className } : t;
+  if (FIELD_TYPES.has(parent.type)) return withClass({ kind: 'property', name: nameOf(parent) });
+  if (PARAMETER_TYPES.has(parent.type)) {
+    const pattern = parent.childForFieldName('pattern');
+    return withClass({ kind: 'parameter', name: pattern?.text ?? '' });
+  }
+  if (parent.type === 'class_body') {
+    // Method decorators are siblings written before the method.
+    let next = node.nextNamedSibling;
+    while (next?.type === 'decorator') next = next.nextNamedSibling;
+    if (next?.type === 'method_definition')
+      return withClass({ kind: 'method', name: nameOf(next) });
+    if (next && FIELD_TYPES.has(next.type))
+      return withClass({ kind: 'property', name: nameOf(next) });
+  }
+  return { kind: 'other', name: '' };
+}
+
+function enclosingClass(node: Node): string | undefined {
+  for (let n: Node | null = node; n; n = n.parent) {
+    if (CLASS_TYPES.has(n.type)) return n.childForFieldName('name')?.text;
+  }
+  return undefined;
+}
+
+function classDeclaration(node: Node): ClassDeclaration | undefined {
+  const nameNode = node.childForFieldName('name');
+  if (!nameNode) return undefined;
+  const extendsNames: string[] = [];
+  const implementsNames: string[] = [];
+  const heritage = node.namedChildren.find((c) => c?.type === 'class_heritage');
+  for (const clause of heritage?.namedChildren ?? []) {
+    if (!clause) continue;
+    const into = clause.type === 'implements_clause' ? implementsNames : extendsNames;
+    for (const t of clause.namedChildren) {
+      const head = t?.type === 'generic_type' ? t.childForFieldName('name') : t;
+      if (
+        head &&
+        /^(identifier|type_identifier|member_expression|nested_type_identifier)$/.test(head.type)
+      )
+        into.push(head.text.slice(head.text.lastIndexOf('.') + 1));
+    }
+  }
+  // JavaScript: `class A extends B` has the expression directly under class_heritage.
+  if (heritage && extendsNames.length === 0 && implementsNames.length === 0) {
+    const value = heritage.namedChildren.find((c) => c?.type === 'identifier');
+    if (value) extendsNames.push(value.text);
+  }
+  const body = node.childForFieldName('body');
+  const ctor = body?.namedChildren.find(
+    (m) => m?.type === 'method_definition' && m.childForFieldName('name')?.text === 'constructor',
+  );
+  const constructorParams: ClassDeclaration['constructorParams'] = [];
+  for (const p of ctor?.childForFieldName('parameters')?.namedChildren ?? []) {
+    if (!p || !PARAMETER_TYPES.has(p.type)) continue;
+    const pattern = p.childForFieldName('pattern');
+    const annotation = p.childForFieldName('type');
+    if (!pattern || !annotation) continue;
+    constructorParams.push({
+      name: pattern.text,
+      types: annotation.descendantsOfType('type_identifier').flatMap((t) => (t ? [t.text] : [])),
+      line: p.startPosition.row + 1,
+    });
+  }
+  return {
+    name: nameNode.text,
+    line: nameNode.startPosition.row + 1,
+    extends: extendsNames,
+    implements: implementsNames,
+    constructorParams,
+  };
 }
 
 function kindOf(node: Node): ReferenceKind {

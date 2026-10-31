@@ -18,7 +18,7 @@ import type { ParsedSource, SourceSymbol } from '@bowi/lang';
 import { compareStrings } from '../determinism.ts';
 import { createLayerResolver } from '../layers.ts';
 import type { Stage } from '../stage.ts';
-import type { ChangedSymbol, FileChange, Hunk } from '../types.ts';
+import type { ChangedSymbol, FileChange, Hunk, Layer } from '../types.ts';
 import type { MovePair } from './noise.ts';
 import type { FileSources } from './parse.ts';
 
@@ -27,6 +27,8 @@ export interface SymbolStageInput {
   hunks: Hunk[];
   sources: Map<string, FileSources>;
   moves: MovePair[];
+  /** Layers framework plugins read from the code, by path (PLG-1). */
+  pluginLayers?: Map<string, Layer>;
 }
 
 export interface SymbolStageOutput {
@@ -49,7 +51,7 @@ interface Entry {
 }
 
 export const symbolStage: Stage<SymbolStageInput, SymbolStageOutput> = async (input, ctx) => {
-  const layerOf = createLayerResolver(ctx.config.layers);
+  const layerOf = createLayerResolver(ctx.config.layers, (path) => input.pluginLayers?.get(path));
   const files = input.files.map((f): FileChange => ({ ...f, layer: layerOf(f.path) }));
   const fileById = new Map(files.map((f) => [f.id, f]));
   const hunks = input.hunks.map((h): Hunk => ({ ...h, symbolIds: [] }));

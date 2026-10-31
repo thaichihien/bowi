@@ -6,6 +6,9 @@
  *
  * Untracked files are made visible to `git diff` with `git add --intent-to-add` on a temporary
  * copy of the index (GIT_INDEX_FILE), so the user's real index is never modified.
+ *
+ * History and search run on the working tree too: blame annotates the working tree file over
+ * the commits since the merge base, and grep includes untracked files.
  */
 
 import { copyFile, lstat, mkdtemp, readFile, readlink, realpath, rm } from 'node:fs/promises';
@@ -20,6 +23,14 @@ import {
   type SnapshotMeta,
 } from '@bowi/core';
 import { DIFF_FLAGS, git, gitText, readBlob, resolveCommit } from './git.ts';
+import {
+  BLAME_CONFIG,
+  grepArgs,
+  historyArgs,
+  parseBlame,
+  parseGrep,
+  parseHistory,
+} from './history.ts';
 
 export interface LocalSourceOptions {
   /** Any directory inside the repository. */
@@ -62,16 +73,54 @@ export async function openLocalSnapshot(options: LocalSourceOptions): Promise<Sn
     commits: await commitsBetween(root, mergeBaseSha, headSha),
   };
   if (uncommitted) meta.uncommitted = true;
+  const outputDirs = (await Promise.all((options.excludeUntracked ?? []).map(realPathLoose)))
+    .map((p) => relative(root, p))
+    .filter((p) => p !== '' && !p.startsWith('..') && !isAbsolute(p));
 
   return {
     meta,
     readDiff: async () => diff,
     readFile: (version: FileVersion, path: string) =>
       version === 'old' ? readBlob(root, mergeBaseSha, path) : readWorkingFile(root, path),
+    async blame(paths) {
+      const out = new Map<string, (string | null)[]>();
+      for (const path of paths) {
+        if ((await readWorkingFile(root, path)) === null) continue;
+        // Exit 128: the file is not in HEAD (untracked or only staged), so it has no history.
+        const r = await git(
+          [
+            ...BLAME_CONFIG,
+            'blame',
+            '--porcelain',
+            '--contents',
+            path,
+            `${mergeBaseSha}..HEAD`,
+            '--',
+            path,
+          ],
+          { cwd: root, okCodes: [128] },
+        );
+        if (r.code === 0) out.set(path, parseBlame(r.stdout));
+      }
+      return out;
+    },
+    async baseHistory(limit) {
+      return parseHistory(await gitText(historyArgs(mergeBaseSha, limit), { cwd: root }));
+    },
+    async grep(words, extensions) {
+      if (words.length === 0) return [];
+      // Exit 1: nothing found.
+      const r = await git(grepArgs(words, extensions, undefined, outputDirs), {
+        cwd: root,
+        okCodes: [1],
+      });
+      return parseGrep(r.stdout);
+    },
   };
 }
 
-async function repoRoot(cwd: string): Promise<string> {
+/** Top folder of the repository containing `cwd` (SourceError when there is none). */
+export async function repoRoot(cwd: string): Promise<string> {
   const r = await git(['rev-parse', '--show-toplevel'], { cwd, okCodes: [128] });
   const root = r.stdout.trim();
   if (r.code !== 0 || !root) {

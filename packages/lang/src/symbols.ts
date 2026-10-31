@@ -7,7 +7,8 @@ import type { Node, Query } from 'web-tree-sitter';
 import { fingerprint } from './fingerprint.ts';
 import type { LanguageId } from './languages.ts';
 
-export type SymbolKind = 'function' | 'method' | 'class' | 'interface' | 'type' | 'variable';
+export type SymbolKind =
+  'function' | 'method' | 'class' | 'interface' | 'type' | 'variable' | 'section';
 
 export interface SourceSymbol {
   /** Display name: `verifyEmail`, `describe('AuthService')`, `beforeEach()`. */
@@ -36,12 +37,17 @@ const KIND_OF_CAPTURE: Record<string, SymbolKind> = {
   'symbol.interface': 'interface',
   'symbol.type': 'type',
   'symbol.variable': 'variable',
+  'symbol.section': 'section',
   'symbol.test': 'function',
   'symbol.hook': 'function',
 };
 
-/** JSON keys deeper than this many objects are not symbols (`dependencies.nodemailer` is). */
-const MAX_JSON_DEPTH = 2;
+/**
+ * JSON and YAML keys deeper than this many objects are not symbols (`dependencies.nodemailer`
+ * and `jobs.build` are).
+ */
+const MAX_KEY_DEPTH = 2;
+const MAPPING_TYPES = new Set(['object', 'block_mapping', 'flow_mapping']);
 
 interface Candidate {
   node: Node;
@@ -77,9 +83,13 @@ export function extractSymbols(
       name = `${fn}(${nameCapture.node.text})`;
     } else if (symbolCapture.name === 'symbol.hook') {
       name = `${name}()`;
-    } else if (language === 'json') {
-      if (jsonDepth(node) > MAX_JSON_DEPTH) continue;
-      name = jsonKey(nameCapture.node);
+    } else if (language === 'json' || language === 'yaml') {
+      if (keyDepth(node) > MAX_KEY_DEPTH) continue;
+      name = language === 'json' ? jsonKey(nameCapture.node) : yamlKey(nameCapture.node);
+      if (!name) continue;
+    } else if (kind === 'section') {
+      name = nameCapture.node.text.replace(/\s+/g, ' ').trim();
+      if (!name) continue;
     } else if (symbolCapture.name === 'symbol.variable') {
       // Only top-level variables are symbols; locals belong to their function.
       const declaration = node.parent;
@@ -124,9 +134,19 @@ export function extractSymbols(
       qualifiedName: parent === null ? c.name : `${symbols[parent]!.qualifiedName}.${c.name}`,
       kind: c.kind,
       startLine: first.startPosition.row + 1,
-      endLine: last.endPosition.row + 1,
+      // A node that ends at the start of a line (a Markdown section before the next heading)
+      // ends on the line before.
+      endLine:
+        last.endPosition.column === 0 && last.endPosition.row > first.startPosition.row
+          ? last.endPosition.row
+          : last.endPosition.row + 1,
       exported: c.exported,
-      signature: c.node.type === 'call_expression' ? c.name : signatureOf(c.node, c.range, source),
+      signature:
+        c.node.type === 'call_expression'
+          ? c.name
+          : c.kind === 'section'
+            ? headingOf(c.node)
+            : signatureOf(c.node, c.range, source),
       fingerprint: fingerprint(c.node),
       shapeFingerprint: fingerprint(c.node, c.nameNode),
       parent,
@@ -182,10 +202,26 @@ function signatureOf(node: Node, range: Node[], source: string): string {
   return text.length > 300 ? `${text.slice(0, 299)}…` : text;
 }
 
-function jsonDepth(pair: Node): number {
+function keyDepth(pair: Node): number {
   let depth = 0;
-  for (let n: Node | null = pair.parent; n; n = n.parent) if (n.type === 'object') depth++;
+  for (let n: Node | null = pair.parent; n; n = n.parent) if (MAPPING_TYPES.has(n.type)) depth++;
   return depth;
+}
+
+/** A YAML key's text without quotes; empty for complex keys (`? [a, b]`). */
+function yamlKey(key: Node): string {
+  const text = key.text.trim();
+  if (/^(['"]).*\1$/s.test(text)) return text.slice(1, -1);
+  return /[\n[\]{}]/.test(text) ? '' : text;
+}
+
+/** A section's heading line as written, e.g. `## Email verification`. */
+function headingOf(section: Node): string {
+  const heading = section.namedChildren.find(
+    (c) => c?.type === 'atx_heading' || c?.type === 'setext_heading',
+  );
+  const text = (heading?.text ?? '').split('\n')[0]!.replace(/\s+/g, ' ').trim();
+  return text.length > 300 ? `${text.slice(0, 299)}…` : text;
 }
 
 function jsonKey(stringNode: Node): string {

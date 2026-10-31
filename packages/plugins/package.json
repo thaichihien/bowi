@@ -2,7 +2,7 @@
   "name": "@bowi/plugins",
   "version": "0.0.0",
   "private": true,
-  "description": "Framework plugin interface and plugins such as NestJS (M6).",
+  "description": "Framework plugins for Bowi, such as NestJS (PLG-2).",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -20,6 +20,12 @@
     "dist"
   ],
   "dependencies": {
-    "@bowi/core": "workspace:*"
+    "@bowi/core": "workspace:*",
+    "@bowi/lang": "workspace:*"
+  },
+  "devDependencies": {
+    "@bowi/fixtures": "workspace:*",
+    "@bowi/rules": "workspace:*",
+    "@bowi/sources": "workspace:*"
   }
 }

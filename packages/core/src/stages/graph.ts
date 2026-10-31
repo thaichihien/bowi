@@ -1,5 +1,5 @@
 /**
- * Stage 6: the change graph (GRAPH-1..5, GRAPH-8, GRAPH-10).
+ * Stage 6: the change graph (GRAPH-1..10).
  *
  * Input: files, hunks, changed symbols, parsed sources and line owners. Output: ChangeEdge[]
  * between changed symbols, each with a weight and a one-sentence evidence.
@@ -10,6 +10,10 @@
  * - same-symbol: two symbols changed in one hunk (they cannot be separated).
  * - shared-literal / docs-mentions: the same distinctive literal in changed lines of different
  *   files, or a docs change naming a changed symbol.
+ * - same-commit: symbols in different files whose added lines come from the same commit of the
+ *   PR (only with more than one commit; a commit touching most of the PR's files is skipped).
+ * - co-change: files that often changed together in the base branch's recent history.
+ * - framework: edges from framework plugins (NestJS injection, queues, entity columns).
  * - Hub down-weighting: edges touching a symbol with many structural neighbours are weakened,
  *   so a shared logger or base type does not pull unrelated changes together.
  */
@@ -18,8 +22,10 @@ import type { ParsedSource, Reference } from '@bowi/lang';
 import { compareStrings } from '../determinism.ts';
 import { createImportResolver } from '../graph/imports.ts';
 import { literalsIn } from '../graph/literals.ts';
+import type { FrameworkPlugin } from '../plugin.ts';
 import type { Stage } from '../stage.ts';
-import type { ChangedSymbol, ChangeEdge, FileChange, Hunk } from '../types.ts';
+import type { ChangedSymbol, ChangeEdge, Commit, FileChange, Hunk } from '../types.ts';
+import type { HistoryStageOutput } from './history.ts';
 import type { FileSources } from './parse.ts';
 
 export interface GraphStageInput {
@@ -28,6 +34,10 @@ export interface GraphStageInput {
   symbols: ChangedSymbol[];
   sources: Map<string, FileSources>;
   lineSymbols: Map<string, (string | null)[]>;
+  /** Blame and base history (GRAPH-6, GRAPH-7); none means no history edges. */
+  history?: HistoryStageOutput;
+  commits?: Commit[];
+  plugins?: FrameworkPlugin[];
 }
 
 export interface GraphStageOutput {
@@ -48,6 +58,11 @@ export const EDGE_WEIGHTS: Record<ChangeEdge['type'], number> = {
 
 /** Symbols with more structural neighbours than this count as hubs (GRAPH-10). */
 export const HUB_DEGREE = 6;
+/** co-change: commits that touch more files than this are bulk changes and say nothing. */
+const MAX_COMMIT_FILES = 30;
+/** co-change: files must have changed together this often, in at least this share of commits. */
+const MIN_CO_CHANGES = 3;
+const MIN_CO_CHANGE_SHARE = 0.5;
 const MIN_DOCS_NAME_LENGTH = 5;
 const REF_PRIORITY: Reference['kind'][] = ['call', 'new', 'type', 'member', 'key', 'name'];
 /** Member names too common to link a use to a changed field. */
@@ -175,6 +190,18 @@ export const graphStage: Stage<GraphStageInput, GraphStageOutput> = async (input
   testsByFileName(logic, fileById, edges);
   sameHunk(hunks, symbols, edges);
   literalEdges(logic, hunks, fileById, lineSymbols, symbols, edges);
+  if (input.history) {
+    sameCommit(logic, hunkById, lineSymbols, input.history, input.commits ?? [], edges);
+    coChange(logic, fileById, input.history.baseCommits, edges);
+  }
+  const byId = new Map(symbols.map((s) => [s.id, s]));
+  for (const plugin of input.plugins ?? []) {
+    for (const e of plugin.extraEdges?.({ files, hunks, symbols, sources, lineSymbols }) ?? []) {
+      const from = byId.get(e.from);
+      const to = byId.get(e.to);
+      if (from && to && from.id !== to.id) edges.add(from, to, 'framework', e.text, ...e.locations);
+    }
+  }
 
   return { edges: downWeightHubs(edges.list()) };
 };
@@ -430,6 +457,113 @@ function literalEdges(
   }
 }
 
+/**
+ * Symbols whose added lines come from the same commit, linked across files: each file's first
+ * such symbol to the first one of the commit (a star, not a clique).
+ */
+function sameCommit(
+  logic: ChangedSymbol[],
+  hunkById: Map<string, Hunk>,
+  lineSymbols: Map<string, (string | null)[]>,
+  history: HistoryStageOutput,
+  commits: Commit[],
+  edges: EdgeSet,
+) {
+  const logicIds = new Set(logic.map((s) => s.id));
+  const byId = new Map(logic.map((s) => [s.id, s]));
+  // commit → owner symbol → first location
+  const owners = new Map<string, Map<string, { fileId: string; line: number }>>();
+  for (const s of logic) {
+    const blame = history.lineCommits.get(s.fileId);
+    if (!blame) continue;
+    for (const id of s.hunkIds) {
+      const h = hunkById.get(id)!;
+      const lineOwners = lineSymbols.get(id) ?? [];
+      h.lines.forEach((l, i) => {
+        if (l.kind !== 'add' || lineOwners[i] !== s.id || !logicIds.has(s.id)) return;
+        const sha = blame[l.newNo! - 1];
+        if (!sha) return;
+        const m = owners.get(sha) ?? new Map();
+        if (!m.has(s.id)) m.set(s.id, { fileId: s.fileId, line: l.newNo! });
+        owners.set(sha, m);
+      });
+    }
+  }
+  const logicFiles = new Set(logic.map((s) => s.fileId)).size;
+  const maxFiles = Math.max(3, Math.ceil(logicFiles * 0.5));
+  const order = new Map(logic.map((s, i) => [s.id, i]));
+  for (const commit of commits) {
+    const m = owners.get(commit.sha);
+    if (!m) continue;
+    const firstPerFile = new Map<string, [string, { fileId: string; line: number }]>();
+    for (const entry of [...m.entries()].sort((a, b) => order.get(a[0])! - order.get(b[0])!)) {
+      if (!firstPerFile.has(entry[1].fileId)) firstPerFile.set(entry[1].fileId, entry);
+    }
+    if (firstPerFile.size < 2 || firstPerFile.size > maxFiles) continue;
+    const [hub, ...others] = [...firstPerFile.values()];
+    const a = byId.get(hub![0])!;
+    for (const [id, loc] of others) {
+      const b = byId.get(id)!;
+      edges.add(
+        a,
+        b,
+        'same-commit',
+        `${show(a)} and ${show(b)} were changed in the same commit, ${commit.sha.slice(0, 7)} “${commit.subject}”`,
+        hub![1],
+        loc,
+      );
+    }
+  }
+}
+
+/** Files that often changed together in the base history (GRAPH-7), via their first symbols. */
+function coChange(
+  logic: ChangedSymbol[],
+  fileById: Map<string, FileChange>,
+  baseCommits: string[][],
+  edges: EdgeSet,
+) {
+  const firstOfFile = new Map<string, ChangedSymbol>();
+  for (const s of logic) {
+    if (!firstOfFile.has(s.fileId) && !fileById.get(s.fileId)!.generated)
+      firstOfFile.set(s.fileId, s);
+  }
+  const fileIds = [...firstOfFile.keys()];
+  if (fileIds.length < 2) return;
+  const fileOfPath = new Map<string, string>();
+  for (const id of fileIds) {
+    const f = fileById.get(id)!;
+    fileOfPath.set(f.path, id);
+    if (f.oldPath) fileOfPath.set(f.oldPath, id);
+  }
+  const counts = new Map<string, number>();
+  const together = new Map<string, number>();
+  const used = baseCommits.filter((paths) => paths.length <= MAX_COMMIT_FILES);
+  for (const paths of used) {
+    const ids = [...new Set(paths.flatMap((p) => fileOfPath.get(p) ?? []))].sort(compareStrings);
+    for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const key = `${ids[i]}\u0000${ids[j]}`;
+        together.set(key, (together.get(key) ?? 0) + 1);
+      }
+    }
+  }
+  for (const [key, n] of [...together.entries()].sort((x, y) => compareStrings(x[0], y[0]))) {
+    const [a, b] = key.split('\u0000') as [string, string];
+    if (n < MIN_CO_CHANGES || n / Math.min(counts.get(a)!, counts.get(b)!) < MIN_CO_CHANGE_SHARE)
+      continue;
+    const from = firstOfFile.get(a)!;
+    const to = firstOfFile.get(b)!;
+    edges.add(
+      from,
+      to,
+      'co-change',
+      `${fileById.get(a)!.path} and ${fileById.get(b)!.path} changed together in ${n} of the last ${used.length} commits`,
+    );
+  }
+}
+
 function downWeightHubs(edges: ChangeEdge[]): ChangeEdge[] {
   const neighbours = new Map<string, Set<string>>();
   for (const e of edges) {
@@ -454,6 +588,13 @@ function downWeightHubs(edges: ChangeEdge[]): ChangeEdge[] {
   );
 }
 
+const UNDIRECTED = new Set<ChangeEdge['type']>([
+  'same-symbol',
+  'shared-literal',
+  'same-commit',
+  'co-change',
+]);
+
 /** Edges deduplicated by (from, to, type), in a deterministic order. */
 class EdgeSet {
   private readonly edges = new Map<string, ChangeEdge>();
@@ -471,10 +612,7 @@ class EdgeSet {
     ...locations: { fileId: string; line: number }[]
   ) {
     // Undirected relations are stored with the earlier symbol first.
-    if (
-      (type === 'same-symbol' || type === 'shared-literal') &&
-      this.order.get(from.id)! > this.order.get(to.id)!
-    ) {
+    if (UNDIRECTED.has(type) && this.order.get(from.id)! > this.order.get(to.id)!) {
       [from, to] = [to, from];
     }
     const key = `${from.id}\u0000${to.id}\u0000${type}`;

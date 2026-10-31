@@ -15,3 +15,7 @@ export * from './noise/generated.ts';
 export * from './stages/graph.ts';
 export * from './stages/group.ts';
 export * from './invariants.ts';
+export type * from './plugin.ts';
+export * from './stages/history.ts';
+export * from './stages/refs.ts';
+export * from './stages/hints.ts';

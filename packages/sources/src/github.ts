@@ -8,10 +8,15 @@
  *    of the same PR finds both commits locally and fetches nothing.
  * 3. A token (GITHUB_TOKEN, else `gh auth token`) is optional for public repositories. It reaches
  *    git through environment config, never the command line, so other processes cannot see it.
+ * 4. History and search fetch more only when asked, in batches, and keep it in the cache: blame
+ *    deepens the head by the PR's commits, base history deepens the merge base to the commits it
+ *    needs (commits and trees, no blobs), and grep downloads the head's source files in one
+ *    fetch (never one round trip per file).
  */
 
 import { execFile } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { repoCacheDir, withLock } from '@bowi/cache';
 import {
   SourceError,
@@ -21,7 +26,18 @@ import {
   type Snapshot,
   type SnapshotMeta,
 } from '@bowi/core';
-import { DIFF_FLAGS, git, GitError, readBlob } from './git.ts';
+import { DIFF_FLAGS, git, GitError, gitText, readBlob } from './git.ts';
+import {
+  BLAME_CONFIG,
+  grepArgs,
+  historyArgs,
+  parseBlame,
+  parseGrep,
+  parseHistory,
+} from './history.ts';
+
+/** Source files grep downloads at most; a larger repository gets no outside references. */
+export const MAX_GREP_FILES = 10_000;
 
 export interface PullRequestRef {
   owner: string;
@@ -204,13 +220,135 @@ export async function openGithubSnapshot(
   if (info.totalCommits > info.commits.length) meta.totalCommits = info.totalCommits;
   if (info.linkedIssues.length) meta.linkedIssues = info.linkedIssues;
 
+  const range = `${info.mergeBaseSha}..${info.headSha}`;
   return {
     meta,
     fromCache,
     readDiff: async () => diff,
     readFile: (version: FileVersion, path: string) =>
       readBlob(dir, version === 'old' ? info.mergeBaseSha : info.headSha, path, env),
+
+    async blame(paths) {
+      const out = new Map<string, (string | null)[]>();
+      if (paths.length === 0) return out;
+      await withLock(dir, async () => {
+        // Every PR commit, and the parent of the oldest, so no PR commit is a shallow boundary.
+        const have = Number(await gitText(['rev-list', '--count', range], { cwd: dir, env }));
+        if (have < info.commits.length) {
+          await fetchQuiet(dir, env, [`--depth=${info.totalCommits + 1}`, 'origin', info.headSha]);
+        }
+        // Each version of these files in the PR's commits, merge base included.
+        const raw = await gitText(
+          ['log', '--format=', '--raw', '--no-abbrev', '--no-renames', range, '--', ...paths],
+          { cwd: dir, env },
+        );
+        const oids = [...raw.matchAll(/^:\d+ \d+ ([0-9a-f]{40}) ([0-9a-f]{40}) /gm)].flatMap(
+          (m) => [m[1]!, m[2]!],
+        );
+        const commits = (await gitText(['rev-list', range], { cwd: dir, env })).split('\n');
+        await prefetchBlobs(dir, env, [...commits, info.mergeBaseSha], oids);
+      });
+      for (const path of paths) {
+        const r = await git([...BLAME_CONFIG, 'blame', '--porcelain', range, '--', path], {
+          cwd: dir,
+          env,
+          okCodes: [128],
+        });
+        if (r.code === 0) out.set(path, parseBlame(r.stdout));
+      }
+      return out;
+    },
+
+    async baseHistory(limit) {
+      await withLock(dir, async () => {
+        const marker = join(dir, 'bowi-history');
+        const done = await readFile(marker, 'utf8').catch(() => '');
+        if (done.split('\n').includes(`${info.mergeBaseSha} ${limit}`)) return;
+        const have = Number(
+          await gitText(['rev-list', '--count', `--max-count=${limit}`, info.mergeBaseSha], {
+            cwd: dir,
+            env,
+          }),
+        );
+        if (have < limit) {
+          await fetchQuiet(dir, env, [`--depth=${limit}`, 'origin', info.mergeBaseSha]);
+        }
+        await appendFile(marker, `${info.mergeBaseSha} ${limit}\n`);
+      });
+      return parseHistory(await gitText(historyArgs(info.mergeBaseSha, limit), { cwd: dir, env }));
+    },
+
+    async grep(words, extensions) {
+      if (words.length === 0) return [];
+      const listing = (
+        await git(['ls-tree', '-r', '-z', '--full-tree', info.headSha], { cwd: dir, env })
+      ).stdout;
+      const oids: string[] = [];
+      for (const entry of listing.split('\0')) {
+        const m = /^100(?:644|755) blob ([0-9a-f]{40})\t(.+)$/.exec(entry);
+        if (!m || /(^|\/)node_modules\//.test(m[2]!)) continue;
+        if (extensions.some((e) => m[2]!.endsWith(e))) oids.push(m[1]!);
+      }
+      if (oids.length > MAX_GREP_FILES) {
+        throw new Error(
+          `the repository has ${oids.length} source files, more than the ${MAX_GREP_FILES} Bowi downloads to search`,
+        );
+      }
+      await withLock(dir, () => prefetchBlobs(dir, env, [info.headSha], oids));
+      const r = await git(grepArgs(words, extensions, info.headSha), {
+        cwd: dir,
+        env,
+        okCodes: [1],
+      });
+      return parseGrep(r.stdout, info.headSha);
+    },
   };
+}
+
+const FETCH_COMMON = [
+  'fetch',
+  '--quiet',
+  '--no-tags',
+  '--no-write-fetch-head',
+  '--recurse-submodules=no',
+  '--filter=blob:none',
+];
+
+async function fetchQuiet(dir: string, env: NodeJS.ProcessEnv, args: string[]): Promise<void> {
+  await git([...FETCH_COMMON, ...args], { cwd: dir, env });
+}
+
+/**
+ * Downloads those of `oids` that the cache lacks, in one fetch. Missing objects are listed with
+ * `rev-list --missing=print`, which never triggers git's one-object-at-a-time lazy fetching.
+ */
+async function prefetchBlobs(
+  dir: string,
+  env: NodeJS.ProcessEnv,
+  commits: string[],
+  oids: string[],
+): Promise<void> {
+  const wanted = new Set(oids.filter((o) => !/^0+$/.test(o)));
+  if (wanted.size === 0) return;
+  const listed = await gitText(
+    ['rev-list', '--objects', '--missing=print', '--no-walk', ...commits.filter(Boolean), '--'],
+    { cwd: dir, env },
+  );
+  const missing = [
+    ...new Set(
+      listed
+        .split('\n')
+        .filter((l) => l.startsWith('?'))
+        .map((l) => l.slice(1).trim())
+        .filter((o) => wanted.has(o)),
+    ),
+  ];
+  if (missing.length === 0) return;
+  await git(['-c', 'fetch.negotiationAlgorithm=noop', ...FETCH_COMMON, '--stdin', 'origin'], {
+    cwd: dir,
+    env,
+    input: `${missing.join('\n')}\n`,
+  });
 }
 
 async function ensureRepo(dir: string, url: string, env: NodeJS.ProcessEnv): Promise<void> {

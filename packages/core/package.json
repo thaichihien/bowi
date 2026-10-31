@@ -29,7 +29,8 @@
     "graphology": "0.26.0",
     "graphology-communities-louvain": "2.0.2",
     "graphology-types": "0.24.8",
-    "picomatch": "4.0.7"
+    "picomatch": "4.0.7",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@bowi/fixtures": "workspace:*",

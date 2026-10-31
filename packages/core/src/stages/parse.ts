@@ -11,7 +11,8 @@
 
 import { languageForPath, parseSource, type ParsedSource } from '@bowi/lang';
 import { createGeneratedMatcher, hasGeneratedHeader } from '../noise/generated.ts';
-import { NPM_LOCKFILES, summarizeNpmLockfile } from '../noise/lockfile.ts';
+import { addedNpmDependencies, NPM_LOCKFILES, summarizeNpmLockfile } from '../noise/lockfile.ts';
+import type { NewDependency } from '../plugin.ts';
 import type { Snapshot } from '../snapshot.ts';
 import type { Stage } from '../stage.ts';
 import type { FileChange } from '../types.ts';
@@ -38,6 +39,8 @@ export interface ParseStageOutput {
   generatedReasons: Map<string, string>;
   /** Extra summary lines for generated files, e.g. lockfile dependency changes (NOISE-6). */
   generatedNotes: Map<string, string[]>;
+  /** Direct dependencies a lockfile adds, by file ID (for the new-dependency hint). */
+  lockfileDependencies: Map<string, NewDependency[]>;
   /** Number of file versions parsed. */
   parsedVersions: number;
 }
@@ -53,6 +56,7 @@ export const parseStage: Stage<ParseStageInput, ParseStageOutput> = async (
   const sources = new Map<string, FileSources>();
   const generatedReasons = new Map<string, string>();
   const generatedNotes = new Map<string, string[]>();
+  const lockfileDependencies = new Map<string, NewDependency[]>();
   let parsedVersions = 0;
 
   const texts = await mapLimit(files, 8, async (f) => {
@@ -84,6 +88,8 @@ export const parseStage: Stage<ParseStageInput, ParseStageOutput> = async (
       if (NPM_LOCKFILES.includes(file.path.slice(file.path.lastIndexOf('/') + 1))) {
         const notes = summarizeNpmLockfile(text.old, text.new);
         if (notes.length) generatedNotes.set(file.id, notes);
+        const added = addedNpmDependencies(text.old, text.new);
+        if (added.length) lockfileDependencies.set(file.id, added);
       }
     }
 
@@ -124,7 +130,14 @@ export const parseStage: Stage<ParseStageInput, ParseStageOutput> = async (
     out.push(next);
   }
 
-  return { files: out, sources, generatedReasons, generatedNotes, parsedVersions };
+  return {
+    files: out,
+    sources,
+    generatedReasons,
+    generatedNotes,
+    lockfileDependencies,
+    parsedVersions,
+  };
 };
 
 function disposeFileSources(s: FileSources): void {

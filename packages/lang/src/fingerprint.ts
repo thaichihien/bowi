@@ -7,12 +7,19 @@
  * describes changed behaviour and must stay visible (requirement.md §15 #10). Statement and
  * argument boundaries remain visible through the named node structure, so a semicolon that
  * changes how code parses still changes the fingerprint.
+ *
+ * Markdown: line breaks inside a paragraph or heading do not count (re-wrapping text is
+ * formatting), and the indentation that continues a list item or quote is ignored.
  */
 
 import { createHash } from 'node:crypto';
 import type { Node } from 'web-tree-sitter';
 
 const DROPPED_TOKENS = new Set([';', ',', "'", '"']);
+/** Markdown text runs: compared with whitespace collapsed. */
+const TEXT_RUNS = new Set(['inline']);
+/** Markdown continuation markers: layout only, like whitespace. */
+const LAYOUT_NODES = new Set(['block_continuation']);
 
 export function isComment(node: Node): boolean {
   return node.type === 'comment' || node.type === 'html_comment';
@@ -44,6 +51,11 @@ export function serialize(node: Node, out: string[], skip?: Node): void {
     out.push('_');
     return;
   }
+  if (LAYOUT_NODES.has(node.type)) return;
+  if (TEXT_RUNS.has(node.type)) {
+    out.push(`${node.type}:${runText(node)}`);
+    return;
+  }
   if (node.childCount === 0) {
     if (!node.isNamed) {
       if (!DROPPED_TOKENS.has(node.type)) out.push(node.type);
@@ -55,6 +67,17 @@ export function serialize(node: Node, out: string[], skip?: Node): void {
   out.push(`(${node.type}`);
   for (const child of node.children) serialize(child, out, skip);
   out.push(')');
+}
+
+/** A text run's text without continuation markers (`> `, indentation), whitespace collapsed. */
+function runText(node: Node): string {
+  let text = node.text;
+  const markers = node.children.filter((c) => LAYOUT_NODES.has(c.type));
+  for (const m of markers.reverse()) {
+    const from = m.startIndex - node.startIndex;
+    text = text.slice(0, from) + ' ' + text.slice(from + (m.endIndex - m.startIndex));
+  }
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 export function hash(parts: string[]): string {
@@ -76,7 +99,11 @@ export function coverFingerprint(root: Node, startRow: number, endRow: number): 
   let node = root;
   for (;;) {
     const kids = node.children.filter(
-      (c) => !isIgnored(c) && c.startPosition.row <= endRow && c.endPosition.row >= startRow,
+      (c) =>
+        !isIgnored(c) &&
+        !LAYOUT_NODES.has(c.type) &&
+        c.startPosition.row <= endRow &&
+        c.endPosition.row >= startRow,
     );
     const only = kids[0];
     if (
@@ -99,7 +126,8 @@ export function coverFingerprint(root: Node, startRow: number, endRow: number): 
 export function contentLines(root: Node): Set<number> {
   const lines = new Set<number>();
   const visit = (node: Node) => {
-    if (node.childCount === 0 || isComment(node)) {
+    if (LAYOUT_NODES.has(node.type)) return;
+    if (node.childCount === 0 || isComment(node) || TEXT_RUNS.has(node.type)) {
       if (node.startIndex === node.endIndex) return; // zero-width (missing) token
       for (let row = node.startPosition.row; row <= node.endPosition.row; row++) lines.add(row + 1);
       return;

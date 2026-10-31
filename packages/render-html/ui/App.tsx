@@ -32,7 +32,8 @@ export function App({ plan, now }: { plan: ReviewPlan; now?: number }) {
   const isPr = plan.source.kind === 'github';
   const initial = useMemo(() => fromHash(model, window.location.hash), [model]);
   const [tab, setTab] = useState<Tab>(initial?.tab ?? 'review');
-  const [mode, setMode] = useState<ReadingMode>('dependency');
+  // The report opens in the order chosen with --order or the config (CLI-7).
+  const [mode, setMode] = useState<ReadingMode>(plan.meta.order ?? 'dependency');
   const flat = useMemo(() => model.flat(mode), [model, mode]);
   const [current, setCurrent] = useState<Position>(
     initial?.current ?? { groupIndex: 0, stepId: flat[0]?.step.id },

@@ -2,7 +2,7 @@
  * Supported languages (PARSE-2) and how a file path maps to one.
  */
 
-export type LanguageId = 'typescript' | 'tsx' | 'javascript' | 'json';
+export type LanguageId = 'typescript' | 'tsx' | 'javascript' | 'json' | 'yaml' | 'markdown';
 
 interface LanguageSpec {
   grammar: string;
@@ -24,6 +24,13 @@ export const LANGUAGES: Record<LanguageId, LanguageSpec> = {
     extensions: ['.js', '.mjs', '.cjs', '.jsx'],
   },
   json: { grammar: 'tree-sitter-json.wasm', query: 'json.scm', extensions: ['.json'] },
+  yaml: { grammar: 'tree-sitter-yaml.wasm', query: 'yaml.scm', extensions: ['.yaml', '.yml'] },
+  // Block structure only (sections, paragraphs, lists); inline markup stays text.
+  markdown: {
+    grammar: 'tree-sitter-markdown.wasm',
+    query: 'markdown.scm',
+    extensions: ['.md', '.markdown'],
+  },
 };
 
 /** Language for a path by extension, or undefined when Bowi has no grammar for it (tier 0). */

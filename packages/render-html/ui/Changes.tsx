@@ -8,7 +8,7 @@
 import type { FileChange } from '@bowi/core/types';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { CopyButton } from './Copy.tsx';
-import { DiffBlocks, hunkBarText, SplitLines, UnifiedLines } from './Diff.tsx';
+import { DiffBlocks, HunkBarText, SplitLines, UnifiedLines } from './Diff.tsx';
 import { Chevron, FileStatusIcon, FolderIcon } from './Icons.tsx';
 import {
   baseName,
@@ -186,7 +186,7 @@ function FileDiff(props: {
           {hunks.map((h) => (
             <div key={h.id}>
               <div class={props.split ? 'mono hunk-bar gh split' : 'mono hunk-bar gh'}>
-                {hunkBarText(h)}
+                <HunkBarText hunk={h} />
               </div>
               {props.split ? <SplitLines hunk={h} /> : <UnifiedLines hunk={h} />}
             </div>

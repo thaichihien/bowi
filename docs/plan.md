@@ -82,7 +82,12 @@ Design: [Bowi report redesign canvas](https://claude.ai/artifact/EcKK5DZAY5rdWEC
 
 ### M6 — P1 items
 
-Outside references (`@vscode/ripgrep`, fallback `git grep`, searched in a `git worktree`-free way by grepping the head tree via `git grep <sha>` on the bare cache), `same-commit` / `co-change` / `docs-mentions` edges, NestJS plugin, hints rule set, `.bowi.json` with zod (unknown keys warn), ~~reviewed-state persistence~~ (done in M5.5), keyboard shortcuts, tests-first order, YAML / SQL / Markdown grammars.
+Outside references (~~`@vscode/ripgrep`, fallback~~ `git grep`, searched in a `git worktree`-free way by grepping the head tree via `git grep <sha>` on the bare cache), `same-commit` / `co-change` / `docs-mentions` edges, NestJS plugin, hints rule set, `.bowi.json` with zod (unknown keys warn), ~~reviewed-state persistence~~ (done in M5.5), keyboard shortcuts, tests-first order, YAML / SQL / Markdown grammars.
+
+- Done as planned except: `git grep` only, no ripgrep (§15 #34); SQL grammar deferred, no prebuilt `.wasm` exists (§15 #41); `docs-mentions` was already built in M3 (§15 #18); tests-first order existed since M3, M6 adds `--order` and config `order` (`meta.order`, §15 #44). Decisions: §15 #34–#44.
+- Snapshot gains optional `blame(paths)`, `baseHistory(limit)` and `grep(words, extensions)`; the GitHub source fetches for them in batches and keeps the result in the cache (§15 #35).
+- Engine stages added: history (after symbols), outside references and hints (after groups). Plugins and hint rules are passed to `analyze()` by the CLI (`FrameworkPlugin`, `HintRule` in `@bowi/core`), so core does not depend on `@bowi/plugins` or `@bowi/rules`.
+- Report: keyboard (UI-13), opens in `meta.order`, hint text with code spans; hints stay on the group card (moving them to steps or files is a design-canvas change, §15 #40).
 
 ### M7 — Benchmark
 

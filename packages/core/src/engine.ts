@@ -1,20 +1,25 @@
 /**
  * Analysis engine: runs the stages in order and assembles the ReviewPlan (§11.1).
  *
- * Input: a Snapshot from any source. Output: the plan. Runs stages 2–7 (diff, parse, noise,
- * symbols, graph, groups); enrichment (hints, AI) comes in later milestones.
+ * Input: a Snapshot from any source, plus the framework plugins and hint rules to use. Output:
+ * the plan. Stages: diff, parse, (plugin detection), noise, symbols, history, graph, groups,
+ * outside references, hints. AI enrichment comes in a later milestone.
  */
 
 import { performance } from 'node:perf_hooks';
+import type { FrameworkPlugin, HintRule } from './plugin.ts';
 import type { Snapshot } from './snapshot.ts';
 import type { StageContext } from './stage.ts';
 import { diffStage } from './stages/diff.ts';
 import { graphStage } from './stages/graph.ts';
 import { groupStage } from './stages/group.ts';
+import { hintsStage } from './stages/hints.ts';
+import { historyStage } from './stages/history.ts';
 import { noiseStage } from './stages/noise.ts';
 import { disposeSources, parseStage } from './stages/parse.ts';
+import { refsStage } from './stages/refs.ts';
 import { symbolStage } from './stages/symbols.ts';
-import type { Hunk, ReviewPlan } from './types.ts';
+import type { Hunk, Layer, ReviewPlan } from './types.ts';
 
 export interface StageReport {
   stage: string;
@@ -24,8 +29,13 @@ export interface StageReport {
 
 export interface AnalyzeOptions {
   toolVersion: string;
-  /** Called after each stage, for progress output (CLI-6). */
+  /** Called before and after each stage, for progress output (CLI-6). */
+  onStageStart?: (stage: string) => void;
   onStage?: (report: StageReport) => void;
+  /** Framework plugins to try (PLG-1); those whose detect() succeeds are used. */
+  plugins?: FrameworkPlugin[];
+  /** Review hint rules (HINT-2). */
+  hintRules?: HintRule[];
 }
 
 export async function analyze(
@@ -44,6 +54,7 @@ export async function analyze(
   const timingsMs: Record<string, number> = {};
 
   async function run<T>(stage: string, fn: () => Promise<T>, summarize: (out: T) => string) {
+    options.onStageStart?.(stage);
     const start = performance.now();
     const out = await fn();
     const ms = Math.round(performance.now() - start);
@@ -71,6 +82,24 @@ export async function analyze(
   const { sources } = parsed;
 
   try {
+    const plugins: FrameworkPlugin[] = [];
+    for (const p of options.plugins ?? []) {
+      if (
+        await p.detect({ files: parsed.files, readFile: (v, path) => snapshot.readFile(v, path) })
+      )
+        plugins.push(p);
+    }
+    const pluginLayers = new Map<string, Layer>();
+    for (const f of parsed.files) {
+      for (const p of plugins) {
+        const layer = p.layerOf?.(f, sources.get(f.id));
+        if (layer) {
+          pluginLayers.set(f.path, layer);
+          break;
+        }
+      }
+    }
+
     const noise = await run(
       'noise',
       () => noiseStage({ files: parsed.files, hunks: diff.hunks, sources }, stageCtx),
@@ -85,15 +114,36 @@ export async function analyze(
       'symbols',
       () =>
         symbolStage(
-          { files: parsed.files, hunks: noise.hunks, sources, moves: noise.moves },
+          { files: parsed.files, hunks: noise.hunks, sources, moves: noise.moves, pluginLayers },
           stageCtx,
         ),
-      (o) => `${o.symbols.length} changed`,
+      (o) =>
+        `${o.symbols.length} changed${plugins.length ? ` · layers from ${plugins.map((p) => p.id).join(', ')}` : ''}`,
+    );
+
+    const history = await run(
+      'history',
+      () => historyStage({ snapshot, files, hunks }, stageCtx),
+      (o) =>
+        `${o.lineCommits.size} file${o.lineCommits.size === 1 ? '' : 's'} blamed · ${o.baseCommits.length} base commits`,
     );
 
     const { edges } = await run(
       'graph',
-      () => graphStage({ files, hunks, symbols, sources, lineSymbols }, stageCtx),
+      () =>
+        graphStage(
+          {
+            files,
+            hunks,
+            symbols,
+            sources,
+            lineSymbols,
+            history,
+            commits: snapshot.meta.commits,
+            plugins,
+          },
+          stageCtx,
+        ),
       (o) =>
         `${new Set(o.edges.flatMap((e) => [e.from, e.to])).size} nodes · ${o.edges.length} edges`,
     );
@@ -117,18 +167,66 @@ export async function analyze(
         `${o.groups.length} (confidence: ${o.groups.map((g) => (g.kind === 'noise' || g.kind === 'move' ? 'n/a' : g.confidence)).join(', ')})`,
     );
 
-    return assemble({ files, hunks, symbols, edges, groups });
+    const refs = await run(
+      'refs',
+      () => refsStage({ snapshot, files, hunks, symbols, sources }, stageCtx),
+      (o) =>
+        `${o.outsideRefs.length} unchanged caller${o.outsideRefs.length === 1 ? '' : 's'} of ${o.counts.size} symbol${o.counts.size === 1 ? '' : 's'}`,
+    );
+
+    const manifests = new Map<string, string>();
+    for (const f of files) {
+      if (f.status === 'deleted' || !/(^|\/)package\.json$/.test(f.path)) continue;
+      const text = await snapshot.readFile('new', f.path);
+      if (text !== null) manifests.set(f.id, text);
+    }
+    const { hints } = await run(
+      'hints',
+      () =>
+        hintsStage(
+          {
+            files,
+            hunks,
+            symbols,
+            sources,
+            lineSymbols,
+            edges,
+            groups,
+            outsideRefs: refs.outsideRefs,
+            outsideRefCounts: refs.counts,
+            lockfileDependencies: parsed.lockfileDependencies,
+            manifests,
+            rules: options.hintRules ?? [],
+            plugins,
+          },
+          stageCtx,
+        ),
+      (o) => `${o.hints.length}`,
+    );
+
+    return assemble(
+      { files, hunks, symbols, edges, groups, outsideRefs: refs.outsideRefs, hints },
+      plugins.map((p) => p.id),
+    );
   } finally {
     disposeSources(sources);
   }
 
-  function assemble({
-    files,
-    hunks,
-    symbols,
-    edges,
-    groups,
-  }: Pick<ReviewPlan, 'files' | 'hunks' | 'symbols' | 'edges' | 'groups'>): ReviewPlan {
+  function assemble(
+    {
+      files,
+      hunks,
+      symbols,
+      edges,
+      groups,
+      outsideRefs,
+      hints,
+    }: Pick<
+      ReviewPlan,
+      'files' | 'hunks' | 'symbols' | 'edges' | 'groups' | 'outsideRefs' | 'hints'
+    >,
+    pluginIds: string[],
+  ): ReviewPlan {
     let additions = 0;
     let deletions = 0;
     for (const f of files) {
@@ -165,14 +263,15 @@ export async function analyze(
       symbols,
       edges,
       groups,
-      outsideRefs: [],
-      hints: [],
+      outsideRefs,
+      hints,
       meta: {
         ai: { enabled: false },
         languages: [
           ...new Set(files.filter((f) => f.parseStatus === 'ok').map((f) => f.language!)),
         ].sort(),
-        plugins: [],
+        plugins: pluginIds,
+        order: ctx.config.order,
         warnings,
         timingsMs,
       },

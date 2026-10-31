@@ -6,26 +6,32 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { platform } from 'node:os';
 import { join, resolve } from 'node:path';
-import { Command, CommanderError } from 'commander';
+import { Command, CommanderError, Option } from 'commander';
 import { clearCache, defaultCacheDir } from '@bowi/cache';
 import {
   analyze,
   BowiError,
   createStageContext,
   DEFAULT_CONFIG,
+  parseConfig,
   UsageError,
+  type LoadedConfig,
+  type ReadingOrder,
   type ReviewPlan,
   type Snapshot,
 } from '@bowi/core';
+import { defaultPlugins } from '@bowi/plugins';
 import { renderHtml } from '@bowi/render-html';
+import { defaultRules } from '@bowi/rules';
 import {
   fetchPullRequest,
   openGithubSnapshot,
   openLocalSnapshot,
   parsePullRequestUrl,
+  repoRoot,
   resolveToken,
   type GithubOptions,
 } from '@bowi/sources';
@@ -57,6 +63,8 @@ interface CliOptions {
   jsonOnly?: boolean;
   untracked: boolean;
   open: boolean;
+  config?: string;
+  order?: ReadingOrder;
   cacheDir?: string;
   quiet?: boolean;
   verbose?: boolean;
@@ -78,6 +86,13 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
     .option('--json-only', 'write only review-plan.json, not review.html')
     .option('--no-untracked', 'with --local, leave out untracked files')
     .option('--no-open', 'do not open review.html in the browser')
+    .option('--config <path>', 'config file (default: .bowi.json in the repository, if present)')
+    .addOption(
+      new Option(
+        '--order <order>',
+        'reading order the report opens with (default: dependency)',
+      ).choices(['dependency', 'tests-first']),
+    )
     .option('--cache-dir <dir>', `cache folder (default: ${defaultCacheDir(io.env)})`)
     .option('-q, --quiet', 'print nothing but errors')
     .option('-v, --verbose', 'print more detail')
@@ -98,14 +113,26 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
   const opts = program.opts<CliOptions>();
   const progress = createProgress(io.stderr, { quiet: !!opts.quiet, verbose: !!opts.verbose });
   try {
-    const snapshot = await openSnapshot(program.args[0], opts, io, progress);
+    const target = program.args[0];
+    // --local reads its config first: it may name the base branch.
+    let loaded = !target && opts.local ? await localConfig(opts, io) : undefined;
+    const snapshot = await openSnapshot(target, opts, loaded?.config.base, io, progress);
+    loaded ??= await prConfig(opts, io, snapshot);
+    for (const w of loaded.warnings) progress.warn(w);
+    const config = opts.order ? { ...loaded.config, order: opts.order } : loaded.config;
     const plan = await analyze(
       snapshot,
-      createStageContext(DEFAULT_CONFIG, {
+      createStageContext(config, {
         ...(io.now && { now: io.now }),
         logger: progress.logger,
       }),
-      { toolVersion: VERSION, onStage: progress.stage },
+      {
+        toolVersion: VERSION,
+        onStageStart: progress.stageStart,
+        onStage: progress.stage,
+        plugins: defaultPlugins,
+        hintRules: defaultRules,
+      },
     );
     for (const w of plan.meta.warnings) progress.warn(w);
 
@@ -170,9 +197,46 @@ async function runCache(argv: string[], io: CliIo): Promise<number> {
   }
 }
 
+/**
+ * Config for --local (CLI-9): `--config <path>`, else `.bowi.json` at the repository root (the
+ * working tree, like the code being reviewed), else the defaults.
+ */
+async function localConfig(opts: CliOptions, io: CliIo): Promise<LoadedConfig> {
+  if (opts.config) return configFile(resolve(io.cwd, opts.config), opts.config);
+  const root = await repoRoot(io.cwd);
+  const text = await readFile(join(root, '.bowi.json'), 'utf8').catch(() => null);
+  return text === null ? { config: DEFAULT_CONFIG, warnings: [] } : parseConfig(text, '.bowi.json');
+}
+
+/**
+ * Config for a pull request: `--config <path>`, else `.bowi.json` as it is on the base side
+ * (merge base). Never the PR's own version: a pull request must not be able to change how it is
+ * presented, e.g. mark its own code as generated noise.
+ */
+async function prConfig(opts: CliOptions, io: CliIo, snapshot: Snapshot): Promise<LoadedConfig> {
+  if (opts.config) return configFile(resolve(io.cwd, opts.config), opts.config);
+  const text = await snapshot.readFile('old', '.bowi.json');
+  const loaded =
+    text === null ? { config: DEFAULT_CONFIG, warnings: [] } : parseConfig(text, '.bowi.json');
+  // The pull request already names its base branch.
+  const { base: _ignored, ...config } = loaded.config;
+  return { ...loaded, config };
+}
+
+async function configFile(path: string, label: string): Promise<LoadedConfig> {
+  const text = await readFile(path, 'utf8').catch((e: NodeJS.ErrnoException) => {
+    throw new UsageError(
+      `Cannot read the config file ${label} (${e.code ?? e.message}).`,
+      'Check the path given to --config.',
+    );
+  });
+  return parseConfig(text, label);
+}
+
 async function openSnapshot(
   target: string | undefined,
   opts: CliOptions,
+  configBase: string | undefined,
   io: CliIo,
   progress: Progress,
 ): Promise<Snapshot> {
@@ -223,7 +287,7 @@ async function openSnapshot(
     () =>
       openLocalSnapshot({
         cwd: io.cwd,
-        ...(opts.base !== undefined && { base: opts.base }),
+        ...((opts.base ?? configBase) !== undefined && { base: opts.base ?? configBase }),
         includeUntracked: opts.untracked,
         excludeUntracked: [
           resolve(io.cwd, '.bowi'),
