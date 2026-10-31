@@ -6,7 +6,7 @@
 
 import type { ReviewPlan } from '@bowi/core/types';
 import type { ComponentChildren } from 'preact';
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ChangesTab } from './Changes.tsx';
 import { CommitsTab } from './Commits.tsx';
 import { DescriptionTab } from './Description.tsx';
@@ -39,13 +39,17 @@ export function App({ plan, now }: { plan: ReviewPlan; now?: number }) {
   );
   // Reviewed steps and viewed files, kept in the browser for a week (UI-12).
   const storeKey = useMemo(() => progressKey(plan), [plan]);
-  const [progress, setProgressState] = useState<Progress>(() =>
+  const [progress, setProgress] = useState<Progress>(() =>
     loadProgress(storeKey, now ?? Date.now()),
   );
-  const setProgress = (p: Progress) => {
-    setProgressState(p);
-    saveProgress(storeKey, p, Date.now());
-  };
+  const loaded = useRef(true);
+  useEffect(() => {
+    if (loaded.current) {
+      loaded.current = false; // nothing changed yet: leave the stored entry as it is
+      return;
+    }
+    saveProgress(storeKey, progress, Date.now());
+  }, [progress, storeKey]);
 
   const go = (groupIndex: number, stepId?: string) => {
     setCurrent({ groupIndex, stepId });
@@ -87,8 +91,13 @@ export function App({ plan, now }: { plan: ReviewPlan; now?: number }) {
           flat={flat}
           current={current}
           progress={progress}
-          setProgress={setProgress}
+          // An updater, so quick clicks build on each other, never on a stale copy.
+          updateProgress={setProgress}
           go={go}
+          openChanges={() => {
+            setTab('changes');
+            window.scrollTo?.(0, 0);
+          }}
         />
       )}
       {shown === 'description' && <DescriptionTab plan={plan} now={now ?? Date.now()} />}

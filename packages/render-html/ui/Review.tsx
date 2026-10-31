@@ -7,6 +7,7 @@
 import type { Group } from '@bowi/core/types';
 import { useState } from 'preact/hooks';
 import { ArrowIcon, CheckIcon, Chevron, ReviewedIcon, StepIconBadge } from './Icons.tsx';
+import { FinishDialog, type FinishResult } from './Finish.tsx';
 import { Inline } from './Inline.tsx';
 import { KIND_LABELS, type FlatStep, type Model, type ReadingMode } from './model.ts';
 import { markStep, toggleViewed, viewedKey, type Progress } from './progress.ts';
@@ -31,18 +32,20 @@ export function ReviewTab(props: {
   flat: FlatStep[];
   current: Position;
   progress: Progress;
-  setProgress: (p: Progress) => void;
+  updateProgress: (change: (p: Progress) => Progress) => void;
   go: (groupIndex: number, stepId?: string) => void;
+  openChanges: () => void;
 }) {
-  const { model, mode, flat, current, progress, setProgress, go } = props;
+  const { model, mode, flat, current, progress, updateProgress, go } = props;
   const { reviewed } = progress;
   const [rawOpen, setRawOpen] = useState<Set<string>>(new Set());
+  const [finish, setFinish] = useState<FinishResult>();
   const group = model.plan.groups[current.groupIndex];
   const position = flat.findIndex((f) => f.step.id === current.stepId);
   const currentStep = position >= 0 ? flat[position] : undefined;
   const done = flat.filter((f) => reviewed.has(f.step.id)).length;
   const pct = flat.length ? Math.round((done / flat.length) * 100) : 0;
-  const mark = (stepId: string, on: boolean) => setProgress(markStep(progress, stepId, on));
+  const mark = (stepId: string, on: boolean) => updateProgress((p) => markStep(p, stepId, on));
 
   return (
     <div class="wrap tab-page review-page">
@@ -67,12 +70,19 @@ export function ReviewTab(props: {
           </div>
         </div>
         <div class="toolbar-group progress">
-          <span class="muted small">
-            <strong class="ink">
-              {done} of {flat.length}
-            </strong>{' '}
-            steps reviewed
-          </span>
+          {flat.length > 0 && done === flat.length ? (
+            <span class="all-done small">
+              <CheckIcon />
+              All {flat.length} steps reviewed
+            </span>
+          ) : (
+            <span class="muted small">
+              <strong class="ink">
+                {done} of {flat.length}
+              </strong>{' '}
+              steps reviewed
+            </span>
+          )}
           <div
             class="bar"
             role="progressbar"
@@ -108,14 +118,33 @@ export function ReviewTab(props: {
               flat={flat}
               position={position}
               progress={progress}
-              setProgress={setProgress}
+              updateProgress={updateProgress}
               rawOpen={rawOpen.has(currentStep.step.id)}
               toggleRaw={() => setRawOpen(toggle(rawOpen, currentStep.step.id))}
               go={go}
+              finish={() => {
+                // Finish marks the last step, then celebrates or lists what is left (UI-24).
+                const next = markStep(progress, currentStep.step.id, true);
+                updateProgress((p) => markStep(p, currentStep.step.id, true));
+                setFinish(
+                  flat.every((f) => next.reviewed.has(f.step.id)) ? 'complete' : 'incomplete',
+                );
+              }}
             />
           )}
         </main>
       </div>
+      {finish && (
+        <FinishDialog
+          model={model}
+          result={finish}
+          flat={flat}
+          reviewed={reviewed}
+          close={() => setFinish(undefined)}
+          go={go}
+          openChanges={props.openChanges}
+        />
+      )}
     </div>
   );
 }
@@ -128,12 +157,13 @@ function CurrentStep(props: {
   flat: FlatStep[];
   position: number;
   progress: Progress;
-  setProgress: (p: Progress) => void;
+  updateProgress: (change: (p: Progress) => Progress) => void;
   rawOpen: boolean;
   toggleRaw: () => void;
   go: (groupIndex: number, stepId?: string) => void;
+  finish: () => void;
 }) {
-  const { model, group, flat, position, progress, setProgress, go } = props;
+  const { model, group, flat, position, progress, updateProgress, go } = props;
   const step = flat[position]!.step;
   const prev = flat[position - 1];
   const next = flat[position + 1];
@@ -162,7 +192,7 @@ function CurrentStep(props: {
         toggleRaw={props.toggleRaw}
         viewed={{
           has: (fileId) => progress.viewed.has(viewedKey(step.id, fileId)),
-          toggle: (fileId) => setProgress(toggleViewed(progress, step.id, fileId, files)),
+          toggle: (fileId) => updateProgress((p) => toggleViewed(p, step.id, fileId, files)),
         }}
       />
       <div class="fab" role="region" aria-label="Step actions">
@@ -188,7 +218,7 @@ function CurrentStep(props: {
         <button
           class={isDone ? 'btn done' : 'btn'}
           aria-pressed={isDone}
-          onClick={() => setProgress(markStep(progress, step.id, !isDone))}
+          onClick={() => updateProgress((p) => markStep(p, step.id, !p.reviewed.has(step.id)))}
         >
           {isDone && <CheckIcon />}
           {isDone ? 'Reviewed' : 'Mark as reviewed'}
@@ -196,8 +226,9 @@ function CurrentStep(props: {
         <button
           class="btn primary"
           onClick={() => {
-            setProgress(markStep(progress, step.id, true));
-            if (next) go(next.groupIndex, next.step.id);
+            if (!next) return props.finish();
+            updateProgress((p) => markStep(p, step.id, true));
+            go(next.groupIndex, next.step.id);
           }}
         >
           {next ? (

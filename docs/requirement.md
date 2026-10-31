@@ -275,6 +275,7 @@ The interactive prototype was the reference design up to M4. Since M5.5 the refe
 | UI-21 | P0 | Commits tab: commits oldest first, grouped by day, each with subject, author (and committer when different), relative time, exact time in the viewer's time zone, short hash with a copy button, and the full message on demand. Local: an "Uncommitted changes" row when the working tree differs from HEAD |
 | UI-22 | P0 | Changes tab: every file in GitHub's order (subfolders before files at each level) with a filterable file tree; unified (default) or split layout, remembered per viewer in `localStorage`; generated, deleted and large files start closed behind "Load diff"; binary, rename-only and mode-only files say so; collapse / expand all |
 | UI-23 | P0 | Review tab: each file of a step has a Viewed checkbox; checking it collapses the file, unchecking opens it. Viewed is per step (the same file in two steps is viewed separately). Viewing every file of a step marks the step reviewed; unviewing one unmarks it only if the rule had marked it, never a step marked by hand. Moved code and collapsed noise have no Viewed button |
+| UI-24 | P0 | "Finish review" (Next on the last step) marks the step and, when every step is reviewed, plays paper fireworks (bursts from the bottom corners and the middle, about 4 s) with a "Review complete" dialog: groups, files, lines read carefully, "See all changes", "Done". Otherwise a dialog lists the steps not reviewed yet with links to them. Every click on Finish, never on its own; Escape or the backdrop closes it; no fireworks or animation with reduced motion |
 
 ---
 
@@ -592,7 +593,7 @@ Each milestone ends with passing tests and a short note in `CHANGELOG.md`.
 | M3 | Change graph (P0 edges), hub down-weighting, grouping, ordering, reasons, confidence, rule titles, partition + determinism checks | §12.2 grouping checks pass; hub-change and no-links fixtures pass |
 | M4 | HTML renderer ported from the prototype (UI P0 items) | `review.html` for the fixture matches the prototype's structure and works offline |
 | M5 | GitHub source, repo cache, parse cache, progress output, error messages | Real public PR URL produces a report; second run is faster from cache |
-| M5.5 | Report redesign: header, tabs (Review, Description, Commits, Changes), commit metadata in the plan | The page matches the redesign canvas; UI-19..23 tests pass |
+| M5.5 | Report redesign: header, tabs (Review, Description, Commits, Changes), commit metadata in the plan | The page matches the redesign canvas; UI-19..24 tests pass |
 | M6 | P1 items: outside references, commit and co-change edges, NestJS plugin, hints, config file, reviewed-state persistence, keyboard shortcuts | Corresponding tests pass |
 | M7 | Benchmark harness (§12.3) | Report printed for at least 2 TypeScript repos |
 | M8 | Optional AI enrichment (P2) | `--ai` improves titles/intents; partition invariant still enforced |

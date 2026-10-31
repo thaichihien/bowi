@@ -197,6 +197,55 @@ describe('Review tab', () => {
     expect(text()).toContain('1 of 8 steps reviewed');
   });
 
+  describe('Finish review (UI-24)', () => {
+    const last = () => local.groups.at(-1)!.steps.at(-1)!.id;
+    const markAll = async () => {
+      for (const b of [...root.querySelectorAll('.quick-mark[aria-pressed="false"]')])
+        await press(b);
+    };
+
+    it('celebrates when every step is reviewed', async () => {
+      show(local, `#${last()}`);
+      await markAll();
+      expect(text()).toContain('All 8 steps reviewed');
+      await click('Finish review');
+      const dialog = root.querySelector('[role="dialog"]')!;
+      expect(dialog.querySelector('h2')!.textContent).toBe('Review complete');
+      expect(dialog.textContent).toContain('all 8 steps of feature/email-verification');
+      expect(root.querySelectorAll('.fireworks .paper').length).toBeGreaterThan(100);
+      await click('Done');
+      expect(root.querySelector('[role="dialog"]')).toBeNull();
+      // Every click on Finish celebrates again.
+      await click('Finish review');
+      expect(root.querySelector('[role="dialog"] h2')!.textContent).toBe('Review complete');
+      await click('See all changes');
+      expect(root.querySelector('.tab.on')!.textContent).toBe('Changes11');
+    });
+
+    it('lists the steps left, without fireworks, and goes to one', async () => {
+      show(local, `#${last()}`);
+      await click('Finish review');
+      expect(text()).toContain('1 of 8 steps reviewed'); // Finish marks the last step
+      const dialog = root.querySelector('[role="dialog"]')!;
+      expect(dialog.querySelector('h2')!.textContent).toBe('7 steps not reviewed yet');
+      expect(dialog.querySelectorAll('.dialog-go')).toHaveLength(6);
+      expect(dialog.textContent).toContain('and 1 more');
+      expect(root.querySelector('.fireworks')).toBeNull();
+      await click('Go to Data shape');
+      expect(root.querySelector('[role="dialog"]')).toBeNull();
+      expect(root.querySelector('.step h3')!.textContent).toBe('Step 1 of 5 · Data shape');
+    });
+
+    it('closes with Escape', async () => {
+      show(local, `#${last()}`);
+      await click('Finish review');
+      await act(() => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      });
+      expect(root.querySelector('[role="dialog"]')).toBeNull();
+    });
+  });
+
   it('remembers progress after a reload (UI-12)', async () => {
     await press(root.querySelector('.step .viewed'));
     await click(/^Next: Services/);

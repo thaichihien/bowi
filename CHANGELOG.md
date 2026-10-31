@@ -16,6 +16,7 @@
   - Each file of a step has a **Viewed** checkbox that collapses it. Viewing every file of a step marks the step reviewed (a step marked by hand stays marked).
   - **Previous**, **Mark as reviewed** and **Next** float at the bottom right, so they are always in reach in a long step.
   - Each step in the sidebar has its own reviewed button: mark it without opening it.
+  - **Finish review** celebrates when every step is reviewed: paper fireworks and a "Review complete" dialog with the groups, files and lines read. If steps are left, the dialog lists them with links instead. No fireworks when the system asks for reduced motion.
   - Reviewed steps and viewed files are kept in the browser (`localStorage`) for the same report and diff; entries not used for a week are deleted (requirement.md §15 #32).
 - Plan: commits now carry `body`, `author`, `authoredAt`, `committer` (when different) and `committedAt`; new `source.createdAt`, `source.totalCommits` and `source.uncommitted` (see requirement.md §8, §15 #27–#31). No extra GitHub API calls.
 - New dependencies in `@bowi/render-html`: `micromark` 4.0.3 with `micromark-extension-gfm` 3.0.0, and `sanitize-html` 2.17.5 (the last version that supports Node 20).

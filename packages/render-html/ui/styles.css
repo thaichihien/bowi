@@ -944,7 +944,273 @@ button.file-head[aria-expanded='false'] {
   }
 }
 
+/* Finish review (UI-24): the dialog, then paper fireworks over everything. */
+.all-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--add-ink);
+  font-weight: 600;
+}
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(28, 28, 26, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: bowi-fade 0.2s ease-out both;
+}
+.dialog {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--surface);
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(28, 28, 26, 0.25);
+  padding: 32px 32px 24px;
+  animation: bowi-rise 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.dialog.done {
+  text-align: center;
+}
+.dialog h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 700;
+}
+.dialog.done h2 {
+  font-size: 24px;
+  line-height: 32px;
+}
+.dialog-text {
+  margin: 0 0 18px;
+  font-size: 15px;
+  line-height: 23px;
+  color: var(--text-2);
+}
+.dialog-x {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dialog-x:hover {
+  background: #f3f2ee;
+}
+.dialog-stats {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.dialog-stat {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 6px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+.dialog-stat b {
+  font-size: 20px;
+  line-height: 26px;
+}
+.dialog-stat span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.dialog-actions.center {
+  justify-content: center;
+}
+.dialog-warn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #fdf0dc;
+  color: #7f4c00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+.dialog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.dialog-go {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  min-height: 52px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+}
+.dialog-go:hover {
+  background: var(--bg);
+}
+.dialog-go-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.badge {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 18px;
+}
+.badge-disc,
+.badge-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+.badge-disc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--green);
+  animation: bowi-pop 0.5s 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+.badge-ring {
+  border: 3px solid #2f9e57;
+  animation: bowi-ring 1s 0.3s ease-out both;
+}
+.badge-tick {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: bowi-draw 0.35s 0.45s ease-out forwards;
+}
+.fireworks {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  overflow: hidden;
+  perspective: 600px;
+}
+/* Each piece flies out to (--px, --py), slows down, then flutters down to (--ex, --ey). */
+.paper {
+  position: absolute;
+  width: 10px;
+  height: 7px;
+  margin: -3px 0 0 -5px;
+  border-radius: 1.5px;
+  animation-name: bowi-burst;
+  animation-fill-mode: both;
+}
+.paper.strip {
+  width: 5px;
+  height: 14px;
+}
+.paper.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+@keyframes bowi-burst {
+  0% {
+    transform: translate(0, 0) rotate3d(var(--ax), 1, 0.3, 0deg) scale(0.4);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.12, 0.75, 0.3, 1);
+  }
+  30% {
+    transform: translate(var(--px), var(--py)) rotate3d(var(--ax), 1, 0.3, var(--r1)) scale(1);
+    animation-timing-function: cubic-bezier(0.45, 0, 0.75, 0.6);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--ex), var(--ey)) rotate3d(var(--ax), 1, 0.3, var(--r2)) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes bowi-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes bowi-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+}
+@keyframes bowi-pop {
+  from {
+    transform: scale(0.4);
+  }
+}
+@keyframes bowi-ring {
+  from {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+@keyframes bowi-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fireworks {
+    display: none;
+  }
+  .backdrop,
+  .dialog,
+  .badge-disc,
+  .badge-ring {
+    animation: none;
+  }
+  .badge-ring {
+    opacity: 0;
+  }
+  .badge-tick {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
+
 /* Buttons */
+.dialog-x:focus-visible,
+.dialog-go:focus-visible,
 .btn:focus-visible,
 .viewed:focus-visible,
 .quick-mark:focus-visible {

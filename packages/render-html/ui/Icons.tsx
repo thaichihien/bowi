@@ -203,6 +203,12 @@ export const ArrowIcon = ({ dir }: { dir: 'left' | 'right' }) => (
   </Svg>
 );
 
+export const CloseIcon = () => (
+  <Svg size={16}>
+    <path d="M4 4l8 8M12 4l-8 8" />
+  </Svg>
+);
+
 export const FolderIcon = () => (
   <Svg size={14}>
     <path d="M1.75 3.75a1 1 0 011-1h3.5l1.5 1.75h5.5a1 1 0 011 1v6.75a1 1 0 01-1 1H2.75a1 1 0 01-1-1z" />
