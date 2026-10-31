@@ -32,7 +32,10 @@ describe('withLock', () => {
         events.push(`${name}:end`);
       });
     await Promise.all([holder('a'), holder('b')]);
-    expect(events).toEqual(['a:start', 'a:end', 'b:start', 'b:end']);
+    // Either may get the lock first; the other must wait until it is released.
+    const first = events[0]!.split(':')[0]!;
+    const second = first === 'a' ? 'b' : 'a';
+    expect(events).toEqual([`${first}:start`, `${first}:end`, `${second}:start`, `${second}:end`]);
     expect(existsSync(`${dir}.lock`)).toBe(false);
   });
 
