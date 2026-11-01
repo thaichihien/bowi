@@ -127,7 +127,7 @@ export async function buildPackage(): Promise<string> {
   }
 
   const manifest = {
-    name: 'bowi',
+    name: cli.name,
     version: cli.version,
     description:
       'Turns a pull request into a guided review: related changes grouped, foundations first, noise collapsed, every group explained.',
@@ -151,7 +151,7 @@ export async function buildPackage(): Promise<string> {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const dir = await buildPackage();
-  const { version, dependencies } = readJson(join(dir, 'package.json'));
-  console.log(`Built bowi ${version} in ${dir}`);
+  const { name, version, dependencies } = readJson(join(dir, 'package.json'));
+  console.log(`Built ${name} ${version} in ${dir}`);
   console.log(`  dependencies: ${Object.keys(dependencies ?? {}).join(', ')}`);
 }

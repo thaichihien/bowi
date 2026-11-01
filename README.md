@@ -15,15 +15,15 @@ You need:
 Install the `bowi` command:
 
 ```bash
-npm install -g bowi      # or: pnpm add -g bowi, bun add -g bowi
+npm install -g @bowi/cli      # or: pnpm add -g @bowi/cli, bun add -g @bowi/cli
 bowi --version
 ```
 
-Or run it without installing: `npx bowi --local`.
+The package is `@bowi/cli`; the command it installs is `bowi`. Or run it without installing: `npx @bowi/cli --local`.
 
 Installing runs nothing (Bowi has no install scripts), and Bowi itself connects only to GitHub, for pull request URLs, and to the AI provider when you turn AI on.
 
-**Update:** `npm install -g bowi@latest`. **Uninstall:** `bowi cache clear` (removes fetched repositories), then `npm uninstall -g bowi`.
+**Update:** `npm install -g @bowi/cli@latest`. **Uninstall:** `bowi cache clear` (removes fetched repositories), then `npm uninstall -g @bowi/cli`.
 
 To run Bowi from a clone instead, see [Development](#development).
 

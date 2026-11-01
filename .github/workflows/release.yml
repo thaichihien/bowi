@@ -1,4 +1,4 @@
-# Stages `bowi` on npm when a version tag (v0.1.1, …) is pushed (plan M9).
+# Stages `@bowi/cli` on npm when a version tag (v0.1.1, …) is pushed (plan M9).
 #
 # Uses npm trusted publishing (OIDC): no npm token is stored in GitHub. On npmjs.com, the
 # package's Settings → Trusted publishing names this repository and this file (release.yml),
@@ -38,14 +38,15 @@ jobs:
       - name: The tag matches the package version
         id: version
         run: |
+          name="$(node -p "require('./build/npm/package.json').name")"
           version="$(node -p "require('./build/npm/package.json').version")"
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
             echo "Tag $GITHUB_REF_NAME does not match packages/cli/package.json ($version)." >&2
             exit 1
           fi
           # A version already on npm (0.1.0 was published by hand) is not staged again.
-          if [ "$(npm view "bowi@$version" version 2>/dev/null)" = "$version" ]; then
-            echo "bowi@$version is already on npm; nothing to stage."
+          if [ "$(npm view "$name@$version" version 2>/dev/null)" = "$version" ]; then
+            echo "$name@$version is already on npm; nothing to stage."
             echo "published=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Stage on npm

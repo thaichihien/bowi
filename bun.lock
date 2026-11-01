@@ -36,8 +36,8 @@
       "version": "0.0.0",
     },
     "packages/cli": {
-      "name": "bowi",
-      "version": "0.0.0",
+      "name": "@bowi/cli",
+      "version": "0.1.0",
       "bin": {
         "bowi": "./src/bin.ts",
       },
@@ -139,6 +139,8 @@
     "@bowi/ai": ["@bowi/ai@workspace:packages/ai"],
 
     "@bowi/cache": ["@bowi/cache@workspace:packages/cache"],
+
+    "@bowi/cli": ["@bowi/cli@workspace:packages/cli"],
 
     "@bowi/core": ["@bowi/core@workspace:packages/core"],
 
@@ -361,8 +363,6 @@
     "assertion-error": ["assertion-error@2.0.1", "", {}, "sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA=="],
 
     "balanced-match": ["balanced-match@4.0.4", "", {}, "sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA=="],
-
-    "bowi": ["bowi@workspace:packages/cli"],
 
     "brace-expansion": ["brace-expansion@5.0.12", "", { "dependencies": { "balanced-match": "^4.0.2" } }, "sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ=="],
 

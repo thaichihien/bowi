@@ -12,7 +12,7 @@ Bowi (short for _bowerbird_) turns a pull request into a guided review: related 
 
 ## Architecture
 
-Bun workspaces monorepo. Internal packages use the `@bowi/` scope; the CLI package is `bowi`.
+Bun workspaces monorepo. Internal packages use the `@bowi/` scope; the CLI package is `@bowi/cli` (the command is `bowi`).
 
 ```
 CLI ─► source (local git | GitHub PR) ─► Snapshot ─► engine stages ─► ReviewPlan ─► review-plan.json
@@ -55,7 +55,7 @@ Plugins are detected after parse (`detect`), before symbols.
 ## Rules that must hold
 
 - **Runtime is Node ≥ 22.12** (§15 #59) **and git ≥ 2.31** (§15 #61). Bun is only the dev tool: use `node:` APIs, never `Bun.*` (ESLint forbids the global). Before adding a dependency, check its `engines.node`; pin the last major that supports Node 22.12. Runtime dependencies are pinned exactly (the package build refuses ranges); grammar and shiki versions also because they change output.
-- **Only `bowi` is published** (§15 #60): `scripts/build-package.ts` bundles every `@bowi/*` package into `build/npm/dist/` and copies grammars, queries and the page template next to it. Code that reads files of its package goes one folder up from its own module (`join(dirname(fileURLToPath(import.meta.url)), '..', …)`), which holds in `src/` and in `dist/`; a new asset folder must also be copied by the build and allowed in `scripts/smoke.ts`. No install scripts.
+- **Only `@bowi/cli` is published** (§15 #60; npm refused the name `bowi`), installing the `bowi` command: `scripts/build-package.ts` bundles every `@bowi/*` package into `build/npm/dist/` and copies grammars, queries and the page template next to it. Code that reads files of its package goes one folder up from its own module (`join(dirname(fileURLToPath(import.meta.url)), '..', …)`), which holds in `src/` and in `dist/`; a new asset folder must also be copied by the build and allowed in `scripts/smoke.ts`. No install scripts.
 - **Never run code from the reviewed repository.** All git goes through `packages/sources/src/git.ts` (hooks and fsmonitor off, no optional locks, `DIFF_FLAGS` pins diff output: no external diff or textconv). No installs, scripts or builds of the target repo.
 - **Privacy:** no network calls except GitHub (URL mode) and the AI provider (only when enabled; `claude -p` is a child process, its network use is Claude Code's). The AI never sees noise hunks or whole files, and a PR's own `.bowi.json` cannot turn AI on. Tokens reach git through `GIT_CONFIG_*` env vars, never argv. `review.html` makes no requests: everything inlined, no fonts or CDNs.
 - **Determinism (GRP-12):** same input → identical plan except `generatedAt` and `meta.timingsMs` (`comparablePlanJson`). Sort with `compareStrings`/`sortBy` (code-unit order, never `localeCompare`); Louvain uses a seeded RNG.
