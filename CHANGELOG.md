@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (not published yet)
+## 0.1.0 (2026-11-01)
 
 The first version: everything from M0 to M9 below.
 

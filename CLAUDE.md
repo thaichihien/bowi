@@ -102,7 +102,7 @@ bun run bench:select <owner/repo …>                      # pick cases (local o
 
 - Work directly on `main`; separate milestones by commits. End each milestone with a "Try it" section: commands the owner can run and what the output means.
 - Push only when asked. `origin` is `https://github.com/thaichihien/bowi.git` (this machine's SSH key belongs to another account). Author: `thaichihien <thaichihien@gmail.com>`.
-- Releases: set the version in `packages/cli/package.json` (the only version that counts) and the `CHANGELOG.md` heading, commit, tag `v<version>`. Pushing the tag stages the version on npm (`.github/workflows/release.yml`) and the owner approves it with 2FA; push tags only when the owner asks. The repository is private for now (§15 #62): CI runs on Linux only, no GitHub environment, no provenance.
+- Releases: set the version in `packages/cli/package.json` (the only version that counts) and the `CHANGELOG.md` heading, commit, tag `v<version>`. Pushing the tag stages the version on npm (`.github/workflows/release.yml`) and the owner approves it with 2FA; push tags only when the owner asks. A trusted publisher on npm that has not published yet lapses after 2 days ("Pending validation"); if it lapsed, the owner deletes it and adds it again (`thaichihien` / `bowi` / `release.yml`, no environment, staged only) shortly before the tag is pushed. The repository is private for now (§15 #62): CI runs on Linux only, no GitHub environment, no provenance.
 - Markdown: one line per paragraph or list item, no hard wrapping.
 
 ## Commit messages
