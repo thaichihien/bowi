@@ -8,7 +8,7 @@
     "fixtures"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "build": "bun run build:ui && tsc -b",
@@ -22,6 +22,8 @@
     "check": "bun run typecheck && bun run lint && bun run format:check && bun run test",
     "show-plan": "node scripts/show-plan.ts",
     "build:ui": "bun run --cwd packages/render-html build:ui",
+    "build:package": "bun run build:ui && node scripts/build-package.ts",
+    "smoke": "bun run build:package && node scripts/smoke.ts",
     "dev:ui": "bun run --cwd packages/render-html dev:ui",
     "bench": "node bench/src/main.ts",
     "bench:select": "node bench/src/main.ts select"
@@ -33,7 +35,8 @@
     "@bowi/plugins": "workspace:*",
     "@bowi/sources": "workspace:*",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^20",
+    "@types/node": "^22",
+    "esbuild": "0.28.2",
     "eslint": "^10.13.0",
     "prettier": "^3.9.10",
     "typescript": "~6.0.3",

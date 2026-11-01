@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 (not published yet)
+
+The first version: everything from M0 to M9 below.
+
+### M9 — Release on npm
+
+- Install with `npm install -g bowi` (or `pnpm add -g bowi`, `bun add -g bowi`), or run without installing: `npx bowi --local`. No clone, Bun or build step needed. Needs Node 22.12 or newer and git 2.31 or newer, on macOS or Linux (Windows in 0.2.0).
+- One package, `bowi`: every internal `@bowi/*` package is bundled into it (`dist/bowi.js`, 217 KB, not minified), with the grammars, queries and the prebuilt report page. Third-party packages (shiki, web-tree-sitter, graphology, zod, micromark, sanitize-html, commander, picomatch) are its dependencies, pinned to exact versions. Package: 23 files, 502 KB packed, 4.1 MB unpacked; installed with its dependencies, 50 MB in 104 packages (shiki's language grammars are 17 MB of it).
+- Installing runs nothing: the package has no install scripts, and the smoke test installs it with `--ignore-scripts` to prove it needs none. No telemetry and no update check.
+- Node ≥ 22.12 (was ≥ 20; Node 20 reached end of life on 2026-04-30). An older Node gets "Bowi needs Node 22.12 or newer; this is Node 20.11.0." and exit 1, before anything else loads. 22.12 is the oldest Node that commander 15 and sanitize-html 2.18 support.
+- git ≥ 2.31 is checked before every run: a missing git or an older one exits 2 with how to install it ("Bowi needs git 2.31 or newer; this is git version 2.30.9."). 2.31 added the environment config Bowi uses to pass a GitHub token to git without putting it on the command line. Before, a missing git failed without a next step.
+- `bowi --version`, the plan's `meta.tool.version` and the report header show the package version (0.1.0; was a fixed 0.0.0).
+- Updated: commander 14 → 15.0.0, sanitize-html 2.17.5 → 2.18.1 (both need Node 22.12), `@types/node` 20 → 22.
+- `bun run build:package` builds the package into `build/npm/`; `bun run smoke` packs it, checks that only the expected files are in it, installs it with plain npm into an empty folder, and runs it on the email-verification fixture: the plan must equal the one the sources produce.
+- GitHub Actions: `CI` runs `bun run check` with Node 22 and 24, and the smoke test with Node 22.12.0 and 24, on every push to main and every pull request (Linux only while the repository is private). `Release` stages the version on npm when a `v*` tag is pushed, after the check and the smoke test and only if the tag matches the version, through npm trusted publishing (no npm token stored in GitHub); it goes out when the owner approves it with 2FA. A version already on npm is skipped.
+- README: installation from npm; running from a clone moved to Development.
 
 ### M8 — AI titles and intents through Claude Code
 

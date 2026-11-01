@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { comparablePlanJson, type ReviewPlan } from '@bowi/core';
 import { buildFixtureRepo, emailVerification } from '@bowi/fixtures';
@@ -402,6 +403,10 @@ describe('bowi usage and errors', () => {
 
   it('prints help and version with exit 0', async () => {
     expect(await bowi(tempDir(), '--help')).toMatchObject({ code: 0 });
-    expect((await bowi(tempDir(), '--version')).stdout.trim()).toBe('0.0.0');
+    const { version } = JSON.parse(
+      readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'),
+    ) as { version: string };
+    expect(version).toMatch(/^\d+\.\d+\.\d+/);
+    expect((await bowi(tempDir(), '--version')).stdout.trim()).toBe(version);
   });
 });

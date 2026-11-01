@@ -6,7 +6,7 @@ Bowi (short for _bowerbird_) turns a pull request into a guided review: related 
 
 - `docs/requirement.md` — the spec. Requirement IDs (CLI-1, NOISE-2, GRP-4, …) are used in code comments. **§15 Open questions** records every decision, assumption and deviation from the spec; when something is unclear, add it there instead of guessing silently.
 - `docs/plan.md` — milestone plan M0–M8 and decisions taken. Do not start a later milestone's features early.
-- `CHANGELOG.md` — what each milestone delivered. M0–M8 are done (M5.5 = report redesign, M6 = P1 items, M7 = grouping benchmark, M8 = AI via `claude -p`); no later milestone is planned yet.
+- `CHANGELOG.md` — what each milestone delivered. M0–M9 are done (M5.5 = report redesign, M6 = P1 items, M7 = grouping benchmark, M8 = AI via `claude -p`, M9 = npm release 0.1.0); M10–M17 are planned in `docs/plan.md` ("Roadmap after M8"). Each milestone after M9 ends with a minor release.
 - Report design: the M5.5 redesign canvas linked in `docs/plan.md` (header, tabs Review / Description / Commits / Changes). `docs/prototype.html` is the older M4 reference (a bundled file; the page inside is a JSON string).
 - `development-logs.md` (git-ignored, may not exist) — the owner's log of feedback on Bowi's code: logic and UI behavior, and decisions about them. If it exists, add an entry when the owner gives such feedback or decides such a question (or when you raise one), with date and time, and keep its "Waiting for you" list current. Do not log process topics (milestone go-aheads, pushing, cleanup, commit style, general questions).
 
@@ -54,7 +54,8 @@ Plugins are detected after parse (`detect`), before symbols.
 
 ## Rules that must hold
 
-- **Runtime is Node ≥ 20.** Bun is only the dev tool: use `node:` APIs, never `Bun.*` (ESLint forbids the global). Before adding a dependency, check its `engines.node`; pin the last major that supports Node 20 (e.g. commander 14, not 15; no current execa). Grammar and shiki versions are pinned exactly because they change output.
+- **Runtime is Node ≥ 22.12** (§15 #59) **and git ≥ 2.31** (§15 #61). Bun is only the dev tool: use `node:` APIs, never `Bun.*` (ESLint forbids the global). Before adding a dependency, check its `engines.node`; pin the last major that supports Node 22.12. Runtime dependencies are pinned exactly (the package build refuses ranges); grammar and shiki versions also because they change output.
+- **Only `bowi` is published** (§15 #60): `scripts/build-package.ts` bundles every `@bowi/*` package into `build/npm/dist/` and copies grammars, queries and the page template next to it. Code that reads files of its package goes one folder up from its own module (`join(dirname(fileURLToPath(import.meta.url)), '..', …)`), which holds in `src/` and in `dist/`; a new asset folder must also be copied by the build and allowed in `scripts/smoke.ts`. No install scripts.
 - **Never run code from the reviewed repository.** All git goes through `packages/sources/src/git.ts` (hooks and fsmonitor off, no optional locks, `DIFF_FLAGS` pins diff output: no external diff or textconv). No installs, scripts or builds of the target repo.
 - **Privacy:** no network calls except GitHub (URL mode) and the AI provider (only when enabled; `claude -p` is a child process, its network use is Claude Code's). The AI never sees noise hunks or whole files, and a PR's own `.bowi.json` cannot turn AI on. Tokens reach git through `GIT_CONFIG_*` env vars, never argv. `review.html` makes no requests: everything inlined, no fonts or CDNs.
 - **Determinism (GRP-12):** same input → identical plan except `generatedAt` and `meta.timingsMs` (`comparablePlanJson`). Sort with `compareStrings`/`sortBy` (code-unit order, never `localeCompare`); Louvain uses a seeded RNG.
@@ -70,6 +71,8 @@ Plugins are detected after parse (`detect`), before symbols.
 bun install
 bun run check        # typecheck (3 tsconfigs) + lint + format check + build:ui + tests — must pass before committing
 bun run build        # page template + tsc -b to dist/
+bun run build:package # the npm package in build/npm/ (bundled with esbuild)
+bun run smoke        # pack it, install it with npm in an empty folder, compare its plan with the sources'
 bun run fixture email-verification ~/bowi-playground/ev   # a repo to try things on
 node packages/cli/src/bin.ts --local                     # run from source (Node strips types)
 node packages/cli/src/bin.ts https://github.com/<o>/<r>/pull/<n> --no-open
@@ -99,6 +102,7 @@ bun run bench:select <owner/repo …>                      # pick cases (local o
 
 - Work directly on `main`; separate milestones by commits. End each milestone with a "Try it" section: commands the owner can run and what the output means.
 - Push only when asked. `origin` is `https://github.com/thaichihien/bowi.git` (this machine's SSH key belongs to another account). Author: `thaichihien <thaichihien@gmail.com>`.
+- Releases: set the version in `packages/cli/package.json` (the only version that counts) and the `CHANGELOG.md` heading, commit, tag `v<version>`. Pushing the tag stages the version on npm (`.github/workflows/release.yml`) and the owner approves it with 2FA; push tags only when the owner asks. The repository is private for now (§15 #62): CI runs on Linux only, no GitHub environment, no provenance.
 - Markdown: one line per paragraph or list item, no hard wrapping.
 
 ## Commit messages

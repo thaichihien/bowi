@@ -6,9 +6,11 @@
  */
 
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { platform } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Command, CommanderError, Option } from 'commander';
 import { checkClaudeCode, claudeCode, createEnricher } from '@bowi/ai';
 import { clearCache, defaultCacheDir } from '@bowi/cache';
@@ -31,6 +33,7 @@ import { defaultPlugins } from '@bowi/plugins';
 import { renderHtml } from '@bowi/render-html';
 import { defaultRules } from '@bowi/rules';
 import {
+  checkGit,
   fetchPullRequest,
   openGithubSnapshot,
   openLocalSnapshot,
@@ -41,7 +44,11 @@ import {
 } from '@bowi/sources';
 import { createProgress, type Progress } from './progress.ts';
 
-export const VERSION = '0.0.0';
+// The CLI package's version. package.json sits one folder above this module both in the sources
+// (src/) and in the published package (dist/, see scripts/build-package.ts).
+export const VERSION: string = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'),
+).version;
 
 export interface Writable {
   write(chunk: string): unknown;
@@ -126,6 +133,7 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
   const progress = createProgress(io.stderr, { quiet: !!opts.quiet, verbose: !!opts.verbose });
   try {
     const target = program.args[0];
+    await checkGit(io.cwd, io.env);
     // --local reads its config first: it may name the base branch.
     let loaded = !target && opts.local ? await localConfig(opts, io) : undefined;
     const snapshot = await openSnapshot(target, opts, loaded?.config.base, io, progress);

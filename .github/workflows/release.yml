@@ -1,0 +1,54 @@
+# Stages `bowi` on npm when a version tag (v0.1.1, …) is pushed (plan M9).
+#
+# Uses npm trusted publishing (OIDC): no npm token is stored in GitHub. On npmjs.com, the
+# package's Settings → Trusted publishing names this repository and this file (release.yml),
+# with no environment, and allows only staged publishing. The workflow only stages the version:
+# it goes out when the owner approves it with 2FA (npmjs.com → Staged Packages, or
+# `npm stage approve <id>`). While the repository is private (§15 #62) there is no GitHub
+# environment and no provenance; going public, add `environment: npm` here and on npm.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # lets npm verify that this workflow publishes
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      # Staged publishing through OIDC needs Node ≥ 22.14 and npm ≥ 11.15.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install -g npm@^11.15.0
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun run smoke
+      - name: The tag matches the package version
+        id: version
+        run: |
+          version="$(node -p "require('./build/npm/package.json').version")"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match packages/cli/package.json ($version)." >&2
+            exit 1
+          fi
+          # A version already on npm (0.1.0 was published by hand) is not staged again.
+          if [ "$(npm view "bowi@$version" version 2>/dev/null)" = "$version" ]; then
+            echo "bowi@$version is already on npm; nothing to stage."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Stage on npm
+        if: steps.version.outputs.published != 'true'
+        working-directory: build/npm
+        run: npm stage publish --access public

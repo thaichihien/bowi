@@ -21,6 +21,7 @@ export { renderMarkdown } from './markdown.ts';
 const PLAN_PLACEHOLDER = '"__BOWI_PLAN__"';
 const TITLE_PLACEHOLDER = '__BOWI_TITLE__';
 // Resolved from the module's path string, not `new URL()`: test DOMs replace the URL global.
+// template/ sits one folder above both src/ and the published dist/ (scripts/build-package.ts).
 const TEMPLATE = join(dirname(fileURLToPath(import.meta.url)), '..', 'template', 'index.html');
 
 export interface RenderOptions {

@@ -2,44 +2,30 @@
 
 **Bowi** (short for _bowerbird_) turns a pull request into a guided review: related changes grouped together, foundations before the code that uses them, noise collapsed, and every group explained with evidence. The result is one self-contained `review.html`.
 
-Status: early development.
+Status: 0.1.0, the first version.
 
 ## Installation
 
-### Prerequisites
+You need:
 
-- **git**
-- **Node 22.18 or newer** (`node --version`). Bowi runs from its TypeScript sources, which Node runs directly from 22.18 on.
-- **Bun**, to install the dependencies: `curl -fsSL https://bun.sh/install | bash` (or `brew install oven-sh/bun/bun`).
+- **Node 22.12 or newer** (`node --version`), which comes with npm. Get it from [nodejs.org](https://nodejs.org) or a version manager (nvm, fnm, Homebrew).
+- **git 2.31 or newer** (`git --version`).
+- **macOS or Linux.** Windows support is planned for 0.2.0.
 
-### From source
-
-**1. Clone and install:**
+Install the `bowi` command:
 
 ```bash
-git clone https://github.com/thaichihien/bowi.git
-cd bowi
-bun install          # dependencies
-bun run build:ui     # builds the report page template; Bowi cannot write review.html without it
+npm install -g bowi      # or: pnpm add -g bowi, bun add -g bowi
+bowi --version
 ```
 
-**2. Add a `bowi` command.** Run this inside the clone, so the path points to it (use `~/.bashrc` for bash):
+Or run it without installing: `npx bowi --local`.
 
-```bash
-echo "alias bowi='node $PWD/packages/cli/src/bin.ts'" >> ~/.zshrc
-source ~/.zshrc
-bowi --help
-```
+Installing runs nothing (Bowi has no install scripts), and Bowi itself connects only to GitHub, for pull request URLs, and to the AI provider when you turn AI on.
 
-**Update** to the latest version, inside the clone:
+**Update:** `npm install -g bowi@latest`. **Uninstall:** `bowi cache clear` (removes fetched repositories), then `npm uninstall -g bowi`.
 
-```bash
-git pull && bun install && bun run build:ui
-```
-
-### From npm
-
-Coming later: Bowi is not published yet.
+To run Bowi from a clone instead, see [Development](#development).
 
 ## Usage
 
@@ -55,7 +41,7 @@ Both write `review-plan.json` and `review.html` to `.bowi/<repo>-<pr-or-branch>/
 
 In the report, `j` / `k` move to the next and previous step and `r` marks the current step reviewed.
 
-To try Bowi on a small sample first, build the demo repository (a NestJS backend with an "email verification" branch) from inside the clone:
+To try Bowi on a small sample first, build the demo repository (a NestJS backend with an "email verification" branch) from inside a clone of this repository (see [Development](#development)):
 
 ```bash
 bun run fixture email-verification ~/bowi-demo
@@ -178,10 +164,21 @@ Bowi reads `.bowi.json` from the repository root (for a pull request: the file a
 
 ## Development
 
-Bun is the package manager and script runner. The CLI itself targets **Node ≥ 20**, so code uses only `node:` APIs, never `Bun.*`. Tests run on vitest under Node.
+Bun is the package manager and script runner. The CLI itself targets **Node ≥ 22.12**, so code uses only `node:` APIs, never `Bun.*`. Tests run on vitest under Node.
+
+Running from a clone needs **Node 22.18 or newer**, which runs the TypeScript sources directly, and **Bun** (`curl -fsSL https://bun.sh/install | bash`, or `brew install oven-sh/bun/bun`):
 
 ```bash
+git clone https://github.com/thaichihien/bowi.git
+cd bowi
 bun install
+bun run build:ui       # builds the report page template; Bowi cannot write review.html without it
+node packages/cli/src/bin.ts --help
+```
+
+To use the clone as your `bowi` command, add an alias inside the clone (use `~/.bashrc` for bash): `echo "alias bowi='node $PWD/packages/cli/src/bin.ts'" >> ~/.zshrc`. Update it with `git pull && bun install && bun run build:ui`.
+
+```bash
 bun run check          # typecheck, lint, format check, tests
 bun run fixture email-verification /tmp/ev   # build a fixture repo to play with
 ```
@@ -195,6 +192,8 @@ bun run fixture email-verification /tmp/ev   # build a fixture repo to play with
 | `bun run show-plan <plan-or-dir> [hunk-id]` | print a `review-plan.json` readably (dev tool)                                                                                                     |
 | `BOWI_REPORT=<review.html> bun run dev:ui`  | the report page with hot reload, for working on its look: edits to `packages/render-html/ui/` show at once; the plan comes from an existing report |
 | `bun run bench`                             | grouping benchmark: Bowi vs folder grouping on real commits (§12.3); `bun run bench explain <case>` details one case                               |
+| `bun run build:package`                     | the npm package `bowi` in `build/npm/`: every `@bowi/*` package bundled, grammars, queries and the page template                                   |
+| `bun run smoke`                             | builds the package, installs it with npm into an empty folder and checks that it produces the same plan as the sources                             |
 
 Layout: `packages/*` are the workspace packages from requirement.md §11.3 (`@bowi/core`, `@bowi/sources`, …; the CLI package is `bowi`). `fixtures/` builds deterministic git repos with known PRs; each fixture's source files live in `fixtures/<name>/files/` and are excluded from lint, format and typecheck because they are test data.
 

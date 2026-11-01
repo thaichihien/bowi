@@ -16,7 +16,8 @@ export interface LoadedLanguage {
 let init: Promise<void> | undefined;
 const loaded = new Map<LanguageId, Promise<LoadedLanguage>>();
 
-// Works from both src/ and dist/: grammars/ and queries/ sit next to them in the package.
+// Works from both src/ and dist/: grammars/ and queries/ sit next to them in this package and in
+// the published `bowi` package (scripts/build-package.ts).
 const asset = (dir: string, file: string) =>
   join(dirname(fileURLToPath(import.meta.url)), '..', dir, file);
 

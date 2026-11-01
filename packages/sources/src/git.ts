@@ -7,6 +7,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import { SourceError } from '@bowi/core';
 
 const SAFE_CONFIG = [
   '-c',
@@ -129,4 +130,33 @@ export async function readBlob(
     ...(env && { env }),
   });
   return r.code === 0 ? r.stdout : null;
+}
+
+/**
+ * Oldest git Bowi works with: 2.31 added `GIT_CONFIG_COUNT`, which passes tokens to git without
+ * putting them on the command line (2.29 `--no-write-fetch-head`, 2.25 `--pathspec-from-file`).
+ */
+export const MIN_GIT_VERSION: readonly [number, number] = [2, 31];
+
+/** `[major, minor]` from `git version 2.39.5 (Apple Git-154)`, `git version 2.45.1.windows.1`, … */
+export function parseGitVersion(text: string): [number, number] | null {
+  const m = /git version (\d+)\.(\d+)/.exec(text);
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+
+/** Throws a SourceError (exit 2) when git is missing or older than MIN_GIT_VERSION. */
+export async function checkGit(cwd: string, env?: NodeJS.ProcessEnv): Promise<void> {
+  const need = MIN_GIT_VERSION.join('.');
+  const hint = `Install git ${need} or newer (https://git-scm.com/downloads) and make sure \`git --version\` works in this terminal.`;
+  let text: string;
+  try {
+    text = await gitText(['--version'], { cwd, ...(env && { env }) });
+  } catch {
+    throw new SourceError('git is not installed or not on PATH.', hint);
+  }
+  const version = parseGitVersion(text);
+  const [major, minor] = MIN_GIT_VERSION;
+  if (version && (version[0] < major || (version[0] === major && version[1] < minor))) {
+    throw new SourceError(`Bowi needs git ${need} or newer; this is ${text}.`, hint);
+  }
 }

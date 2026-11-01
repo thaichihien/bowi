@@ -11,8 +11,8 @@ Companion to [requirement.md](requirement.md). M0–M8 follow the milestone orde
 | `--local` untracked files | Included by default; `--no-untracked` opts out |
 | License | MIT |
 | Windows | v0.2 (macOS + Linux only in v0.1, per NFR-6) |
-| Node 20 compatibility of dependencies | Check `engines.node` before adding a dependency; pin to the last major that supports Node 20 (e.g. `commander` 14, not 15). `@types/node` is pinned to 20 |
-| Package manager / dev tooling | **Bun** (1.4.4) for install, workspaces and running scripts. **Node ≥ 20 stays the supported runtime** for users: code uses only `node:` APIs, never `Bun.*`. Tests stay on vitest, run under Node, so Node compatibility is what gets tested |
+| Node 20 compatibility of dependencies | ~~Check `engines.node` before adding a dependency; pin to the last major that supports Node 20 (e.g. `commander` 14, not 15). `@types/node` is pinned to 20~~ Since M9: Node ≥ 22.12, `@types/node` 22 (requirement.md §15 #59) |
+| Package manager / dev tooling | **Bun** (1.4.4) for install, workspaces and running scripts. **Node ≥ 20 stays the supported runtime** (≥ 22.12 since M9) for users: code uses only `node:` APIs, never `Bun.*`. Tests stay on vitest, run under Node, so Node compatibility is what gets tested |
 
 ## Milestones
 
@@ -156,6 +156,8 @@ Comments posted to the host and GitLab support were phases 2–3 and non-goals i
 Rules for every milestone after M9: each ends with a minor release (0.x.0, fixes in between as 0.x.y). `bun run check` and the smoke test of the packed package must pass before a release. A milestone that changes grouping runs `bun run bench` and compares the means with the last report in `CHANGELOG.md`. A UI change goes through the design canvas first.
 
 ### M9 — Release 0.1.0 on npm
+
+- Done as planned except: Node ≥ **22.12**, not 22.0 (the oldest that commander 15 and sanitize-html 2.18 support); no asset-root helper, because every module that reads package files already goes one folder up from itself, which holds in `dist/` too, so the build lays the package out that way; git ≥ 2.31 is checked before every run; npm refuses to install on Windows (`os`) until M10; the first publish is done by hand by the owner, because npm's trusted publishing is set up in a package's settings on npmjs.com (whether a package that does not exist yet can have one is not clear from npm's docs); from the next version on, the tag workflow stages each version on npm and the owner approves it with 2FA; while the repository is private, CI runs on Linux only, there is no GitHub environment and no provenance. Decisions: requirement.md §15 #59–#62.
 
 Goal: on a machine with only Node and git, `npm install -g bowi` (or `npx bowi`, `pnpm dlx bowi`, `bunx bowi`) followed by `bowi https://github.com/<o>/<r>/pull/<n>` produces a report. Nothing else is needed.
 
