@@ -6,7 +6,7 @@ Bowi (short for _bowerbird_) turns a pull request into a guided review: related 
 
 - `docs/requirement.md` — the spec. Requirement IDs (CLI-1, NOISE-2, GRP-4, …) are used in code comments. **§15 Open questions** records every decision, assumption and deviation from the spec; when something is unclear, add it there instead of guessing silently.
 - `docs/plan.md` — milestone plan M0–M8 and decisions taken. Do not start a later milestone's features early.
-- `CHANGELOG.md` — what each milestone delivered. M0–M9 are done (M5.5 = report redesign, M6 = P1 items, M7 = grouping benchmark, M8 = AI via `claude -p`, M9 = npm release 0.1.0); M10–M17 are planned in `docs/plan.md` ("Roadmap after M8"). Each milestone after M9 ends with a minor release.
+- `CHANGELOG.md` — what each milestone delivered. M0–M9 are done (M5.5 = report redesign, M6 = P1 items, M7 = grouping benchmark, M8 = AI via `claude -p`, M9 = npm release 0.1.0); M9.1 = Windows (0.1.1) is in progress; M10–M17 are planned in `docs/plan.md` ("Roadmap after M8"). Each milestone after M9 ends with a minor release.
 - Report design: the M5.5 redesign canvas linked in `docs/plan.md` (header, tabs Review / Description / Commits / Changes). `docs/prototype.html` is the older M4 reference (a bundled file; the page inside is a JSON string).
 - `development-logs.md` (git-ignored, may not exist) — the owner's log of feedback on Bowi's code: logic and UI behavior, and decisions about them. If it exists, add an entry when the owner gives such feedback or decides such a question (or when you raise one), with date and time, and keep its "Waiting for you" list current. Do not log process topics (milestone go-aheads, pushing, cleanup, commit style, general questions).
 
@@ -54,7 +54,7 @@ Plugins are detected after parse (`detect`), before symbols.
 
 ## Rules that must hold
 
-- **Runtime is Node ≥ 22.12** (§15 #59) **and git ≥ 2.31** (§15 #61). Bun is only the dev tool: use `node:` APIs, never `Bun.*` (ESLint forbids the global). Before adding a dependency, check its `engines.node`; pin the last major that supports Node 22.12. Runtime dependencies are pinned exactly (the package build refuses ranges); grammar and shiki versions also because they change output.
+- **Runtime is Node ≥ 22.12** (§15 #59) **and git ≥ 2.31** (§15 #61), **on macOS, Linux and Windows** (§15 #63): paths in the plan keep git's `/`, file-system paths go through `node:path`; Bowi itself never runs a `.cmd`/`.bat` or anything through a shell (cmd.exe re-reads its arguments; only dev scripts such as `smoke.ts` may). Bun is only the dev tool: use `node:` APIs, never `Bun.*` (ESLint forbids the global). Before adding a dependency, check its `engines.node`; pin the last major that supports Node 22.12. Runtime dependencies are pinned exactly (the package build refuses ranges); grammar and shiki versions also because they change output.
 - **Only `@bowi/cli` is published** (§15 #60; npm refused the name `bowi`), installing the `bowi` command: `scripts/build-package.ts` bundles every `@bowi/*` package into `build/npm/dist/` and copies grammars, queries and the page template next to it. Code that reads files of its package goes one folder up from its own module (`join(dirname(fileURLToPath(import.meta.url)), '..', …)`), which holds in `src/` and in `dist/`; a new asset folder must also be copied by the build and allowed in `scripts/smoke.ts`. No install scripts.
 - **Never run code from the reviewed repository.** All git goes through `packages/sources/src/git.ts` (hooks and fsmonitor off, no optional locks, `DIFF_FLAGS` pins diff output: no external diff or textconv). No installs, scripts or builds of the target repo.
 - **Privacy:** no network calls except GitHub (URL mode) and the AI provider (only when enabled; `claude -p` is a child process, its network use is Claude Code's). The AI never sees noise hunks or whole files, and a PR's own `.bowi.json` cannot turn AI on. Tokens reach git through `GIT_CONFIG_*` env vars, never argv. `review.html` makes no requests: everything inlined, no fonts or CDNs.
@@ -85,7 +85,8 @@ bun run bench:select <owner/repo …>                      # pick cases (local o
 
 - Tests are vitest under Node, in `packages/*/test`, `fixtures/test` and `bench/test`. Integration tests build real git repos from fixtures; GitHub tests use `packages/sources/test/fake-github.ts` (a file:// "server" + fake API), never the network. Tests must delete their temp folders.
 - `packages/render-html/test/app.test.tsx` renders the UI in happy-dom; it has its own tsconfig. Code that resolves files next to a module must use `join(dirname(fileURLToPath(import.meta.url)), …)`, not `new URL(…, import.meta.url)` (happy-dom replaces the `URL` global).
-- To look at the report, screenshot it with headless Chrome: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --screenshot=<png> --window-size=1440,1100 "file://…/review.html#g1:service"` (the URL hash selects a tab or step: `#<step id>`, `#<group id>`, `#description`, `#commits`, `#changes`).
+- To look at the report, screenshot it with headless Chrome: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --screenshot=<png> --window-size=1440,1100 "file://…/review.html#g1:service"` (the URL hash selects a tab or step: `#<step id>`, `#<group id>`, `#description`, `#commits`, `#changes`). On Windows the browser is `"C:\Program Files\Google\Chrome\Application\chrome.exe"` and the URL `file:///C:/…/review.html`.
+- On Windows: Bun is installed with `npm install -g bun@1.4.4` (in `%APPDATA%\npm`, which may need adding to PATH); Node below 22.18 runs the sources only with `node --experimental-strip-types packages/cli/src/bin.ts …`.
 
 ## Gotchas
 
@@ -96,6 +97,7 @@ bun run bench:select <owner/repo …>                      # pick cases (local o
 - `tree-sitter-typescript` 0.23.2 cannot parse `export type * from` (§15 #11): such files fall back to tier 0 with a warning (including `packages/core/src/index.ts` itself).
 - Grammars are vendored by `packages/lang/scripts/vendor-grammars.sh` (npm packages, or a GitHub release when npm has no `.wasm`). The SQL grammar has no prebuilt `.wasm` (§15 #41).
 - Run `bun run bench` after changes to grouping (graph, cluster, steps, plugins) and compare the means with the last report in `CHANGELOG.md`; never tune the engine on a single case.
+- Windows: every process start is slow (hundreds of milliseconds per git call on some machines), so tests get longer timeouts there (`vitest.config.ts`); `cpSync` keeps the source's modification time, so a same-size file copied over another looks unchanged to git (the fixture builder runs `git add --renormalize`); a just-stopped process keeps its working folder locked for a moment (EBUSY); Git Bash rewrites `/dev/null` in arguments to native programs, so check git behaviour through Node's `spawn`, not the shell.
 - In `app.test.tsx`, the page renders outside `act`, so its effects (e.g. the keyboard listener) run a frame later; `show()` unmounts the previous page so old listeners go away.
 
 ## Workflow with the owner

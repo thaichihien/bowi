@@ -66,7 +66,7 @@ export interface CliIo {
   /** For tests: GitHub API access and where to clone from. */
   github?: GithubOptions & { remoteUrl?: string };
   /** For tests: the Claude Code executable, or a whole enricher instead of Claude Code. */
-  ai?: { command?: string; enricher?: AiEnricher };
+  ai?: { command?: string | string[]; enricher?: AiEnricher };
 }
 
 interface CliOptions {
@@ -379,6 +379,8 @@ async function openSnapshot(
 }
 
 function openWithSystem(path: string): void {
+  // Windows: explorer opens the file with its default app and, unlike `cmd /c start`, gets the
+  // path as an argument that no shell reads (an --out path may contain `&` or `^`).
   const command =
     platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'explorer' : 'xdg-open';
   try {

@@ -2,17 +2,22 @@
  * Bowi's on-disk cache (CLI-10, SRC-4): where it lives, per-repository folders, a simple
  * cross-process lock, and clearing it.
  *
- * Default location: $XDG_CACHE_HOME/bowi, else ~/Library/Caches/bowi on macOS, else
- * ~/.cache/bowi. Everything in it can be deleted at any time.
+ * Default location: $XDG_CACHE_HOME/bowi, else ~/Library/Caches/bowi on macOS,
+ * %LOCALAPPDATA%\bowi on Windows, else ~/.cache/bowi. Everything in it can be deleted at any
+ * time.
  */
 
 import { mkdir, rm, stat } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 
-export function defaultCacheDir(env: NodeJS.ProcessEnv = process.env): string {
+export function defaultCacheDir(
+  env: NodeJS.ProcessEnv = process.env,
+  os: NodeJS.Platform = platform(),
+): string {
   if (env.XDG_CACHE_HOME) return join(env.XDG_CACHE_HOME, 'bowi');
-  if (platform() === 'darwin') return join(homedir(), 'Library', 'Caches', 'bowi');
+  if (os === 'darwin') return join(homedir(), 'Library', 'Caches', 'bowi');
+  if (os === 'win32') return join(env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'bowi');
   return join(homedir(), '.cache', 'bowi');
 }
 

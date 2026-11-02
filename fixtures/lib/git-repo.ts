@@ -90,6 +90,9 @@ export function buildFixtureRepo(spec: FixtureSpec, targetDir: string): BuiltFix
     }
     for (const path of c.delete ?? []) rmSync(join(targetDir, path));
     git(targetDir, ['add', '--all']);
+    // cpSync keeps the source's modification time on Windows, so a file replaced by one of the
+    // same size looks unchanged to git; --renormalize hashes every tracked file again.
+    git(targetDir, ['add', '--renormalize', '.']);
     git(
       targetDir,
       ['commit', '--quiet', '--allow-empty', '-m', c.message],

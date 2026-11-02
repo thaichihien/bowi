@@ -9,9 +9,13 @@
 import { spawn } from 'node:child_process';
 import { SourceError } from '@bowi/core';
 
+// Git for Windows looks for hooks in `/dev/null/<hook>`, i.e. `C:\dev\null\` on the current
+// drive, which any user may create; `NUL` is a reserved device name, so `NUL\<hook>` never exists.
+const NO_HOOKS = process.platform === 'win32' ? 'NUL' : '/dev/null';
+
 const SAFE_CONFIG = [
   '-c',
-  'core.hooksPath=/dev/null',
+  `core.hooksPath=${NO_HOOKS}`,
   '-c',
   'core.fsmonitor=false',
   '-c',

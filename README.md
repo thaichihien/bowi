@@ -2,7 +2,7 @@
 
 **Bowi** (short for _bowerbird_) turns a pull request into a guided review: related changes grouped together, foundations before the code that uses them, noise collapsed, and every group explained with evidence. The result is one self-contained `review.html`.
 
-Status: 0.1.0, the first version.
+Status: 0.1.1, which adds Windows to 0.1.0, the first version.
 
 ## Installation
 
@@ -10,7 +10,7 @@ You need:
 
 - **Node 22.12 or newer** (`node --version`), which comes with npm. Get it from [nodejs.org](https://nodejs.org) or a version manager (nvm, fnm, Homebrew).
 - **git 2.31 or newer** (`git --version`).
-- **macOS or Linux.** Windows support is planned for 0.2.0.
+- **macOS, Linux or Windows** (Windows since 0.1.1, with [Git for Windows](https://git-scm.com/download/win)).
 
 Install the `bowi` command:
 
@@ -63,7 +63,7 @@ The AI is reached through a provider, chosen with `ai.provider` in the config:
 
 #### Set up Claude Code
 
-1. Install Claude Code: `curl -fsSL https://claude.ai/install.sh | bash` (or `npm install -g @anthropic-ai/claude-code`; see the [setup guide](https://docs.claude.com/en/docs/claude-code/setup)).
+1. Install Claude Code: `curl -fsSL https://claude.ai/install.sh | bash` (or `npm install -g @anthropic-ai/claude-code`; see the [setup guide](https://docs.claude.com/en/docs/claude-code/setup)). On Windows, use the native installer in PowerShell, `irm https://claude.ai/install.ps1 | iex`: Bowi cannot run the npm package's `claude.cmd` there.
 2. Run `claude` once in a terminal and log in (a Claude subscription or an Anthropic Console account), then quit it. `claude --version` should work in the terminal you run Bowi from.
 3. Run Bowi with `--ai`:
 
@@ -166,7 +166,7 @@ Bowi reads `.bowi.json` from the repository root (for a pull request: the file a
 
 Bun is the package manager and script runner. The CLI itself targets **Node ≥ 22.12**, so code uses only `node:` APIs, never `Bun.*`. Tests run on vitest under Node.
 
-Running from a clone needs **Node 22.18 or newer**, which runs the TypeScript sources directly, and **Bun** (`curl -fsSL https://bun.sh/install | bash`, or `brew install oven-sh/bun/bun`):
+Running from a clone needs **Node 22.18 or newer**, which runs the TypeScript sources directly (on 22.12–22.17, add `--experimental-strip-types` after `node`), and **Bun** (`curl -fsSL https://bun.sh/install | bash`, `brew install oven-sh/bun/bun`, or on Windows `npm install -g bun@1.4.4`). On Windows, run the commands below in Git Bash or PowerShell:
 
 ```bash
 git clone https://github.com/thaichihien/bowi.git

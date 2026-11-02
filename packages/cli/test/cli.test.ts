@@ -314,7 +314,7 @@ describe('configuration (CLI-7, CLI-9)', () => {
 
 describe('AI enrichment (CLI-8, AI-1)', () => {
   let repo: string;
-  let claude: string;
+  let claude: string[];
   beforeAll(() => {
     repo = buildFixtureRepo(emailVerification, join(tempDir(), 'repo')).dir;
     claude = fakeClaude(tempDir());

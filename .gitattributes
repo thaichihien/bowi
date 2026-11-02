@@ -1,0 +1,5 @@
+# LF everywhere, also on Windows checkouts with core.autocrlf=true: Prettier expects LF, and the
+# fixture files are copied byte for byte into the test repositories, whose plans tests compare.
+* text=auto eol=lf
+
+*.wasm binary

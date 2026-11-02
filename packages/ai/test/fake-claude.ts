@@ -5,7 +5,7 @@
  * $FAKE_CLAUDE_MODE: "ok" (default), "login" (not logged in), "hang" (never answers).
  */
 
-import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SCRIPT = `
@@ -41,13 +41,14 @@ process.stdin.setEncoding('utf8').on('data', (d) => (stdin += d)).on('end', () =
 });
 `;
 
-/** Writes the fake into `dir` and returns its path. */
-export function fakeClaude(dir: string): string {
-  const path = join(dir, 'claude');
-  // An absolute interpreter path: tests run with an empty PATH.
-  writeFileSync(path, `#!${process.execPath}\n${SCRIPT}`);
-  chmodSync(path, 0o755);
-  return path;
+/**
+ * Writes the fake into `dir` and returns the command that runs it: this Node with the script, so
+ * it works with an empty PATH and on Windows, which cannot run a script by its `#!` line.
+ */
+export function fakeClaude(dir: string): string[] {
+  const path = join(dir, 'claude.cjs');
+  writeFileSync(path, SCRIPT);
+  return [process.execPath, path];
 }
 
 export interface FakeCall {

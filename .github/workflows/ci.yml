@@ -1,6 +1,7 @@
-# Checks every push to main and every pull request (plan M9). Linux only while the repository is
-# private (§15 #62): macOS minutes count 10× there, and macOS is checked on the owner's machine.
-# Going public, add macos-latest to both matrices.
+# Checks every push to main and every pull request (plan M9). Linux, and Windows with one Node
+# version (plan M9.1), while the repository is private (§15 #62): Windows minutes count 2× there
+# and macOS minutes 10×; macOS is checked on the owner's machine. Going public, add macos-latest
+# to both matrices.
 name: CI
 
 on:
@@ -19,6 +20,9 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         node: ['22', '24']
+        include:
+          - os: windows-latest
+            node: '24'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,6 +43,9 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         node: ['22.12.0', '24']
+        include:
+          - os: windows-latest
+            node: '22.12.0'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

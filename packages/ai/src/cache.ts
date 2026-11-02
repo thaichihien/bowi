@@ -8,7 +8,7 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { AiAnswer } from '@bowi/core';
 
@@ -35,5 +35,12 @@ export async function writeAnswer(dir: string, key: string, answer: AiAnswer): P
   const temp = `${path}.${randomBytes(4).toString('hex')}.tmp`;
   const { output, model } = answer;
   await writeFile(temp, JSON.stringify({ output, ...(model && { model }) }) + '\n');
-  await rename(temp, path);
+  try {
+    await rename(temp, path);
+  } catch (e) {
+    // Windows cannot replace a file another run has open; that run wrote the same answer.
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== 'EPERM' && code !== 'EACCES' && code !== 'EBUSY') throw e;
+    await rm(temp, { force: true });
+  }
 }

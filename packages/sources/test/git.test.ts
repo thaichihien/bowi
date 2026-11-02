@@ -30,14 +30,21 @@ describe('git version', () => {
     expect(parseGitVersion('hub version 2.14.2')).toBeNull();
   });
 
-  it('accepts the installed git and 2.31', async () => {
+  it('accepts the installed git', async () => {
     await expect(checkGit(tempDir())).resolves.toBeUndefined();
+  });
+
+  // The fake git is a `#!/bin/sh` script, which Windows cannot run as `git`; there the
+  // environment also keeps its own `Path` next to the `PATH` set here.
+  const unix = it.skipIf(process.platform === 'win32');
+
+  unix('accepts git 2.31', async () => {
     await expect(
       checkGit(tempDir(), { PATH: fakeGit('git version 2.31.0') }),
     ).resolves.toBeUndefined();
   });
 
-  it('rejects an old or missing git with a next step', async () => {
+  unix('rejects an old or missing git with a next step', async () => {
     const old = checkGit(tempDir(), { PATH: fakeGit('git version 2.30.9') });
     await expect(old).rejects.toBeInstanceOf(SourceError);
     await expect(old).rejects.toThrow('Bowi needs git 2.31 or newer; this is git version 2.30.9.');
