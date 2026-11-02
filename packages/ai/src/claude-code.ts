@@ -11,13 +11,17 @@
  *   the engine);
  * - the prompt goes on stdin, never on the command line; GitHub tokens are not passed on.
  *
+ * On Windows only the native `claude.exe` can be run: npm installs a `claude.cmd`, which needs
+ * cmd.exe, and cmd.exe cannot pass the multi-line system prompt as an argument.
+ *
  * Flags checked against Claude Code 2.1.314.
  */
 
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { AiError, type AiAnswer } from '@bowi/core';
 
 export interface AiRequest {
@@ -41,8 +45,11 @@ export interface ClaudeCodeOptions {
   model?: string;
   /** `--effort` level; empty for Claude Code's default. */
   effort?: string;
-  /** The Claude Code executable (default `claude`, found on PATH). */
-  command?: string;
+  /**
+   * The Claude Code executable (default `claude`, found on PATH), or the executable and the
+   * arguments that go before Bowi's (tests run a script with Node this way).
+   */
+  command?: string | string[];
   env?: NodeJS.ProcessEnv;
 }
 
@@ -50,6 +57,8 @@ const NOT_INSTALLED_HINT =
   'Install Claude Code (https://claude.com/claude-code) and run `claude` once to log in, or run without --ai.';
 const LOGIN_HINT = 'Run `claude` once and log in, then try again.';
 const UPDATE_HINT = 'Update Claude Code with `claude update` (Bowi was tested with 2.1.314).';
+const WINDOWS_NPM_HINT =
+  'On Windows Bowi needs the native Claude Code (claude.exe), not the npm package (claude.cmd): install it with `irm https://claude.ai/install.ps1 | iex` in PowerShell, or run without --ai.';
 
 export function claudeCode(options: ClaudeCodeOptions = {}): AiTransport {
   const command = options.command ?? 'claude';
@@ -88,7 +97,7 @@ export function claudeCode(options: ClaudeCodeOptions = {}): AiTransport {
         });
         return parseResult(result);
       } finally {
-        await rm(cwd, { recursive: true, force: true });
+        await removeTemp(cwd);
       }
     },
   };
@@ -119,7 +128,7 @@ export async function checkClaudeCode(options: ClaudeCodeOptions = {}): Promise<
     }
     return stdout.trim().split(/\s/)[0] ?? '';
   } finally {
-    await rm(cwd, { recursive: true, force: true });
+    await removeTemp(cwd);
   }
 }
 
@@ -130,13 +139,15 @@ interface RunResult {
 }
 
 function runClaude(
-  command: string,
+  commandLine: string | string[],
   args: string[],
   stdin: string,
   options: { cwd: string; env: NodeJS.ProcessEnv; signal: AbortSignal },
 ): Promise<RunResult> {
+  const [command = 'claude', ...before] =
+    typeof commandLine === 'string' ? [commandLine] : commandLine;
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = spawn(command, [...before, ...args], {
       cwd: options.cwd,
       env: options.env,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -168,7 +179,7 @@ function runClaude(
           e.code === 'ENOENT'
             ? new AiError(`Claude Code is not installed (\`${command}\` was not found).`, {
                 fatal: true,
-                hint: NOT_INSTALLED_HINT,
+                hint: npmShimOnly(command, options.env) ? WINDOWS_NPM_HINT : NOT_INSTALLED_HINT,
               })
             : new AiError(`could not run \`${command}\`: ${e.message}`, { fatal: true }),
         ),
@@ -250,6 +261,26 @@ function classify(message: string): AiError {
     });
   }
   return new AiError(message);
+}
+
+/** Windows, and `command` was not found as an executable but an npm shim of it is on PATH. */
+function npmShimOnly(command: string, env: NodeJS.ProcessEnv): boolean {
+  if (process.platform !== 'win32' || /[\\/]/.test(command)) return false;
+  // Windows environment names are case-insensitive; a copied env object keeps the original case.
+  const path = Object.entries(env).find(([k]) => k.toUpperCase() === 'PATH')?.[1] ?? '';
+  return path
+    .split(delimiter)
+    .filter(Boolean)
+    .some((dir) => ['.cmd', '.bat', '.ps1'].some((ext) => existsSync(join(dir, command + ext))));
+}
+
+/**
+ * Deletes the empty working folder of a call. On Windows a process that was just stopped still
+ * holds its working folder for a moment (EBUSY): retry, and never let the cleanup replace the
+ * error of the call itself; a left-over empty temporary folder is harmless.
+ */
+async function removeTemp(dir: string): Promise<void> {
+  await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }).catch(() => {});
 }
 
 /** The child gets the user's environment (login, proxy settings) but no GitHub token. */

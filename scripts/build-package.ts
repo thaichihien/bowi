@@ -16,7 +16,7 @@
  */
 
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, type Plugin } from 'esbuild';
 
@@ -73,6 +73,8 @@ function externals(used: Set<string>): Plugin {
     setup(b) {
       b.onResolve({ filter: /^[^./]/ }, (args) => {
         if (args.path.startsWith('node:') || args.path.startsWith('@bowi/')) return undefined;
+        // Windows: absolute paths (the entry point) start with a drive letter, not `/`.
+        if (isAbsolute(args.path)) return undefined;
         used.add(packageName(args.path));
         return { path: args.path, external: true };
       });
@@ -141,8 +143,8 @@ export async function buildPackage(): Promise<string> {
     bin: { bowi: 'dist/bin.js' },
     files: ['dist', 'grammars', 'queries', 'template'],
     engines: { node: '>=22.12.0' },
-    // Windows comes in 0.2.0 (plan M10); until then npm says so instead of installing.
-    os: ['darwin', 'linux'],
+    // Windows since 0.1.1 (§15 #63); npm refuses other systems instead of installing.
+    os: ['darwin', 'linux', 'win32'],
     dependencies,
   };
   writeFileSync(join(PACKAGE_DIR, 'package.json'), JSON.stringify(manifest, null, 2) + '\n');

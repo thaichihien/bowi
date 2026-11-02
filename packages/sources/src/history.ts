@@ -63,7 +63,9 @@ export function parseGrep(stdout: string, rev?: string): GrepMatch[] {
     const a = record.indexOf('\0');
     const b = record.indexOf('\0', a + 1);
     if (a < 0 || b < 0) continue;
-    const text = record.slice(b + 1);
+    // A working-tree file checked out with CRLF (Windows) keeps its `\r` in git grep's output.
+    const raw = record.slice(b + 1);
+    const text = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
     if (text.length > MAX_LINE) continue;
     let path = record.slice(0, a);
     if (prefix && path.startsWith(prefix)) path = path.slice(prefix.length);

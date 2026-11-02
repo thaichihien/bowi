@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { clearCache, defaultCacheDir, repoCacheDir, withLock } from '../src/index.ts';
@@ -14,10 +14,17 @@ afterAll(() => roots.forEach((d) => rmSync(d, { recursive: true, force: true }))
 
 describe('cache locations', () => {
   it('follows XDG_CACHE_HOME and keeps repository folders safe', () => {
-    expect(defaultCacheDir({ XDG_CACHE_HOME: '/x' })).toBe('/x/bowi');
+    expect(defaultCacheDir({ XDG_CACHE_HOME: '/x' })).toBe(join('/x', 'bowi'));
     expect(repoCacheDir('/c', 'github.com', 'acme', '../evil')).toBe(
-      '/c/repos/github.com/acme/.._evil.git',
+      join('/c', 'repos', 'github.com', 'acme', '.._evil.git'),
     );
+  });
+
+  it('uses the usual cache folder of each system', () => {
+    expect(defaultCacheDir({}, 'darwin')).toBe(join(homedir(), 'Library', 'Caches', 'bowi'));
+    expect(defaultCacheDir({}, 'linux')).toBe(join(homedir(), '.cache', 'bowi'));
+    expect(defaultCacheDir({ LOCALAPPDATA: join('/l') }, 'win32')).toBe(join('/l', 'bowi'));
+    expect(defaultCacheDir({}, 'win32')).toBe(join(homedir(), 'AppData', 'Local', 'bowi'));
   });
 });
 

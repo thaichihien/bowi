@@ -10,7 +10,7 @@ Companion to [requirement.md](requirement.md). M0–M8 follow the milestone orde
 | Prototype | Owner will add the prototype to the repo before M4. M0–M3 do not depend on it |
 | `--local` untracked files | Included by default; `--no-untracked` opts out |
 | License | MIT |
-| Windows | v0.2 (macOS + Linux only in v0.1, per NFR-6) |
+| Windows | ~~v0.2 (macOS + Linux only in v0.1, per NFR-6)~~ 0.1.1, on its own (owner's decision 2026-11-02, [M9.1](#m91--windows-011)) |
 | Node 20 compatibility of dependencies | ~~Check `engines.node` before adding a dependency; pin to the last major that supports Node 20 (e.g. `commander` 14, not 15). `@types/node` is pinned to 20~~ Since M9: Node ≥ 22.12, `@types/node` 22 (requirement.md §15 #59) |
 | Package manager / dev tooling | **Bun** (1.4.4) for install, workspaces and running scripts. **Node ≥ 20 stays the supported runtime** (≥ 22.12 since M9) for users: code uses only `node:` APIs, never `Bun.*`. Tests stay on vitest, run under Node, so Node compatibility is what gets tested |
 
@@ -134,7 +134,7 @@ Comments posted to the host and GitLab support were phases 2–3 and non-goals i
 | Topic | Decision |
 |---|---|
 | Minimum Node | **Node ≥ 22** from 0.1.0. Node 20 reached end of life on 2026-04-30, and raising the minimum after release would break installs. Applied in M9: `engines`, `@types/node` 22, CI on Node 22 and 24, and the "Runtime" rule in `CLAUDE.md`. Dependencies held back for Node 20 (commander 14, sanitize-html 2.17.5) may move to newer majors, after checking their `engines.node` |
-| Windows | Stays in v0.2, so it is part of M10 |
+| Windows | ~~Stays in v0.2, so it is part of M10~~ Changed 2026-11-02: a patch release of its own, 0.1.1 ([M9.1](#m91--windows-011)), before M10 |
 | Order | M9–M17 as in the table below |
 | Published packages (2026-11-01) | Only `bowi`, with the internal `@bowi/*` packages bundled into it; reserve the `@bowi` scope on npm. Internals are published later only when a real consumer of the engine appears |
 | Saving comments (2026-11-01) | Runs keep writing a static `review.html` and exit, as today. `bowi serve <dir>`, or `--serve` on a run, serves the report locally so comments can be saved and posted. Whether runs should serve by default is decided after using it |
@@ -144,7 +144,8 @@ Comments posted to the host and GitLab support were phases 2–3 and non-goals i
 | # | Milestone | Release | Why here |
 |---|---|---|---|
 | M9 | Release 0.1.0 on npm | 0.1.0 | Everything else is easier to try, report and benchmark once people can install it. It changes no features, so it is the safest first version |
-| M10 | Line comments in the report; Windows | 0.2.0 | Turns the report from read-only into a review tool. Needs a way for the page to save (a local server, below), and M11 builds on that |
+| M9.1 | Windows | 0.1.1 | The owner works on Windows. No new features, so it fits a patch release (decided 2026-11-02) |
+| M10 | Line comments in the report | 0.2.0 | Turns the report from read-only into a review tool. Needs a way for the page to save (a local server, below), and M11 builds on that |
 | M11 | Post comments to GitHub | 0.3.0 | Finishes the review loop on the host Bowi already supports. The host interface it introduces is the one GitLab implements in M13 |
 | M12 | More AI providers | 0.4.0 | Small and independent (the provider interface exists since M8). Once Bowi is public, many users will have an API key or Codex but no Claude Code |
 | M13 | GitLab merge requests (source and comment sync) | 0.5.0 | Second host, done after M11 so that it delivers reading and posting together |
@@ -153,11 +154,11 @@ Comments posted to the host and GitLab support were phases 2–3 and non-goals i
 | M16 | Languages, wave 2: Java and C# | 0.8.0 | Harder name resolution (packages without imports for the same package, C# namespaces not tied to files, partial classes, overloads). Builds on the interface from M15 |
 | M17 | Frameworks for the new languages: Spring Boot, ASP.NET Core, Django, FastAPI, Go routers | 0.9.0 | Needs its language first. Same plugin interface as NestJS |
 
-Rules for every milestone after M9: each ends with a minor release (0.x.0, fixes in between as 0.x.y). `bun run check` and the smoke test of the packed package must pass before a release. A milestone that changes grouping runs `bun run bench` and compares the means with the last report in `CHANGELOG.md`. A UI change goes through the design canvas first.
+Rules for every milestone after M9: each ends with a minor release (0.x.0, fixes in between as 0.x.y; M9.1, Windows, is the one exception, 0.1.1). `bun run check` and the smoke test of the packed package must pass before a release. A milestone that changes grouping runs `bun run bench` and compares the means with the last report in `CHANGELOG.md`. A UI change goes through the design canvas first.
 
 ### M9 — Release 0.1.0 on npm
 
-- Done as planned except: Node ≥ **22.12**, not 22.0 (the oldest that commander 15 and sanitize-html 2.18 support); no asset-root helper, because every module that reads package files already goes one folder up from itself, which holds in `dist/` too, so the build lays the package out that way; git ≥ 2.31 is checked before every run; npm refuses to install on Windows (`os`) until M10; the package is `@bowi/cli`, because npm refused `bowi` as too similar to existing names (the command stays `bowi`, §15 #1); the first publish is done by hand by the owner, because npm's trusted publishing is set up in a package's settings on npmjs.com (whether a package that does not exist yet can have one is not clear from npm's docs); from the next version on, the tag workflow stages each version on npm and the owner approves it with 2FA; while the repository is private, CI runs on Linux only, there is no GitHub environment and no provenance. Decisions: requirement.md §15 #59–#62.
+- Done as planned except: Node ≥ **22.12**, not 22.0 (the oldest that commander 15 and sanitize-html 2.18 support); no asset-root helper, because every module that reads package files already goes one folder up from itself, which holds in `dist/` too, so the build lays the package out that way; git ≥ 2.31 is checked before every run; npm refuses to install on Windows (`os`) until 0.1.1 (M9.1); the package is `@bowi/cli`, because npm refused `bowi` as too similar to existing names (the command stays `bowi`, §15 #1); the first publish is done by hand by the owner, because npm's trusted publishing is set up in a package's settings on npmjs.com (whether a package that does not exist yet can have one is not clear from npm's docs); from the next version on, the tag workflow stages each version on npm and the owner approves it with 2FA; while the repository is private, CI runs on Linux only, there is no GitHub environment and no provenance. Decisions: requirement.md §15 #59–#62.
 
 Goal: on a machine with only Node and git, `npm install -g bowi` (or `npx bowi`, `pnpm dlx bowi`, `bunx bowi`) followed by `bowi https://github.com/<o>/<r>/pull/<n>` produces a report. Nothing else is needed.
 
@@ -174,6 +175,23 @@ Goal: on a machine with only Node and git, `npm install -g bowi` (or `npx bowi`,
 
 Done when a fresh macOS and a fresh Linux machine (CI runners) with only Node and git run `npx bowi@0.1.0 --local` and `npx bowi@0.1.0 <public PR URL>`, and both write a working report.
 
+### M9.1 — Windows (0.1.1)
+
+Moved out of M10 on 2026-11-02 (owner's decision): Windows ships on its own as 0.1.1, first working on the owner's Windows machine, then in CI. Decisions: requirement.md §15 #63.
+
+- **Line endings.** With `core.autocrlf=true` (Git for Windows' default) files on disk have CRLF while `git diff` shows LF. The local source asks git which files it converts (`git ls-files --eol`, on the temporary index so untracked files count) and reads those with CRLF turned into LF, so the parse, noise and symbol stages see the same text as the diff. A file committed with CRLF keeps it, as git does. `git grep` lines lose a trailing `\r`. The repository itself gets a `.gitattributes` (`eol=lf`), so a Windows checkout of Bowi passes the format check and copies its fixtures byte for byte.
+- **Hooks off.** Git for Windows reads `core.hooksPath=/dev/null` as `C:\dev\null\` on the current drive, a folder any user may create. On Windows Bowi passes `NUL`, a reserved device name that can never be a folder. `-O/dev/null` (diff order file) works as is: Git for Windows opens `/dev/null` as `nul`.
+- **Cache** under `%LOCALAPPDATA%\bowi` (`XDG_CACHE_HOME` still wins).
+- **Opening the report** stays `explorer <path>`, not `cmd /c start` as planned: cmd.exe would read `&` or `^` in an `--out` path as commands.
+- **Paths:** the plan keeps git's `/`; untracked-file excludes are converted to `/` before they become pathspecs.
+- **Claude Code (`--ai`):** only the native `claude.exe`. npm installs a `claude.cmd`, which needs cmd.exe, and cmd.exe cannot pass Bowi's multi-line system prompt as an argument; Bowi then says how to install the native one. The temporary working folder of an aborted call is deleted with retries, so Windows' brief lock no longer replaces the real error.
+- **AI answer cache:** a rename that Windows refuses because another run has the file open is ignored (the other run wrote the same answer).
+- **Tests:** fixture repositories rehash their files (`git add --renormalize`) because `cpSync` keeps modification times on Windows, so same-size changes looked unchanged; the fake `claude` runs as `node script` instead of a `#!` script; checks that need a fake `git`, `"` in file names, the executable bit or symlinks run on macOS and Linux only; longer timeouts on Windows, where every process start is slow. A new test covers CRLF working trees on every system.
+- **Package:** `os` gains `win32`; `bun run smoke` runs npm and the installed `bowi` through their `.cmd` shims on Windows.
+- **CI:** `bun run check` and the smoke test also run on `windows-latest` (one Node version each, to keep the minutes down while the repository is private).
+
+Done when `bun run check` and `bun run smoke` pass on the owner's Windows machine, `bowi --local` and `bowi <PR URL>` write a working report there, and CI passes on `windows-latest`.
+
 ### M10 — Line comments in the report
 
 Goal: a reviewer selects one or more diff lines in the report, writes a comment, and the comment is kept in `review-plan.json`. Design canvas first: where the comment box opens, how threads show on lines, and a list of all comments (a tab or a panel).
@@ -188,7 +206,7 @@ Goal: a reviewer selects one or more diff lines in the report, writes a comment,
 - **Opened as a plain file**, the page shows the comments that were in the plan when the report was written. New, edited and deleted comments become drafts in the browser, marked "Not saved". When the same report is later opened through `bowi serve`, the page offers to save those drafts into the plan.
 - **Sharing.** A report sent to someone carries its comments. `--no-comments` leaves them out of `review.html`; they stay in the plan.
 - CLI: `bowi comments <dir>` lists the comments in the terminal and `--markdown` prints them for pasting.
-- **Windows** (decided for v0.2): git through `git.exe`; paths in the plan kept as git prints them (`/`) and converted only to touch the file system; working trees with CRLF line endings (`--local` must not show changes that only `core.autocrlf` causes; verify); the cache under `%LOCALAPPDATA%\bowi`; the browser opened with `start`; hooks turned off without relying on `/dev/null` (verify what Git for Windows accepts); `bowi serve` included. CI and the smoke test also run on `windows-latest`. Spec NFR-6 makes Windows P0.
+- **Windows**: done in 0.1.1 ([M9.1](#m91--windows-011)); `bowi serve` must work there too.
 
 Done when comments written in the served page appear in `review-plan.json`, survive a re-run on the same and on a changed diff (moved, or outdated), `app.test.tsx` covers selecting, editing, deleting, clearing and the file mode without a server, and CI passes on Windows.
 
@@ -286,7 +304,7 @@ Same plugin interface as NestJS (PLG-1: `detect`, `layerOf`, `extraEdges`, `hint
 2. ~~**One package or many.**~~ **Decided 2026-11-01:** only `bowi` (see Decisions above).
 3. ~~**Comments inside `review-plan.json`.**~~ **Decided 2026-11-01:** kept in the plan, as asked (the determinism check leaves them out, and each run carries them over); editing, deleting and "Clear all" in the page as described in M10.
 4. ~~**Static page or local server by default.**~~ **Decided 2026-11-01:** static by default, `bowi serve <dir>` or `--serve` to comment (see Decisions above).
-5. ~~**Windows.**~~ **Decided 2026-10-31:** with M10.
+5. ~~**Windows.**~~ **Decided 2026-10-31:** with M10. **Changed 2026-11-02:** on its own, as 0.1.1 (M9.1).
 6. ~~**Order.**~~ **Decided 2026-10-31:** M9–M17 as in the table.
 
 ## Clarifications to the spec (resolve as I go, recorded in §15)

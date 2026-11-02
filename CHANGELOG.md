@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.1 (unreleased)
+
+### M9.1 — Windows
+
+- Bowi runs on Windows (with Git for Windows): `npm install -g @bowi/cli` no longer refuses it, and `bowi --local`, `bowi <PR URL>` and `--ai` work there. Moved forward from 0.2.0 (requirement.md §15 #63).
+- Fixed: on a working tree checked out with CRLF line endings (`core.autocrlf=true`, Git for Windows' default, or `text`/`eol` attributes) every file was read with a `\r` on each line while its diff had none, so parsing, formatting-only detection, symbols and highlighting worked on text that did not match the diff. Bowi now reads such files the way git diffs them; a file committed with CRLF keeps it, as in git. Applies on every system.
+- Hooks stay off on Windows too: Git for Windows reads `core.hooksPath=/dev/null` as `C:\dev\null\`, so Bowi passes the reserved name `NUL` there.
+- The cache is in `%LOCALAPPDATA%\bowi` on Windows (`XDG_CACHE_HOME` still wins). The report opens with `explorer`.
+- `--ai` on Windows needs the native Claude Code (`claude.exe`, `irm https://claude.ai/install.ps1 | iex`); with only the npm package's `claude.cmd` on PATH, Bowi says so instead of "not installed". An aborted call no longer reports "EBUSY" instead of its real error, and two runs writing the same cached answer no longer fail on Windows.
+- `--out` folders inside the repository are excluded from untracked files on Windows too (the exclude used `\`).
+- Development: a `.gitattributes` keeps the repository LF on every checkout; fixture repositories rehash their files, because a copied file keeps its modification time on Windows; tests run on Windows (longer timeouts there; the cases that need a fake `git`, `"` in file names, the executable bit or symlinks run on macOS and Linux only); a new test covers CRLF working trees; `bun run smoke` works on Windows; CI adds `windows-latest`.
+
 ## 0.1.0 (2026-11-01)
 
 The first version: everything from M0 to M9 below.

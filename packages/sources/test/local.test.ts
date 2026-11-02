@@ -204,7 +204,43 @@ describe('openLocalSnapshot errors', () => {
   });
 });
 
+describe('line endings', () => {
+  it('reads files git converts from CRLF as LF, like the diff, and keeps CRLF that was committed', async () => {
+    const dir = tempDir();
+    sh(dir, 'init', '-q', '-b', 'main');
+    writeFileSync(join(dir, 'a.ts'), 'export const a = 1;\nexport const b = 2;\n');
+    writeFileSync(join(dir, 'committed.txt'), 'one\r\ntwo\r\n');
+    sh(dir, 'add', '-A');
+    sh(dir, 'commit', '-q', '-m', 'base');
+    sh(dir, 'checkout', '-q', '-b', 'work');
+    // As on Windows: files on disk have CRLF, and git stores them as LF.
+    sh(dir, 'config', 'core.autocrlf', 'true');
+    writeFileSync(join(dir, 'a.ts'), 'export const a = 1;\r\nexport const b = 3;\r\n');
+    writeFileSync(join(dir, 'committed.txt'), 'one\r\ntwo\r\nthree\r\n');
+    writeFileSync(join(dir, 'new.ts'), 'export const n = 1;\r\n');
+
+    const snap = await openLocalSnapshot({ cwd: dir });
+    const { files, hunks } = await diffStage(snap, ctx);
+    const a = files.find((f) => f.path === 'a.ts')!;
+    expect(a).toMatchObject({ additions: 1, deletions: 1 });
+    expect(
+      hunks.filter((h) => h.fileId === a.id).flatMap((h) => h.lines.map((l) => l.text)),
+    ).toEqual(['export const a = 1;', 'export const b = 2;', 'export const b = 3;']);
+    expect(await snap.readFile('new', 'a.ts')).toBe('export const a = 1;\nexport const b = 3;\n');
+    expect(await snap.readFile('new', 'new.ts')).toBe('export const n = 1;\n');
+    // git keeps the CRLF of a file whose committed copy has CRLF.
+    expect(await snap.readFile('new', 'committed.txt')).toBe('one\r\ntwo\r\nthree\r\n');
+    expect(await snap.grep!(['b'], ['.ts'])).toEqual([
+      { path: 'a.ts', line: 2, text: 'export const b = 3;' },
+    ]);
+  });
+});
+
 describe('diff edge cases from real git output', () => {
+  // Windows has no `"` in file names and no executable bit, and symlinks need extra rights.
+  const unix = process.platform !== 'win32';
+  const odd = unix ? 'café "quoted".ts' : "café 'quoted'.ts";
+
   it('handles renames, deletions, mode changes, binary, symlinks, odd names and missing final newlines', async () => {
     const dir = tempDir();
     sh(dir, 'init', '-q', '-b', 'main');
@@ -222,12 +258,12 @@ describe('diff edge cases from real git output', () => {
     writeFileSync(join(dir, 'lib/moved.ts'), body.replace('v3 = 3', 'v3 = 33'));
     unlinkSync(join(dir, 'moved.ts'));
     unlinkSync(join(dir, 'gone.ts'));
-    chmodSync(join(dir, 'run.sh'), 0o755);
+    if (unix) chmodSync(join(dir, 'run.sh'), 0o755);
     writeFileSync(join(dir, 'eol.txt'), 'last line');
     writeFileSync(join(dir, 'logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 1, 2, 3]));
-    writeFileSync(join(dir, 'café "quoted".ts'), 'export {};\n');
+    writeFileSync(join(dir, odd), 'export {};\n');
     writeFileSync(join(dir, 'with space.ts'), 'export {};\n');
-    symlinkSync('lib/moved.ts', join(dir, 'link.ts'));
+    if (unix) symlinkSync('lib/moved.ts', join(dir, 'link.ts'));
     sh(dir, 'add', '-A');
     sh(dir, 'commit', '-q', '-m', 'work');
 
@@ -242,12 +278,14 @@ describe('diff edge cases from real git output', () => {
       deletions: 1,
     });
     expect(byPath['gone.ts']).toMatchObject({ status: 'deleted', deletions: 1 });
-    expect(byPath['run.sh']).toMatchObject({ status: 'mode', additions: 0, deletions: 0 });
     expect(byPath['logo.png']).toMatchObject({ status: 'binary' });
-    expect(byPath['café "quoted".ts']).toMatchObject({ status: 'added' });
+    expect(byPath[odd]).toMatchObject({ status: 'added' });
     expect(byPath['with space.ts']).toMatchObject({ status: 'added' });
-    expect(byPath['link.ts']).toMatchObject({ status: 'added' });
-    expect(await snap.readFile('new', 'link.ts')).toBe('lib/moved.ts');
+    if (unix) {
+      expect(byPath['run.sh']).toMatchObject({ status: 'mode', additions: 0, deletions: 0 });
+      expect(byPath['link.ts']).toMatchObject({ status: 'added' });
+      expect(await snap.readFile('new', 'link.ts')).toBe('lib/moved.ts');
+    }
 
     const eolHunk = hunks.find((h) => h.fileId === byPath['eol.txt']!.id)!;
     expect(eolHunk.lines.find((l) => l.kind === 'add')).toMatchObject({

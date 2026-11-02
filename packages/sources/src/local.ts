@@ -9,6 +9,9 @@
  *
  * History and search run on the working tree too: blame annotates the working tree file over
  * the commits since the merge base, and grep includes untracked files.
+ *
+ * Line endings: git diffs a file checked out with CRLF (core.autocrlf, text/eol attributes) as
+ * LF, so the working tree text of such a file is read with CRLF turned into LF as well.
  */
 
 import { copyFile, lstat, mkdtemp, readFile, readlink, realpath, rm } from 'node:fs/promises';
@@ -60,7 +63,8 @@ export async function openLocalSnapshot(options: LocalSourceOptions): Promise<Sn
       await git(['symbolic-ref', '--short', '--quiet', 'HEAD'], { cwd: root, okCodes: [1] })
     ).stdout.trim() || 'HEAD';
 
-  const { diff, uncommitted } = await diffWorkingTree(root, mergeBaseSha, options);
+  const { diff, uncommitted, crlf } = await diffWorkingTree(root, mergeBaseSha, options);
+  const readNew = (path: string) => readWorkingFile(root, path, crlf.has(path));
 
   const meta: SnapshotMeta = {
     kind: 'local',
@@ -73,19 +77,17 @@ export async function openLocalSnapshot(options: LocalSourceOptions): Promise<Sn
     commits: await commitsBetween(root, mergeBaseSha, headSha),
   };
   if (uncommitted) meta.uncommitted = true;
-  const outputDirs = (await Promise.all((options.excludeUntracked ?? []).map(realPathLoose)))
-    .map((p) => relative(root, p))
-    .filter((p) => p !== '' && !p.startsWith('..') && !isAbsolute(p));
+  const outputDirs = await repoRelative(root, options.excludeUntracked ?? []);
 
   return {
     meta,
     readDiff: async () => diff,
     readFile: (version: FileVersion, path: string) =>
-      version === 'old' ? readBlob(root, mergeBaseSha, path) : readWorkingFile(root, path),
+      version === 'old' ? readBlob(root, mergeBaseSha, path) : readNew(path),
     async blame(paths) {
       const out = new Map<string, (string | null)[]>();
       for (const path of paths) {
-        if ((await readWorkingFile(root, path)) === null) continue;
+        if ((await readNew(path)) === null) continue;
         // Exit 128: the file is not in HEAD (untracked or only staged), so it has no history.
         const r = await git(
           [
@@ -179,12 +181,15 @@ async function mergeBase(
   return r.stdout.trim();
 }
 
-/** The diff from the merge base, and whether the working tree (with untracked files) differs from HEAD. */
+/**
+ * The diff from the merge base, whether the working tree (with untracked files) differs from
+ * HEAD, and the paths git reads with CRLF turned into LF.
+ */
 async function diffWorkingTree(
   root: string,
   mergeBaseSha: string,
   options: LocalSourceOptions,
-): Promise<{ diff: string; uncommitted: boolean }> {
+): Promise<{ diff: string; uncommitted: boolean; crlf: Set<string> }> {
   const tempDir = await mkdtemp(join(tmpdir(), 'bowi-index-'));
   try {
     const indexPath = join(tempDir, 'index');
@@ -198,10 +203,9 @@ async function diffWorkingTree(
     const env = { GIT_INDEX_FILE: indexPath };
 
     if (options.includeUntracked ?? true) {
-      const excludes = (await Promise.all((options.excludeUntracked ?? []).map(realPathLoose)))
-        .map((p) => relative(root, p))
-        .filter((p) => p !== '' && !p.startsWith('..') && !isAbsolute(p))
-        .map((p) => `:(exclude,top,literal)${p}`);
+      const excludes = (await repoRelative(root, options.excludeUntracked ?? [])).map(
+        (p) => `:(exclude,top,literal)${p}`,
+      );
       const untracked = await git(
         ['ls-files', '-z', '--others', '--exclude-standard', '--', ':(top)', ...excludes],
         {
@@ -226,10 +230,52 @@ async function diffWorkingTree(
       env,
       okCodes: [1],
     });
-    return { diff, uncommitted: vsHead.code === 1 };
+    return { diff, uncommitted: vsHead.code === 1, crlf: await crlfPaths(root, env) };
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
+}
+
+/**
+ * Working tree files with CRLF that git turns into LF when it reads them (convert.c): always
+ * with the `text` or `eol` attribute; with `text=auto`, or no attribute and core.autocrlf
+ * true/input, only when the index copy has no CRLF (a file committed with CRLF stays as it is).
+ * `env` points at the temporary index, so untracked files (intent-to-add) are listed too.
+ */
+async function crlfPaths(root: string, env: NodeJS.ProcessEnv): Promise<Set<string>> {
+  const out = new Set<string>();
+  const listed = (await git(['ls-files', '--eol', '-z'], { cwd: root, env })).stdout;
+  if (!/w\/(crlf|mixed)/.test(listed)) return out;
+  const autocrlf = (
+    await git(['config', '--get', 'core.autocrlf'], { cwd: root, okCodes: [1] })
+  ).stdout
+    .trim()
+    .toLowerCase();
+  const auto = ['true', 'yes', 'on', '1', 'input'].includes(autocrlf);
+  for (const record of listed.split('\0')) {
+    // `i/lf    w/crlf  attr/text=auto eol=lf <TAB>path`
+    const m = /^i\/(\S*)\s+w\/(\S+)\s+attr\/(.*?)\s*\t(.*)$/s.exec(record);
+    if (!m || (m[2] !== 'crlf' && m[2] !== 'mixed')) continue;
+    const [, index, , attr, path] = m as unknown as [string, string, string, string, string];
+    const attrs = attr.split(/\s+/);
+    if (attrs.includes('-text')) continue;
+    const textAuto = attrs.includes('text=auto');
+    const explicit = !textAuto && attrs.some((a) => a === 'text' || a.startsWith('eol='));
+    const indexHasCrlf = index === 'crlf' || index === 'mixed';
+    if (explicit || ((textAuto || auto) && !indexHasCrlf)) out.add(path);
+  }
+  return out;
+}
+
+/**
+ * Absolute paths as repository-relative pathspecs with `/` (git on Windows reports the root as
+ * `C:/…`, path.relative returns `\`), dropping those outside the repository.
+ */
+async function repoRelative(root: string, paths: string[]): Promise<string[]> {
+  return (await Promise.all(paths.map(realPathLoose)))
+    .map((p) => relative(root, p))
+    .filter((p) => p !== '' && !p.startsWith('..') && !isAbsolute(p))
+    .map((p) => p.split(sep).join('/'));
 }
 
 /**
@@ -275,7 +321,11 @@ async function commitsBetween(root: string, from: string, to: string): Promise<C
     });
 }
 
-async function readWorkingFile(root: string, path: string): Promise<string | null> {
+async function readWorkingFile(
+  root: string,
+  path: string,
+  crlfToLf: boolean,
+): Promise<string | null> {
   const normalized = normalize(path);
   if (isAbsolute(normalized) || normalized === '..' || normalized.startsWith(`..${sep}`))
     return null;
@@ -285,7 +335,8 @@ async function readWorkingFile(root: string, path: string): Promise<string | nul
     const stat = await lstat(full);
     if (stat.isSymbolicLink()) return await readlink(full);
     if (!stat.isFile()) return null;
-    return await readFile(full, 'utf8');
+    const text = await readFile(full, 'utf8');
+    return crlfToLf ? text.replace(/\r\n/g, '\n') : text;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw e;

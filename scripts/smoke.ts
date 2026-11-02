@@ -9,7 +9,7 @@
  * produce. Needs the npm registry for the dependencies; never GitHub.
  */
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -43,8 +43,18 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+// On Windows npm and the installed `bowi` are .cmd shims, which only cmd.exe runs; the
+// arguments here are paths and flags without quotes, so quoting each one is enough.
+const WINDOWS = process.platform === 'win32';
+
 function run(cmd: string, args: string[], cwd: string): string {
-  const r = spawnSync(cmd, args, { cwd, encoding: 'utf8' });
+  const r = WINDOWS
+    ? spawnSync([cmd, ...args].map((a) => `"${a}"`).join(' '), {
+        cwd,
+        encoding: 'utf8',
+        shell: true,
+      })
+    : spawnSync(cmd, args, { cwd, encoding: 'utf8' });
   if (r.status !== 0) fail(`${cmd} ${args.join(' ')} exited ${r.status}\n${r.stderr}${r.stdout}`);
   return r.stdout;
 }
@@ -89,7 +99,7 @@ try {
     ],
     app,
   );
-  const bowi = join(app, 'node_modules', '.bin', 'bowi');
+  const bowi = join(app, 'node_modules', '.bin', WINDOWS ? 'bowi.cmd' : 'bowi');
   const printed = run(bowi, ['--version'], app).trim();
   if (printed !== version) fail(`bowi --version printed ${printed}, expected ${version}`);
   console.log(`✓ installed with npm; bowi --version: ${printed}`);
@@ -123,9 +133,7 @@ try {
   console.log(
     `✓ bowi --local on the email-verification fixture: ${groups.length} groups, review.html ${kb(html.length)}, same plan as the sources`,
   );
-  console.log(
-    `  node ${process.versions.node}, npm ${execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim()}`,
-  );
+  console.log(`  node ${process.versions.node}, npm ${run('npm', ['--version'], temp).trim()}`);
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }
