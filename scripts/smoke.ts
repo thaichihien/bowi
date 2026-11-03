@@ -44,16 +44,21 @@ function fail(message: string): never {
 }
 
 // On Windows npm and the installed `bowi` are .cmd shims, which only cmd.exe runs; the
-// arguments here are paths and flags without quotes, so quoting each one is enough.
+// arguments here are paths and flags without quotes, so quoting each one is enough. A bare
+// command name stays unquoted: cmd.exe gives a .cmd found on PATH under a quoted name the
+// current folder as `%~dp0`, and npm.cmd then looks for npm in the wrong place.
 const WINDOWS = process.platform === 'win32';
 
 function run(cmd: string, args: string[], cwd: string): string {
   const r = WINDOWS
-    ? spawnSync([cmd, ...args].map((a) => `"${a}"`).join(' '), {
-        cwd,
-        encoding: 'utf8',
-        shell: true,
-      })
+    ? spawnSync(
+        [/^[\w.-]+$/.test(cmd) ? cmd : `"${cmd}"`, ...args.map((a) => `"${a}"`)].join(' '),
+        {
+          cwd,
+          encoding: 'utf8',
+          shell: true,
+        },
+      )
     : spawnSync(cmd, args, { cwd, encoding: 'utf8' });
   if (r.status !== 0) fail(`${cmd} ${args.join(' ')} exited ${r.status}\n${r.stderr}${r.stdout}`);
   return r.stdout;
