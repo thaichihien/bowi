@@ -7,6 +7,7 @@
 
 import type { Group } from '@bowi/core/types';
 import { useEffect, useState } from 'preact/hooks';
+import { HideCommentsToggle } from './Comments.tsx';
 import { ArrowIcon, CheckIcon, Chevron, ReviewedIcon, StepIconBadge } from './Icons.tsx';
 import { FinishDialog, type FinishResult } from './Finish.tsx';
 import { Inline } from './Inline.tsx';
@@ -90,6 +91,7 @@ export function ReviewTab(props: {
               Tests first
             </button>
           </div>
+          <HideCommentsToggle />
         </div>
         <div class="toolbar-group progress">
           {flat.length > 0 && done === flat.length ? (

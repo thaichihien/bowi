@@ -7,7 +7,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./types": "./src/types.ts"
+    "./types": "./src/types.ts",
+    "./review": "./src/review.ts"
   },
   "publishConfig": {
     "exports": {
@@ -18,6 +19,10 @@
       "./types": {
         "types": "./dist/types.d.ts",
         "default": "./dist/types.js"
+      },
+      "./review": {
+        "types": "./dist/review.d.ts",
+        "default": "./dist/review.js"
       }
     }
   },

@@ -21,3 +21,5 @@ export * from './stages/refs.ts';
 export * from './stages/hints.ts';
 export * from './ai.ts';
 export * from './stages/ai.ts';
+export * from './review.ts';
+export * from './review-schema.ts';

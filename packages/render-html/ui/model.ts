@@ -270,6 +270,9 @@ export function diffBlocks(additions: number, deletions: number): ('add' | 'del'
 export interface SplitRow {
   left?: DiffLine;
   right?: DiffLine;
+  /** Indexes of `left` and `right` in the hunk's lines (comments are anchored by them). */
+  leftIndex?: number;
+  rightIndex?: number;
 }
 
 /**
@@ -282,18 +285,19 @@ export function splitRows(lines: readonly DiffLine[]): SplitRow[] {
   while (i < lines.length) {
     const line = lines[i]!;
     if (line.kind === 'context') {
-      rows.push({ left: line, right: line });
+      rows.push({ left: line, right: line, leftIndex: i, rightIndex: i });
       i++;
       continue;
     }
-    const dels: DiffLine[] = [];
-    const adds: DiffLine[] = [];
-    while (lines[i]?.kind === 'del') dels.push(lines[i++]!);
-    while (lines[i]?.kind === 'add') adds.push(lines[i++]!);
+    const dels: number[] = [];
+    const adds: number[] = [];
+    while (lines[i]?.kind === 'del') dels.push(i++);
+    while (lines[i]?.kind === 'add') adds.push(i++);
     for (let k = 0; k < Math.max(dels.length, adds.length); k++) {
       const row: SplitRow = {};
-      if (dels[k]) row.left = dels[k];
-      if (adds[k]) row.right = adds[k];
+      if (dels[k] !== undefined) Object.assign(row, { left: lines[dels[k]!], leftIndex: dels[k] });
+      if (adds[k] !== undefined)
+        Object.assign(row, { right: lines[adds[k]!], rightIndex: adds[k] });
       rows.push(row);
     }
   }

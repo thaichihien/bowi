@@ -131,6 +131,9 @@ Priorities: **P0** = required for v0.1, **P1** = should have in v0.1, **P2** = l
 | CLI-10 | P1 | `bowi cache clear` and `--cache-dir <dir>` (default OS cache dir, e.g. `~/.cache/bowi`) |
 | CLI-11 | P0 | Exit codes: `0` success, `1` usage error, `2` source error (auth, not found, network), `3` analysis error. Hints never affect exit codes |
 | CLI-12 | P0 | Clear error messages with a next step (e.g. "Set GITHUB_TOKEN or run `gh auth login`") |
+| CLI-13 | P0 | `bowi serve <dir> [--no-open]` serves a report folder on `127.0.0.1` (free port, random token in the address, `Host` and `Origin` checked) so its page can save comments into `review-plan.json` and `review.html`; Ctrl+C stops it. `--serve` on a run writes the report, then serves it (not with `--json-only`). A folder without a report, without `review.html`, or with a report from before comments exits 1 with what to run. Since M10 (§15 #65) |
+| CLI-14 | P1 | `bowi comments <dir>` lists the comments of a report; `--markdown` prints them as Markdown, the same text as "Copy all as Markdown". Since M10 |
+| CLI-15 | P1 | A run writing into a folder whose plan has comments carries them over (§15 #64) and prints how many were kept, moved and outdated; `--no-comments` leaves them out of `review.html` (the plan keeps them). Since M10 |
 
 ### 7.2 Sources
 
@@ -268,7 +271,7 @@ The interactive prototype was the reference design up to M4. Since M5.5 the refe
 | UI-12 | P1 | Reviewed state persisted in `localStorage` ~~keyed by repo + head SHA~~ keyed by repo + PR (or branch) + a digest of the diff, with viewed files (UI-23); entries not saved for 7 days are deleted when a report opens; wrapped in try/catch, page works without it. Done in M5.5 (§15 #5, #32). Since M6: "Start over" next to the progress bar clears reviewed steps and viewed files after an inline confirmation and returns to the first step |
 | UI-13 | P1 | Keyboard: `j`/`k` next/previous step, `r` toggle reviewed (`g` toggled grouped/alphabetical, which no longer exists; its new meaning is open). Done in M6; `g` is unassigned (§15 #43) |
 | UI-14 | P0 | Syntax highlighting done at build time (`shiki`), not in the browser |
-| UI-15 | P0 | All repository content is escaped; the embedded JSON is escaped so `</script>` and `<!--` in code cannot break out |
+| UI-15 | P0 | All repository content is escaped; the embedded JSON is escaped so `</script>` and `<!--` in code cannot break out. Since M10, comment text is Markdown rendered in the page with raw HTML off (tags show as text, unsafe link schemes are dropped, images become links), the only markup besides the build-time highlighting and the sanitized description (§15 #66) |
 | UI-16 | P1 | Copy-friendly: each hunk has a link-like anchor and a "copy path:line" action for pasting into GitHub comments |
 | UI-17 | P2 | Dark mode, search across diff, collapse unchanged context |
 | UI-18 | P0 | Usable at 1280px width; readable (stacked layout) at 768px |
@@ -278,6 +281,9 @@ The interactive prototype was the reference design up to M4. Since M5.5 the refe
 | UI-22 | P0 | Changes tab: every file in GitHub's order (subfolders before files at each level) with a filterable file tree; unified (default) or split layout, remembered per viewer in `localStorage`; generated, deleted and large files start closed behind "Load diff"; binary, rename-only and mode-only files say so; collapse / expand all |
 | UI-23 | P0 | Review tab: each file of a step has a Viewed checkbox; checking it collapses the file, unchecking opens it. Viewed is per step (the same file in two steps is viewed separately). Viewing every file of a step marks the step reviewed; unviewing one unmarks it only if the rule had marked it, never a step marked by hand. Moved code and collapsed noise have no Viewed button |
 | UI-24 | P0 | "Finish review" (Next on the last step) marks the step and, when every step is reviewed, plays paper fireworks (bursts from the bottom corners and the middle, about 4 s) with a "Review complete" dialog: groups, files, lines read carefully, "See all changes", "Done". Otherwise a dialog lists the steps not reviewed yet with links to them. Every click on Finish, never on its own; Escape or the backdrop closes it; no fireworks or animation with reduced motion |
+| UI-25 | P0 | Line comments, as on GitHub: a "+" on a hovered line (Shift-click or drag for a range within a hunk) in the Review tab (step files, expanded noise, moved code by its new lines) and the Changes tab (unified, and split by column); only lines shown in a hunk. A comment box under the last selected line; comments under their lines, in Bowi's look in Review and GitHub's in Changes; a button in each file header for a comment on the whole file. Each comment can be edited, deleted ("Comment deleted · Undo", no question) or hidden; "Hide comments" in both tabs hides them all; hidden comments leave a badge on their line that shows them again; hiding is never remembered. File headers count comments, outdated ones apart. Since M10 (§15 #67, #68) |
+| UI-26 | P0 | The comment editor: Write / Preview, a toolbar that writes Markdown (Bold, Italic, Quote, Code, Link, bulleted and numbered lists), ⌘/Ctrl+B, I, K, ⌘/Ctrl+Enter to add, Escape to cancel. Comments show as GitHub-flavored Markdown with a single line break kept (UI-15). Since M10 |
+| UI-27 | P0 | Comments tab: the review summary (same editor), every comment by file in GitHub's order with the lines it is about and a link to its step, outdated comments last with the head they were written on; filters all / not saved / outdated, folding per file, "Copy all as Markdown", "Clear all comments" (comments and summary) after an inline confirmation. A save status next to the tabs says whether comments are saved; opened as a file, the page says how to save them (`bowi serve`). Since M10 (§15 #65, #67) |
 
 ---
 
@@ -320,6 +326,7 @@ export interface ReviewPlan {
   overview?: string;                         // AI only (AI-3): a short overview of the whole pull request
   outsideRefs: OutsideReference[];
   hints: ReviewHint[];
+  review?: Review;                           // M10: the reviewer's comments; user data, never read by the engine or compared (GRP-12)
   meta: {
     ai: { enabled: boolean; provider?: string; model?: string; effort?: string };   // model: the one that answered; effort: as configured
     languages: string[]; plugins: string[];
@@ -432,6 +439,32 @@ export interface ReviewHint {
   message: string;
   target: { groupId?: string; stepId?: string; hunkId?: string; symbolId?: string };
 }
+
+// M10 (§15 #64): comments written in the report. No author: the report may be shared.
+export interface Review {
+  body: string;                              // review summary, Markdown; '' when none
+  comments: ReviewComment[];
+}
+
+export interface ReviewComment {
+  id: string;                                // random, unique in the plan
+  body: string;                              // Markdown, as written
+  anchor: CommentAnchor;
+  snippet: SnippetLine[];                    // the commented lines when written; none for a file comment
+  createdAt: string; updatedAt: string;      // ISO timestamps
+  status: 'active' | 'outdated';             // outdated: the lines changed since; anchor and snippet as written
+}
+
+// Like GitHub's review comments: line/side = last line, startLine/startSide = first line of a range.
+export interface CommentAnchor {
+  path: string;
+  headSha: string;                           // head of the report the anchor belongs to
+  hunkId?: string;                           // absent for a file comment
+  line?: number; side?: 'old' | 'new';       // context lines are 'new' unless picked in split's old column
+  startLine?: number; startSide?: 'old' | 'new';
+}
+
+export interface SnippetLine { kind: 'context' | 'add' | 'del'; text: string; oldNo?: number; newNo?: number }
 ```
 
 ---
@@ -442,7 +475,7 @@ export interface ReviewHint {
 |---|---|---|
 | NFR-1 | P0 | **Speed (AI off, repo cached):** ≤ 10 s for a PR with ≤ 50 files and ≤ 2,000 changed lines; ≤ 60 s for 300 files / 20,000 lines |
 | NFR-2 | P0 | **Determinism:** identical output for identical input with AI off (GRP-12) |
-| NFR-3 | P0 | **Privacy:** no network calls except GitHub (only in URL mode) and the AI provider (only when enabled) |
+| NFR-3 | P0 | **Privacy:** no network calls except GitHub (only in URL mode) and the AI provider (only when enabled). `bowi serve` (M10) only listens on `127.0.0.1` for the page it serves and makes no requests of its own |
 | NFR-4 | P0 | **Safety:** never execute target repo code; git hooks disabled; output HTML escapes all content |
 | NFR-5 | P0 | **Resilience:** any single-file failure degrades that file to tier 0 and adds a warning; the run continues |
 | NFR-6 | P0 | **Platforms:** Node.js ≥ 22.12 (was ≥ 20 until M9, §15 #59) and git ≥ 2.31 (§15 #61) on macOS, Linux and Windows (Windows since 0.1.1, §15 #63) |
@@ -609,6 +642,7 @@ Each milestone ends with passing tests and a short note in `CHANGELOG.md`.
 | M7 | Benchmark harness (§12.3) | Report printed for at least 2 TypeScript repos |
 | M8 | Optional AI enrichment (P2) | `--ai` improves titles/intents; partition invariant still enforced |
 | M9 | Release 0.1.0 on npm: one bundled package, `@bowi/cli`, CI, release workflow (`docs/plan.md`; later milestones are planned there) | The packed package, installed with npm into an empty folder, produces the same plan as the sources on Node 22.12 and 24, macOS and Linux |
+| M10 | Line comments in the report: select lines, write Markdown comments, a Comments tab, `bowi serve` to save them into `review-plan.json`, carried over on re-runs (`docs/plan.md`) | Comments written in the served page appear in the plan and survive a re-run on the same and on a changed diff; the page works opened as a file |
 
 Rules for implementation:
 
@@ -692,6 +726,12 @@ Rules for implementation:
 61. **git ≥ 2.31 (M9, NFR-6).** The oldest git that has everything Bowi uses: `GIT_CONFIG_COUNT` (2.31), which passes a GitHub token to git without putting it on the command line; `fetch --no-write-fetch-head` (2.29); `--pathspec-from-file` (2.25); `--end-of-options` (2.24); partial clones with `--filter=blob:none`. `checkGit()` runs `git --version` before every analysis (a few milliseconds) and exits 2 with how to install git when it is missing or older.
 62. **Releases from a private repository (M9; owner's decision 2026-11-01).** The repository stays private for now; the `@bowi/cli` package is public. 0.1.0 is published by hand (npm's trusted publisher is configured on an existing package). From then on, `.github/workflows/release.yml` runs on a `v*` tag and only *stages* the version (`npm stage publish`) through npm trusted publishing (OIDC, no npm token in GitHub); it goes out when the owner approves it with 2FA, and a version already on npm is skipped. Because the repository is private: GitHub Free has no environments for private repositories, so the workflow and the npm trusted publisher name none, and staged publishing is what keeps a changed workflow from releasing on its own; npm makes no provenance; CI runs on Linux, and on Windows with one Node version per job since 0.1.1 (Windows minutes count 2×), not on macOS (minutes count 10×; macOS is checked on the owner's machine); the npm page's repository and issue links, and the README's links to `docs/`, are dead until the repository is public. The package code is readable anyway (`dist/bowi.js` is not minified, MIT). npm's trusted publisher must publish once within 2 days of being added ("Pending validation"); the one added on 2026-11-01 was left to lapse rather than release a 0.1.1 without changes, so it is added again shortly before the next release. Going public: add `environment: npm` to the workflow and to the trusted publisher, add macOS back to CI; later versions then get provenance.
 63. **Windows in 0.1.1 (M9.1; owner's decision 2026-11-02).** Windows ships on its own as a patch release instead of with line comments in 0.2.0 (#3, plan M10), because the owner works on Windows; it adds no features. What Windows needed: (a) **line endings**: with `core.autocrlf=true` (Git for Windows' default) or `text`/`eol` attributes, files on disk have CRLF while `git diff` shows LF, so the head text read from disk differed from the diff in every line. The local source now asks git which files it converts (`git ls-files --eol` on the temporary index, plus `core.autocrlf`) and reads those with CRLF turned into LF, following git's rules: always with `text` or `eol`; with `text=auto`, or no attribute and autocrlf true/input, only when the index copy has no CRLF. `git grep` lines drop a trailing `\r`. (b) **hooks**: Git for Windows reads `core.hooksPath=/dev/null` as `<drive>:\dev\null\`, a folder any local user may create, so on Windows Bowi passes `NUL` (a reserved name that can never be a folder); `-O/dev/null` works because Git for Windows opens `/dev/null` as `nul` (both checked with Git for Windows 2.50.1 through Node's `spawn`). (c) the cache is `%LOCALAPPDATA%\bowi`. (d) the report is opened with `explorer <path>`, not `cmd /c start` as the plan said: cmd.exe would read `&` or `^` in an `--out` path as commands. (e) `--ai` runs only the native `claude.exe`: npm's `claude.cmd` needs cmd.exe, which cannot pass the multi-line `--system-prompt` (and putting the prompt in a file would change the hardened call); when only a `.cmd` is on PATH the error says to install the native Claude Code. (f) Windows keeps a just-stopped process's working folder locked for a moment, and refuses to rename over a file another process has open: both are retried or ignored where the result is the same. Symlinks need nothing: Git for Windows checks them out as small files holding the target path (`core.symlinks=false`, its default), which is what git diffs. CI adds `windows-latest` for `bun run check` (Node 24) and the smoke test (Node 22.12.0).
+64. **Comments survive re-runs (M10, CLI-15).** A run writing into a folder whose `review-plan.json` holds a review of the same repository and pull request (or branch) carries it over before overwriting the file. A comment moves to the first place, nearest to where it was, where its snippet's lines read the same (same kinds, same text) in a hunk of the same file, or of the file it was renamed to; otherwise it becomes `outdated` and keeps its anchor, snippet and the head it was written on, as GitHub does after a push. File comments stay while the file is in the diff. Outdated comments never come back. Nothing is dropped: comments that are invalid or belong to another review leave the old plan in `review-plan.json.bak` with a warning. Anchors move with the comment's `headSha`; `hunkId` follows the new hunk.
+65. **How comments are saved (M10, CLI-13; owner's decisions 2026-11-01 and 2026-11-05).** A page opened as a file cannot write to disk. `bowi serve <dir>` (or `--serve` on a run) serves the folder's `review.html` on `127.0.0.1`, on a free port, with an 18-byte random token: in the address (`?t=`) for the page, in an `X-Bowi-Token` header for `GET` / `PUT /api/review`. The `Host` header must be the server's address (DNS rebinding) and an `Origin`, when sent, the page's own; saves must be JSON, at most 32 MB, valid against the review schema, and name the `generatedAt` of the plan they were made on (409 after a re-run, so the page reloads instead of writing stale anchors). The page is sent with a Content-Security-Policy that allows only its own inline code and requests to the server, and `Referrer-Policy: no-referrer` (the token is in the address). A save writes the plan and the review inside `review.html` atomically, one save at a time. The page saves every change at once (typing in the summary after 0.6 s), shows the state next to the tabs, and keeps a failed save as a draft. Runs still write a static file and exit; serving by default is to be reconsidered after using it.
+66. **Comment text is Markdown rendered in the page (M10, UI-15, UI-26; owner's request on the canvas).** Comments are written in the page, so they cannot be rendered at report time like the description. micromark with GitHub-flavored Markdown runs in the page with raw HTML off: tags in a comment show as text and unsafe link schemes lose their address; images become links ("Image: alt"), so the page still loads nothing (UI-1); links to http(s) open in a new tab without referrer; a single line break is a break, as in GitHub comments. This adds about 124 KB to the page template. The page's other markup stays as before: only `DiffLine.html` and `source.descriptionHtml`.
+67. **Drafts in the browser (M10, UI-25, UI-27).** Opened as a file, the page starts from the comments embedded when the report was written; new, edited and deleted comments and summary changes are drafts in `localStorage`, per repository and pull request (or branch), so they outlive re-runs; drafts not touched for 30 days are deleted (longer than review progress, UI-12, because they are written work). They show "Not saved". The served page finds them and offers "Save all" or "Discard" (after an inline confirmation); saving applies the changed and deleted comments onto the saved review. A save that fails while serving keeps the change as a draft the same way.
+68. **Hiding comments is a view, not data (M10, UI-25; owner's decision 2026-11-05).** "Hide comments" (all) and Hide on a comment (one) last until the page closes; neither is remembered nor written to the plan. Writing a comment shows the comments again. Both tabs share the state.
+69. **Comment layout decisions (M10; owner's approval of the canvas 2026-11-05).** A fifth tab, Comments, rather than a side panel; one comment per line range and no replies, since a report has one reviewer; "Clear all comments" clears the summary too; the save status sits next to the tabs; a file can have any number of file comments; in the Changes tab comments look as on a GitHub pull request.
 
 ---
 

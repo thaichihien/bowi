@@ -1,12 +1,18 @@
 /**
  * Changes tab: every file in GitHub's order (subfolders before files at each level) with a file
- * tree and filter, like GitHub's "Files changed" without review features. Unified (default) or
- * split layout, remembered per viewer. As on GitHub, generated, deleted and large files start
- * closed behind "Load diff"; files without a text diff say why.
+ * tree and filter, like GitHub's "Files changed". Unified (default) or split layout, remembered
+ * per viewer. As on GitHub, generated, deleted and large files start closed behind "Load diff";
+ * files without a text diff say why. Comments look as on a GitHub pull request (UI-25).
  */
 
 import type { FileChange } from '@bowi/core/types';
 import { useEffect, useMemo, useState } from 'preact/hooks';
+import {
+  FileCommentButton,
+  FileCommentCount,
+  FileComments,
+  HideCommentsToggle,
+} from './Comments.tsx';
 import { CopyButton } from './Copy.tsx';
 import { DiffBlocks, HunkBarText, SplitLines, UnifiedLines } from './Diff.tsx';
 import { Chevron, FileStatusIcon, FolderIcon } from './Icons.tsx';
@@ -69,6 +75,7 @@ export function ChangesTab({ model }: { model: Model }) {
               changed
             </span>
             <div class="toolbar-group">
+              <HideCommentsToggle />
               {narrow && layout === 'split' && (
                 <span class="muted small">Split needs a wider window</span>
               )}
@@ -172,13 +179,16 @@ function FileDiff(props: {
         </span>
         <CopyButton text={file.path} label="Copy file path" />
         {badge && <span class={`badge badge-${file.status}`}>{badge}</span>}
+        <FileCommentCount path={file.path} />
         <span class="grow" />
         <span class="mono delta-line">
           <span class="plus">+{formatCount(file.additions)}</span>
           <span class="minus">−{formatCount(file.deletions)}</span>
           <DiffBlocks additions={file.additions} deletions={file.deletions} />
         </span>
+        <FileCommentButton path={file.path} />
       </div>
+      <FileComments path={file.path} variant="gh" open={open} />
       {hunks.length === 0 ? (
         <p class="gh-note">{noDiffNote(file)}</p>
       ) : open ? (
@@ -188,7 +198,11 @@ function FileDiff(props: {
               <div class={props.split ? 'mono hunk-bar gh split' : 'mono hunk-bar gh'}>
                 <HunkBarText hunk={h} />
               </div>
-              {props.split ? <SplitLines hunk={h} /> : <UnifiedLines hunk={h} />}
+              {props.split ? (
+                <SplitLines hunk={h} path={file.path} variant="gh" />
+              ) : (
+                <UnifiedLines hunk={h} path={file.path} variant="gh" />
+              )}
             </div>
           ))}
         </div>

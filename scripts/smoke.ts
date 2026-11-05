@@ -6,10 +6,11 @@
  * Packs build/npm/ the way `npm publish` would, checks what goes in, installs the tarball with
  * plain npm into an empty folder (install scripts off: Bowi must not need any), then runs the
  * installed `bowi` on the email-verification fixture. Its plan must equal the one the sources
- * produce. Needs the npm registry for the dependencies; never GitHub.
+ * produce. Then `bowi serve` serves that report and saves a comment into it. Needs the npm
+ * registry for the dependencies; never GitHub.
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -138,6 +139,51 @@ try {
   console.log(
     `✓ bowi --local on the email-verification fixture: ${groups.length} groups, review.html ${kb(html.length)}, same plan as the sources`,
   );
+
+  // 4. `bowi serve` from the package: the page, and a save into the plan. Started with node
+  // and the package's own bin.js, so it can be stopped on Windows too (no .cmd shim around it).
+  const bin = join(app, 'node_modules', '@bowi', 'cli', 'dist', 'bin.js');
+  const server = spawn(process.execPath, [bin, 'serve', join(temp, 'out-package'), '--no-open'], {
+    cwd: app,
+  });
+  const exited = new Promise<void>((resolve) => server.once('exit', () => resolve()));
+  try {
+    const url = await new Promise<string>((resolve, reject) => {
+      let err = '';
+      const timer = setTimeout(() => reject(new Error(`no address after 20 s\n${err}`)), 20_000);
+      server.stderr.on('data', (d: Buffer) => {
+        err += d.toString();
+        const m = /→ Open (\S+)/.exec(err);
+        if (m) {
+          clearTimeout(timer);
+          resolve(m[1]!);
+        }
+      });
+      server.once('exit', (code) => reject(new Error(`bowi serve exited ${code}\n${err}`)));
+    }).catch((e: Error) => fail(e.message));
+    const page = await fetch(url);
+    if (!page.ok || !(await page.text()).includes('bowi-features'))
+      fail(`${url} did not serve the page.`);
+    const address = new URL(url);
+    const saved = await fetch(`${address.origin}/api/review`, {
+      method: 'PUT',
+      headers: {
+        'X-Bowi-Token': address.searchParams.get('t')!,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        generatedAt: plan('out-package').generatedAt,
+        review: { body: 'From the smoke test', comments: [] },
+      }),
+    });
+    if (!saved.ok) fail(`saving a comment answered ${saved.status}: ${await saved.text()}`);
+  } finally {
+    server.kill('SIGINT');
+    await exited;
+  }
+  if (plan('out-package').review?.body !== 'From the smoke test')
+    fail('bowi serve did not save the comment into review-plan.json.');
+  console.log('✓ bowi serve: served the report and saved a comment into its plan');
   console.log(`  node ${process.versions.node}, npm ${run('npm', ['--version'], temp).trim()}`);
 } finally {
   rmSync(temp, { recursive: true, force: true });

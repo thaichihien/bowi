@@ -77,6 +77,20 @@ bun run fixture email-verification ~/bowi-demo
 cd ~/bowi-demo && bowi --local
 ```
 
+### Comments
+
+Hover a line in the Review or Changes tab and press **+** to write a comment; Shift-click another line for a range, or use the button in a file's header for a comment on the whole file. Comments are Markdown, with a toolbar like GitHub's. The Comments tab lists them all, holds the review summary, and copies everything as Markdown for pasting anywhere.
+
+A report opened as a file cannot write to disk, so comments written there stay in your browser. To save them into `review-plan.json`, serve the report:
+
+```bash
+bowi serve .bowi/<repo>-<pr-or-branch>     # serves the report on this computer and opens it; Ctrl+C stops
+bowi --local --serve                       # write the report, then serve it
+bowi comments .bowi/<repo>-<pr-or-branch>  # list the comments (--markdown to paste them)
+```
+
+`bowi serve` listens on `127.0.0.1` only, with a random token in the link it prints, and writes nothing but the comments of that report. When you run Bowi again into the same folder, comments move with their lines; a comment whose lines changed is kept as outdated, with the code it was written on. `--no-comments` leaves them out of `review.html` (for sharing the page); the plan keeps them.
+
 ### AI enrichment (optional)
 
 With `--ai`, Bowi asks an AI model to name each group of code changes, explain in 1–3 sentences what it does, and write an overview of the whole change (shown in the Description tab). Everything the AI wrote is marked "AI" in the report, together with the model that wrote it. AI is off by default; without it, Bowi writes its own titles and descriptions.

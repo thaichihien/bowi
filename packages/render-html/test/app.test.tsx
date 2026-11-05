@@ -72,7 +72,7 @@ describe('header and tabs', () => {
     expect(text()).toContain('+115 −25');
     expect(text()).toContain('94 lines need careful reading');
     // No Description tab for local changes.
-    expect(tabNames()).toEqual(['Review8 steps', 'Commits4', 'Changes11']);
+    expect(tabNames()).toEqual(['Review8 steps', 'Commits4', 'Changes11', 'Comments0']);
   });
 
   it('describes a pull request and offers its description', () => {
@@ -82,7 +82,13 @@ describe('header and tabs', () => {
     expect(root.querySelectorAll('.meta-line')[0]!.textContent).toBe(
       'Merging 4 commits from feature/email-verification into main',
     );
-    expect(tabNames()).toEqual(['Review8 steps', 'Description', 'Commits4', 'Changes11']);
+    expect(tabNames()).toEqual([
+      'Review8 steps',
+      'Description',
+      'Commits4',
+      'Changes11',
+      'Comments0',
+    ]);
   });
 
   it('keeps the tab in the URL hash, including old #alpha links', async () => {
@@ -420,7 +426,13 @@ describe('Description tab', () => {
 
   it('gives local changes a Description tab when there is an AI overview', () => {
     show(withOverview(local), '#description');
-    expect(tabNames()).toEqual(['Review8 steps', 'Description', 'Commits4', 'Changes11']);
+    expect(tabNames()).toEqual([
+      'Review8 steps',
+      'Description',
+      'Commits4',
+      'Changes11',
+      'Comments0',
+    ]);
     expect([...root.querySelectorAll('.desc')].map((c) => c.getAttribute('aria-label'))).toEqual([
       'Overview written by AI',
     ]);

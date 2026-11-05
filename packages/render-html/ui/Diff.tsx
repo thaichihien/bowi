@@ -1,10 +1,20 @@
 /**
- * Diff rendering: file cards with hunks (UI-5) and the moved-code view (UI-6).
- * Line text is rendered as text; only `DiffLine.html` (escaped at build time) is markup.
+ * Diff rendering: file cards with hunks (UI-5) and the moved-code view (UI-6), with comments on
+ * their lines (UI-25, Comments.tsx). Line text is rendered as text; only `DiffLine.html` (escaped
+ * at build time) is markup.
  */
 
 import type { DiffLine, FileChange, Hunk } from '@bowi/core/types';
+import { Fragment, type ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
+import {
+  FileCommentButton,
+  FileCommentCount,
+  FileComments,
+  rowComments,
+  useComments,
+  type Variant,
+} from './Comments.tsx';
 import { Chevron } from './Icons.tsx';
 import {
   changeLabel,
@@ -57,6 +67,7 @@ export function FileCard({
           </span>
         )}
         {label && <span class="chip k-tag">{label}</span>}
+        <FileCommentCount path={file.path} />
       </span>
       {!open && (
         <span class="closed-note">
@@ -74,6 +85,7 @@ export function FileCard({
       {onViewed ? (
         <div class={open ? 'file-head-row' : 'file-head-row closed'}>
           {head}
+          <FileCommentButton path={file.path} />
           <button
             class={viewed ? 'viewed on' : 'viewed'}
             aria-pressed={!!viewed}
@@ -92,8 +104,12 @@ export function FileCard({
           </button>
         </div>
       ) : (
-        head
+        <div class={open ? 'file-head-row' : 'file-head-row closed'}>
+          {head}
+          <FileCommentButton path={file.path} />
+        </div>
       )}
+      <FileComments path={file.path} variant="bowi" open={open} />
       {open && (
         <div class="hunks">
           {hunks.map((h) => (
@@ -101,6 +117,7 @@ export function FileCard({
               key={h.id}
               model={model}
               hunk={h}
+              path={file.path}
               wholeFile={file.status === 'added' || file.status === 'deleted'}
             />
           ))}
@@ -124,7 +141,17 @@ function CheckMark() {
   );
 }
 
-function HunkView({ model, hunk, wholeFile }: { model: Model; hunk: Hunk; wholeFile: boolean }) {
+function HunkView({
+  model,
+  hunk,
+  path,
+  wholeFile,
+}: {
+  model: Model;
+  hunk: Hunk;
+  path: string;
+  wholeFile: boolean;
+}) {
   // The header already names the hunk's first symbol; other symbols are named with their change.
   // A new or deleted file says so in its file tag, so its symbols need no tags.
   const tags = (wholeFile ? [] : hunk.symbolIds)
@@ -137,15 +164,30 @@ function HunkView({ model, hunk, wholeFile }: { model: Model; hunk: Hunk; wholeF
         <HunkBarText hunk={hunk} />
         {tags.length > 0 && <span class="hunk-tags"> · {tags.join(' · ')}</span>}
       </div>
-      <UnifiedLines hunk={hunk} />
+      <UnifiedLines hunk={hunk} path={path} />
     </div>
   );
 }
 
-export function Line({ line, cls, sign }: { line: DiffLine; cls: LineClass; sign?: string }) {
+export function Line({
+  line,
+  cls,
+  sign,
+  extra = '',
+  marker,
+  onMouseEnter,
+}: {
+  line: DiffLine;
+  cls: LineClass;
+  sign?: string;
+  /** Comments (Comments.tsx): ` sel` for selected lines, the "+" placed over the row. */
+  extra?: string;
+  marker?: ComponentChildren;
+  onMouseEnter?: () => void;
+}) {
   const mark = sign ?? (line.kind === 'add' ? '+' : line.kind === 'del' ? '−' : ' ');
   return (
-    <div class={`ln l-${cls}`}>
+    <div class={`ln l-${cls}${extra}`} onMouseEnter={onMouseEnter}>
       <span class="no">{line.oldNo ?? ''}</span>
       <span class="no">{line.newNo ?? ''}</span>
       <span class="sign">{mark}</span>
@@ -155,6 +197,7 @@ export function Line({ line, cls, sign }: { line: DiffLine; cls: LineClass; sign
           ⏎̸
         </span>
       )}
+      {marker}
     </div>
   );
 }
@@ -169,40 +212,101 @@ export function HunkBarText({ hunk }: { hunk: Hunk }) {
   );
 }
 
-/** A hunk's lines one below the other (GitHub's unified layout). */
-export function UnifiedLines({ hunk }: { hunk: Hunk }) {
+/**
+ * A hunk's lines one below the other (GitHub's unified layout). With `path`, lines take comments
+ * and show the comments written on them.
+ */
+export function UnifiedLines({
+  hunk,
+  path,
+  variant = 'bowi',
+}: {
+  hunk: Hunk;
+  path?: string;
+  variant?: Variant;
+}) {
+  const api = useComments();
   return (
     <div class="lines">
-      {hunk.lines.map((l, i) => (
-        <Line key={i} line={l} cls={l.kind === 'add' ? 'a' : l.kind === 'del' ? 'd' : 'c'} />
-      ))}
+      {hunk.lines.map((l, i) => {
+        const c = path === undefined ? undefined : rowComments(api, path, hunk, i, variant);
+        return (
+          <Fragment key={i}>
+            <Line
+              line={l}
+              cls={l.kind === 'add' ? 'a' : l.kind === 'del' ? 'd' : 'c'}
+              extra={c?.cls}
+              marker={c?.marker}
+              onMouseEnter={c?.onMouseEnter}
+            />
+            {c?.below}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }
 
-/** A hunk with the old version on the left and the new one on the right. */
-export function SplitLines({ hunk }: { hunk: Hunk }) {
+/**
+ * A hunk with the old version on the left and the new one on the right. A comment sits under its
+ * line in that line's column, as on GitHub.
+ */
+export function SplitLines({
+  hunk,
+  path,
+  variant = 'gh',
+}: {
+  hunk: Hunk;
+  path?: string;
+  variant?: Variant;
+}) {
+  const api = useComments();
+  const parts = (index: number | undefined, column: 'old' | 'new') =>
+    index === undefined || path === undefined
+      ? undefined
+      : rowComments(api, path, hunk, index, variant, column);
   return (
     <div class="lines split">
-      {splitRows(hunk.lines).map((row, i) => (
-        <div class="sr" key={i}>
-          <SplitCell line={row.left} side="old" />
-          <SplitCell line={row.right} side="new" />
-        </div>
-      ))}
+      {splitRows(hunk.lines).map((row, i) => {
+        const left = parts(row.leftIndex, 'old');
+        const right = parts(row.rightIndex, 'new');
+        return (
+          <Fragment key={i}>
+            <div class="sr">
+              <SplitCell line={row.left} side="old" comments={left} />
+              <SplitCell line={row.right} side="new" comments={right} />
+            </div>
+            {(left?.below || right?.below) && (
+              <div class="sr-below">
+                <div>{left?.below}</div>
+                <div>{right?.below}</div>
+              </div>
+            )}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }
 
-function SplitCell({ line, side }: { line: DiffLine | undefined; side: 'old' | 'new' }) {
+function SplitCell({
+  line,
+  side,
+  comments,
+}: {
+  line: DiffLine | undefined;
+  side: 'old' | 'new';
+  comments?: ReturnType<typeof rowComments>;
+}) {
   if (!line) return <div class="sd sd-e" />;
   const cls = line.kind === 'add' ? 'sd-a' : line.kind === 'del' ? 'sd-d' : 'sd-c';
   const sign = line.kind === 'add' ? '+' : line.kind === 'del' ? '−' : ' ';
   return (
-    <div class={`sd ${cls}`}>
+    <div class={`sd ${cls}${comments?.cls ?? ''}`} onMouseEnter={comments?.onMouseEnter}>
       <span class="no">{(side === 'old' ? line.oldNo : line.newNo) ?? ''}</span>
       <span class="sign">{sign}</span>
       <Code line={line} />
+      {comments?.marker}
     </div>
   );
 }
@@ -221,18 +325,20 @@ function Code({ line }: { line: DiffLine }) {
  */
 export function MovedView({ model, to, from }: { model: Model; to: Hunk; from: Hunk }) {
   const [showOrigin, setShowOrigin] = useState(false);
+  const api = useComments();
   const toFile = model.files.get(to.fileId)!;
   const fromFile = model.files.get(from.fileId)!;
   const changedTo = new Set(to.move?.changedLineIndexes ?? []);
   const originals = (from.move?.changedLineIndexes ?? []).map((i) => from.lines[i]!);
-  const rows: { line: DiffLine; cls: LineClass; sign: string }[] = [];
+  // `index`: the row in `to`, for comments; the struck-through originals have none.
+  const rows: { line: DiffLine; cls: LineClass; sign: string; index?: number }[] = [];
   let k = 0;
   to.lines.forEach((l, i) => {
-    if (l.kind === 'context') rows.push({ line: l, cls: 'c', sign: ' ' });
+    if (l.kind === 'context') rows.push({ line: l, cls: 'c', sign: ' ', index: i });
     else if (changedTo.has(i)) {
       if (k < originals.length) rows.push({ line: originals[k++]!, cls: 'w', sign: '−' });
-      rows.push({ line: l, cls: 'x', sign: '~' });
-    } else rows.push({ line: l, cls: 'm', sign: ' ' });
+      rows.push({ line: l, cls: 'x', sign: '~', index: i });
+    } else rows.push({ line: l, cls: 'm', sign: ' ', index: i });
   });
   while (k < originals.length) rows.push({ line: originals[k++]!, cls: 'w', sign: '−' });
   const fromLine = to.move?.fromStart ?? from.oldStart;
@@ -244,17 +350,36 @@ export function MovedView({ model, to, from }: { model: Model; to: Hunk; from: H
           <span class="file-name">
             <span class="mono path">{toFile.path}</span>
             <span class="chip k-tag">Moved from {fromFile.path}</span>
+            <FileCommentCount path={toFile.path} />
           </span>
           <span class="mono delta">similarity {Math.round((to.move?.similarity ?? 1) * 100)}%</span>
+          <FileCommentButton path={toFile.path} />
         </div>
+        <FileComments path={toFile.path} variant="bowi" open />
         <div class="hunks">
           <div class="mono hunk-bar">
             moved from {fromFile.path}:{fromLine} · {to.header}
           </div>
           <div class="lines">
-            {rows.map((r, i) => (
-              <Line key={i} line={r.line} cls={r.cls} sign={r.sign} />
-            ))}
+            {rows.map((r, i) => {
+              const c =
+                r.index === undefined
+                  ? undefined
+                  : rowComments(api, toFile.path, to, r.index, 'bowi');
+              return (
+                <Fragment key={i}>
+                  <Line
+                    line={r.line}
+                    cls={r.cls}
+                    sign={r.sign}
+                    extra={c?.cls}
+                    marker={c?.marker}
+                    onMouseEnter={c?.onMouseEnter}
+                  />
+                  {c?.below}
+                </Fragment>
+              );
+            })}
           </div>
         </div>
       </div>

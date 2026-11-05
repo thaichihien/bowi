@@ -9,7 +9,7 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ReviewPlan } from '@bowi/core';
+import type { Review, ReviewPlan } from '@bowi/core';
 import { jsonForScript } from './embed.ts';
 import { escapeHtml, highlightPlan, type ReadFile } from './highlight.ts';
 import { renderMarkdown } from './markdown.ts';
@@ -51,4 +51,25 @@ export async function renderHtml(plan: ReviewPlan, options: RenderOptions = {}):
   return template
     .replace(TITLE_PLACEHOLDER, () => escapeHtml(title))
     .replace(PLAN_PLACEHOLDER, () => jsonForScript(highlighted));
+}
+
+const PLAN_SCRIPT = /(<script id="bowi-plan" type="application\/json">)([\s\S]*?)(<\/script>)/;
+
+/** Whether a review.html can show and save comments (written by Bowi 0.2 or later). */
+export const supportsComments = (html: string): boolean =>
+  html.includes('<meta name="bowi-features" content="comments"');
+
+/**
+ * The same page with `review` in its embedded plan replaced, or removed when undefined: how
+ * `bowi serve` keeps review.html in step with the comments saved into the plan.
+ */
+export function withReview(html: string, review: Review | undefined): string {
+  const m = PLAN_SCRIPT.exec(html);
+  if (!m) throw new Error('This page has no embedded Bowi plan.');
+  const plan = JSON.parse(m[2]!) as ReviewPlan;
+  if (review) plan.review = review;
+  else delete plan.review;
+  return html.replace(PLAN_SCRIPT, (_all, open: string, _json, close: string) => {
+    return open + jsonForScript(plan) + close;
+  });
 }
