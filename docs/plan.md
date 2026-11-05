@@ -136,6 +136,7 @@ Comments posted to the host and GitLab support were phases 2–3 and non-goals i
 | Minimum Node | **Node ≥ 22** from 0.1.0. Node 20 reached end of life on 2026-04-30, and raising the minimum after release would break installs. Applied in M9: `engines`, `@types/node` 22, CI on Node 22 and 24, and the "Runtime" rule in `CLAUDE.md`. Dependencies held back for Node 20 (commander 14, sanitize-html 2.17.5) may move to newer majors, after checking their `engines.node` |
 | Windows | ~~Stays in v0.2, so it is part of M10~~ Changed 2026-11-02: a patch release of its own, 0.1.1 ([M9.1](#m91--windows-011)), before M10 |
 | Order | M9–M17 as in the table below |
+| Release 0.2.0 (2026-11-05) | 0.2.0 ships three milestones together: M10 (line comments), M11 (posting them to GitHub) and M14 (front-end frameworks, now with Vue, Nuxt and Svelte too), instead of M10 alone. M14 moves up before M12 and M13; the releases after it shift by one. The work is on the branch `feat/0.2.0` (owner's decision) |
 | Published packages (2026-11-01) | Only `bowi`, with the internal `@bowi/*` packages bundled into it; reserve the `@bowi` scope on npm. Internals are published later only when a real consumer of the engine appears |
 | Saving comments (2026-11-01) | Runs keep writing a static `review.html` and exit, as today. `bowi serve <dir>`, or `--serve` on a run, serves the report locally so comments can be saved and posted. Whether runs should serve by default is decided after using it |
 
@@ -146,15 +147,15 @@ Comments posted to the host and GitLab support were phases 2–3 and non-goals i
 | M9 | Release 0.1.0 on npm | 0.1.0 | Everything else is easier to try, report and benchmark once people can install it. It changes no features, so it is the safest first version |
 | M9.1 | Windows | 0.1.1 | The owner works on Windows. No new features, so it fits a patch release (decided 2026-11-02) |
 | M10 | Line comments in the report | 0.2.0 | Turns the report from read-only into a review tool. Needs a way for the page to save (a local server, below), and M11 builds on that |
-| M11 | Post comments to GitHub | 0.3.0 | Finishes the review loop on the host Bowi already supports. The host interface it introduces is the one GitLab implements in M13 |
-| M12 | More AI providers | 0.4.0 | Small and independent (the provider interface exists since M8). Once Bowi is public, many users will have an API key or Codex but no Claude Code |
-| M13 | GitLab merge requests (source and comment sync) | 0.5.0 | Second host, done after M11 so that it delivers reading and posting together |
-| M14 | Frameworks for TypeScript/JavaScript: React, Next.js, Angular | 0.6.0 | The language is already fully supported, so this is plugin work only (`FrameworkPlugin` from M6). Large audience, little engine risk |
-| M15 | Languages, wave 1: Python and Go | 0.7.0 | The engine has TypeScript-specific parts (imports, glue, outside references, hints). These two languages force the language interface to be general. Both have simple module systems (file paths, directories) |
-| M16 | Languages, wave 2: Java and C# | 0.8.0 | Harder name resolution (packages without imports for the same package, C# namespaces not tied to files, partial classes, overloads). Builds on the interface from M15 |
-| M17 | Frameworks for the new languages: Spring Boot, ASP.NET Core, Django, FastAPI, Go routers | 0.9.0 | Needs its language first. Same plugin interface as NestJS |
+| M11 | Post comments to GitHub | 0.2.0 | Released with M10 in 0.2.0. Finishes the review loop on the host Bowi already supports. The host interface it introduces is the one GitLab implements in M13 |
+| M14 | Frameworks for TypeScript/JavaScript: React, Next.js, Angular, Vue, Nuxt, Svelte (SvelteKit) | 0.2.0 | Moved up for 0.2.0 (owner's decision 2026-11-05). The language is already fully supported, so React, Next.js and Angular are plugin work only (`FrameworkPlugin` from M6). Vue and Svelte also need grammars for their single-file components. Large audience, little engine risk |
+| M12 | More AI providers | 0.3.0 | Small and independent (the provider interface exists since M8). Once Bowi is public, many users will have an API key or Codex but no Claude Code |
+| M13 | GitLab merge requests (source and comment sync) | 0.4.0 | Second host, done after M11 so that it delivers reading and posting together |
+| M15 | Languages, wave 1: Python and Go | 0.5.0 | The engine has TypeScript-specific parts (imports, glue, outside references, hints). These two languages force the language interface to be general. Both have simple module systems (file paths, directories) |
+| M16 | Languages, wave 2: Java and C# | 0.6.0 | Harder name resolution (packages without imports for the same package, C# namespaces not tied to files, partial classes, overloads). Builds on the interface from M15 |
+| M17 | Frameworks for the new languages: Spring Boot, ASP.NET Core, Django, FastAPI, Go routers | 0.7.0 | Needs its language first. Same plugin interface as NestJS |
 
-Rules for every milestone after M9: each ends with a minor release (0.x.0, fixes in between as 0.x.y; M9.1, Windows, is the one exception, 0.1.1). `bun run check` and the smoke test of the packed package must pass before a release. A milestone that changes grouping runs `bun run bench` and compares the means with the last report in `CHANGELOG.md`. A UI change goes through the design canvas first.
+Rules for every milestone after M9: each ends with a minor release (0.x.0, fixes in between as 0.x.y). Two exceptions: M9.1, Windows, is 0.1.1, and 0.2.0 ships M10, M11 and M14 together (each still ends with its own commit and "Try it"). `bun run check` and the smoke test of the packed package must pass before a release. A milestone that changes grouping runs `bun run bench` and compares the means with the last report in `CHANGELOG.md`. A UI change goes through the design canvas first.
 
 ### M9 — Release 0.1.0 on npm
 
@@ -263,13 +264,16 @@ Done when a public gitlab.com merge request URL produces a report, and comments 
 
 ### M14 — Frameworks for TypeScript/JavaScript
 
-Same plugin interface as NestJS (PLG-1: `detect`, `layerOf`, `extraEdges`, `hints`), detected from `package.json`.
+Part of 0.2.0, with M10 and M11 (owner's decision 2026-11-05). Same plugin interface as NestJS (PLG-1: `detect`, `layerOf`, `extraEdges`, `hints`), detected from `package.json`. The owner asked for the popular front-end frameworks: React, Next.js, Angular, Vue, Nuxt, Svelte and similar; which further ones (SolidJS, Remix / React Router, Astro, …) is decided when the milestone starts.
 
 - **React** (`react`): components (PascalCase functions or classes returning JSX) → UI. Custom hooks (`use*`) → Helpers. Edges: a component rendering `<Child>` (check that JSX elements already count as references), `createContext` ↔ `useContext(X)`, hook uses. Hints: changed props of a component with outside uses.
 - **Next.js** (`next`): routes from the file system (`app/**/page.tsx`, `layout.tsx`, `route.ts`, `pages/**`, `pages/api/**`, `middleware.ts`). Route handlers and server actions (`'use server'`) → API. Hints: "New page: /settings/billing", "New API route: POST /api/users", a file crossing the `'use client'` boundary.
 - **Angular** (`@angular/core`): decorators like NestJS (`@Component`, `@Directive`, `@Pipe` → UI, `@Injectable` → services, `@NgModule` → configuration). Edges: a component ↔ its `templateUrl` HTML and `styleUrls` files (today HTML is text-only and linked only by shared words), a template using `<app-foo>` → the component with `selector: 'app-foo'`, DI through constructor parameters and `inject()`. Route hints from `Routes` arrays.
-- Vue and Svelte single-file components need a grammar for the file format first. They are a candidate for this milestone or later.
-- Benchmark: add React, Next.js and Angular repositories chosen by the owner (kept private like the others). Each plugin must not lower the mean.
+- **Vue and Svelte single-file components** (`.vue`, `.svelte`) need a grammar for the file format first: vendor `tree-sitter-vue` and `tree-sitter-svelte` (or a GitHub release when npm has no `.wasm`), check their ABI against web-tree-sitter 0.27.1, and parse the `<script>` block (`lang="ts"` or JavaScript) with the existing grammars, keeping line numbers. Template and style blocks are text, linked by component names. Shiki already has `vue` and `svelte`.
+- **Vue** (`vue`): a single-file component → UI, composables (`use*`) → Helpers, Pinia stores (`defineStore`) → services. Edges: a template using `<FooBar>` or `<foo-bar>` → the component imported or registered under that name, `provide` ↔ `inject`, composable uses. Hints: changed `defineProps` / `defineEmits` of a component with outside uses.
+- **Nuxt** (`nuxt`): routes from the file system (`pages/**`, `layouts/`, `middleware/`, `server/api/**`, `server/routes/**`), auto-imported components and composables (`components/`, `composables/`, resolved by name because there is no import). Server routes → API. Hints: "New page: /settings/billing", "New API route: POST /api/users".
+- **Svelte and SvelteKit** (`svelte`, `@sveltejs/kit`): a component → UI, stores → services. SvelteKit routes from `src/routes/**` (`+page.svelte`, `+layout.svelte`, `+page.server.ts`, `+server.ts`); `load` functions and form actions → API. Edges: a component using `<Child>` → its import. Route hints as for Next.js.
+- Benchmark: add repositories for each framework, chosen by the owner (kept private like the others). Each plugin must not lower the mean.
 
 ### M15 — Languages, wave 1: Python and Go
 
@@ -296,7 +300,6 @@ Same plugin interface as NestJS (PLG-1: `detect`, `layerOf`, `extraEdges`, `hint
 ### Later (not placed yet)
 
 - More languages: Kotlin, Rust, PHP, Ruby, Swift. SQL as soon as a `.wasm` grammar can be built (§15 #41).
-- Vue and Svelte single-file components (if not in M14).
 - Showing a PR's existing review threads in the report (read-only, from the host's API).
 - Other hosts: Bitbucket, Gitea / Forgejo, Azure DevOps (through the `ReviewHost` interface).
 - A standalone binary (no Node needed) and a Homebrew formula.
