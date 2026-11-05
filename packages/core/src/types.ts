@@ -44,6 +44,8 @@ export interface ReviewPlan {
   overview?: string; // AI only (AI-3): a short overview of the whole pull request
   outsideRefs: OutsideReference[];
   hints: ReviewHint[];
+  /** The reviewer's own comments (M10): user data, never read by the engine nor compared (GRP-12). */
+  review?: Review;
   meta: {
     ai: { enabled: boolean; provider?: string; model?: string; effort?: string };
     languages: string[];
@@ -191,6 +193,50 @@ export interface OutsideReference {
   path: string;
   line: number;
   excerpt: string;
+}
+
+/**
+ * Comments written in the report (UI-25..27), kept in the plan as a record. No author: the report
+ * may be shared (§15 #27). A re-run carries them over (§15 #64).
+ */
+export interface Review {
+  body: string; // the review summary, Markdown; '' when none
+  comments: ReviewComment[];
+}
+
+export interface ReviewComment {
+  id: string; // random, unique within the plan
+  body: string; // Markdown, as written
+  anchor: CommentAnchor;
+  /** The commented lines as they read when written (none for a file comment). */
+  snippet: SnippetLine[];
+  createdAt: string; // ISO timestamp
+  updatedAt: string;
+  /** Outdated: the lines changed since; the comment keeps its anchor and snippet as written. */
+  status: 'active' | 'outdated';
+}
+
+/**
+ * Where a comment sits: a file, or lines shown in one of its hunks (GitHub and GitLab accept
+ * comments on those only). Like GitHub's review comments: `line` and `side` are the last line,
+ * `startLine` and `startSide` the first one of a range. Context lines are on the new side unless
+ * commented in the old column of the split layout.
+ */
+export interface CommentAnchor {
+  path: string;
+  headSha: string; // head of the report the anchor belongs to
+  hunkId?: string; // absent for a file comment
+  line?: number;
+  side?: 'old' | 'new';
+  startLine?: number; // only for a range
+  startSide?: 'old' | 'new';
+}
+
+export interface SnippetLine {
+  kind: 'context' | 'add' | 'del';
+  text: string;
+  oldNo?: number;
+  newNo?: number;
 }
 
 export interface ReviewHint {

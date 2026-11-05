@@ -92,6 +92,8 @@ export function createProgress(out: Writable, options: { quiet: boolean; verbose
       if (active) startSpinner(active);
     },
     stage: (r: StageReport) => line(LABELS[r.stage] ?? r.stage, r.summary, r.ms),
+    /** A finished step that is not an engine stage. */
+    line: (label: string, summary: string, ms = 0) => line(label, summary, ms),
     /** Runs `fn` as one stage; `active` is the spinner text while it runs (terminals only). */
     async time<T>(
       label: string,

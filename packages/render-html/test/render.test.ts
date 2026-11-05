@@ -75,7 +75,10 @@ describe('renderHtml', () => {
   });
 
   it('is one self-contained page that loads nothing from the network (UI-1)', () => {
-    expect(html).not.toMatch(/<link\b|<script[^>]+\bsrc=|<img\b|@import|url\(/i);
+    // The markup outside scripts: the bundled code holds strings such as micromark's "<img",
+    // whose output the page turns into links before it reaches the document (ui/markdown.ts).
+    const markup = html.replace(/(<script[^>]*>)[\s\S]*?<\/script>/g, '$1</script>');
+    expect(markup).not.toMatch(/<link\b|<script[^>]+\bsrc=|<img\b|@import|url\(/i);
     // Repository content (e.g. lockfile `resolved` URLs) is data inside the plan, never fetched;
     // check everything else.
     const outsidePlan = html.replace(/<script id="bowi-plan"[^>]*>[\s\S]*?<\/script>/, '');

@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased (0.2.0)
+
+### M10 — Line comments in the report
+
+- Comment on lines in the report, as on GitHub (UI-25): hover a line in the Review tab (step files, expanded noise, moved code by its new lines) or the Changes tab (unified and split) and press **+**; Shift-click or drag for a range. Only lines shown in a hunk take a comment, because GitHub and GitLab accept nothing else. A file's header has a button for a comment on the whole file. Design: the M10 canvas (`docs/plan.md`).
+- The comment box has Write / Preview and a toolbar like GitHub's (Bold, Italic, Quote, Code, Link, lists; ⌘B, ⌘I, ⌘K, ⌘Enter to add, Esc to cancel). Comments are Markdown, rendered in the page with raw HTML off: tags show as text, unsafe links lose their address, images become links (UI-15, UI-26).
+- Comments show under their lines: in Bowi's look in Review, in GitHub's look in Changes (in the line's column in split). Each can be edited, deleted (no question; "Comment deleted · Undo" for 8 seconds) or hidden; "Hide comments" hides them all, in Review and Changes. Hiding is not remembered (owner's decision); a hidden comment leaves a badge on its line that shows it again.
+- A Comments tab (UI-27): the review summary (with the same editor), every comment by file in GitHub's order with the lines it is about, outdated comments last; filters (all, not saved, outdated), folding per file, "Copy all as Markdown", and "Clear all comments" after an inline confirmation (it clears the summary too). "Start over" still clears only review progress.
+- Comments are kept in `review-plan.json` (`ReviewPlan.review`, an addition; `schemaVersion` stays 1), with their lines' text when written and no author. The determinism check leaves them out, and the engine never reads them.
+- `bowi serve <dir>` (CLI-13) serves a report on `127.0.0.1` with a random port and token, so its page can save: every change goes into the plan right away, and into `review.html` too. `--serve` on a run writes the report and serves it. The page shows the save status next to the tabs. Opened as a file, the page keeps new, edited and deleted comments as drafts in the browser ("Not saved", 30 days) and says how to save them; the served page offers to save them ("Save all" / "Discard"). A failed save (server stopped) keeps the change as a draft too.
+- Re-runs keep comments (§15 #64): a comment whose lines still read the same moves to where they are now, the others are kept as outdated with their snippet; the run prints "✓ Comments 2 kept (1 moved), 1 outdated". Comments of another review in the same folder are kept aside in `review-plan.json.bak`, never mixed in.
+- `bowi comments <dir>` lists the comments, `--markdown` prints them for pasting (CLI-14). `--no-comments` leaves them out of `review.html` (CLI-15).
+- The page is bigger: the template grew from 86 KB to 210 KB, most of it micromark with GitHub-flavored Markdown, which comments need in the browser (the fixture's report: 190 KB → 311 KB).
+- The smoke test also serves the installed package's report and saves a comment into it.
+
 ## 0.1.1 (2026-11-04)
 
 ### M9.1 — Windows

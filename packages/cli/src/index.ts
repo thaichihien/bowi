@@ -42,7 +42,9 @@ import {
   resolveToken,
   type GithubOptions,
 } from '@bowi/sources';
+import { carryComments, HTML_FILE, PLAN_FILE, planJson, runComments } from './comments.ts';
 import { createProgress, type Progress } from './progress.ts';
+import { serveReport, type ServeHandle } from './serve.ts';
 
 // The CLI package's version. package.json sits one folder above this module both in the sources
 // (src/) and in the published package (dist/, see scripts/build-package.ts).
@@ -67,6 +69,8 @@ export interface CliIo {
   github?: GithubOptions & { remoteUrl?: string };
   /** For tests: the Claude Code executable, or a whole enricher instead of Claude Code. */
   ai?: { command?: string | string[]; enricher?: AiEnricher };
+  /** For tests: called once `bowi serve` listens, instead of waiting for Ctrl+C. */
+  onServe?: (server: ServeHandle) => void;
 }
 
 interface CliOptions {
@@ -79,6 +83,8 @@ interface CliOptions {
   config?: string;
   order?: ReadingOrder;
   ai?: boolean;
+  comments: boolean;
+  serve?: boolean;
   cacheDir?: string;
   quiet?: boolean;
   verbose?: boolean;
@@ -86,10 +92,14 @@ interface CliOptions {
 
 export async function run(argv: string[], io: CliIo): Promise<number> {
   if (argv[0] === 'cache') return runCache(argv.slice(1), io);
+  if (argv[0] === 'serve') return runServe(argv.slice(1), io);
+  if (argv[0] === 'comments') return guarded(() => runComments(argv.slice(1), io), io);
 
   const program = new Command('bowi')
     .description('Turn a pull request into a guided, grouped review.')
-    .usage('<github-pr-url> | --local [options]\n       bowi cache clear')
+    .usage(
+      '<github-pr-url> | --local [options]\n       bowi serve <dir>\n       bowi comments <dir> [--markdown]\n       bowi cache clear',
+    )
     .argument('[pr-url]', 'GitHub pull request URL, e.g. https://github.com/owner/repo/pull/123')
     .option('--local', 'review the current repository: merge base of --base vs the working tree')
     .option(
@@ -100,6 +110,8 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
     .option('--json-only', 'write only review-plan.json, not review.html')
     .option('--no-untracked', 'with --local, leave out untracked files')
     .option('--no-open', 'do not open review.html in the browser')
+    .option('--serve', 'after writing the report, serve it so comments can be saved (Ctrl+C stops)')
+    .option('--no-comments', 'leave the comments out of review.html (they stay in the plan)')
     .option('--config <path>', 'config file (default: .bowi.json in the repository, if present)')
     .addOption(
       new Option(
@@ -132,6 +144,9 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
   const opts = program.opts<CliOptions>();
   const progress = createProgress(io.stderr, { quiet: !!opts.quiet, verbose: !!opts.verbose });
   try {
+    if (opts.serve && opts.jsonOnly) {
+      throw new UsageError('--serve needs review.html, which --json-only leaves out.');
+    }
     const target = program.args[0];
     await checkGit(io.cwd, io.env);
     // --local reads its config first: it may name the base branch.
@@ -172,35 +187,90 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
 
     const outDir = outDirFor(plan, opts, io.cwd);
     await mkdir(outDir, { recursive: true });
-    const planPath = join(outDir, 'review-plan.json');
-    await writeFile(planPath, JSON.stringify(plan, null, 2) + '\n');
+    const planPath = join(outDir, PLAN_FILE);
+    // A re-run keeps the comments written in the report so far (§15 #64).
+    const carried = await carryComments(planPath, plan);
+    if (carried.warning) progress.warn(carried.warning);
+    if (carried.summary) progress.line('Comments', carried.summary);
+    await writeFile(planPath, planJson(plan));
     if (opts.jsonOnly) {
       progress.done(`Wrote ${planPath}`);
       return 0;
     }
     // Highlighting is added to the page's copy of the plan only; review-plan.json stays lean.
+    const { review: _review, ...withoutComments } = plan;
+    const page = opts.comments ? plan : withoutComments;
     const html = await progress.time(
       'Rendered',
-      () => renderHtml(plan, { readFile: (version, path) => snapshot.readFile(version, path) }),
+      () => renderHtml(page, { readFile: (version, path) => snapshot.readFile(version, path) }),
       (page) => `review.html, ${formatSize(Buffer.byteLength(page))}`,
     );
-    const htmlPath = join(outDir, 'review.html');
+    const htmlPath = join(outDir, HTML_FILE);
     await writeFile(htmlPath, html);
     progress.done(`Wrote ${htmlPath}`);
+    if (opts.serve) {
+      return await serveReport(outDir, io, progress, {
+        open: opts.open,
+        openUrl: io.openFile ?? openWithSystem,
+      });
+    }
     // CLI-5: only for a person at a terminal, never for scripts or pipes.
     if (opts.open && io.stdout.isTTY) (io.openFile ?? openWithSystem)(htmlPath);
     return 0;
   } catch (e) {
     progress.fail();
-    if (e instanceof BowiError) {
-      io.stderr.write(`error: ${e.message}\n`);
-      if (e.hint) io.stderr.write(`  ${e.hint}\n`);
-      return e.exitCode;
-    }
-    io.stderr.write(`error: unexpected failure: ${e instanceof Error ? e.message : String(e)}\n`);
-    if (opts.verbose && e instanceof Error && e.stack) io.stderr.write(`${e.stack}\n`);
-    return 3;
+    return reportError(e, io, !!opts.verbose);
   }
+}
+
+/** Prints an error with its next step (CLI-12) and returns the exit code (CLI-11). */
+function reportError(e: unknown, io: CliIo, verbose: boolean): number {
+  if (e instanceof BowiError) {
+    io.stderr.write(`error: ${e.message}\n`);
+    if (e.hint) io.stderr.write(`  ${e.hint}\n`);
+    return e.exitCode;
+  }
+  io.stderr.write(`error: unexpected failure: ${e instanceof Error ? e.message : String(e)}\n`);
+  if (verbose && e instanceof Error && e.stack) io.stderr.write(`${e.stack}\n`);
+  return 3;
+}
+
+async function guarded(fn: () => Promise<number>, io: CliIo): Promise<number> {
+  try {
+    return await fn();
+  } catch (e) {
+    return reportError(e, io, false);
+  }
+}
+
+/** `bowi serve <dir> [--no-open]` (CLI-13). */
+async function runServe(argv: string[], io: CliIo): Promise<number> {
+  const program = new Command('bowi serve')
+    .description('Serve a report on this computer, so comments written in it are saved.')
+    .argument('<dir>', 'the report folder (holds review.html and review-plan.json)')
+    .option('--no-open', 'do not open the page in the browser')
+    .option('-q, --quiet', 'print nothing but errors')
+    .exitOverride()
+    .configureOutput({
+      writeOut: (s) => io.stdout.write(s),
+      writeErr: (s) => io.stderr.write(s),
+    });
+  try {
+    await program.parseAsync(argv, { from: 'user' });
+  } catch (e) {
+    if (e instanceof CommanderError) return e.exitCode === 0 ? 0 : 1;
+    throw e;
+  }
+  const opts = program.opts<{ open: boolean; quiet?: boolean }>();
+  const progress = createProgress(io.stderr, { quiet: !!opts.quiet, verbose: false });
+  return guarded(
+    () =>
+      serveReport(resolve(io.cwd, program.args[0]!), io, progress, {
+        open: opts.open,
+        openUrl: io.openFile ?? openWithSystem,
+      }),
+    io,
+  );
 }
 
 /** `bowi cache clear [--cache-dir <dir>]` (CLI-10). */

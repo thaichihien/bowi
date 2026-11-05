@@ -30,9 +30,10 @@ export function sortBy<T>(items: readonly T[], ...keys: ((item: T) => string | n
 
 /**
  * Serializes a plan for determinism comparison: `generatedAt` and `meta.timingsMs` are the only
- * fields allowed to differ between two runs on the same input.
+ * fields allowed to differ between two runs on the same input. The reviewer's comments (`review`)
+ * are user data, not analysis, and are left out.
  */
 export function comparablePlanJson(plan: ReviewPlan): string {
-  const { generatedAt: _generatedAt, ...rest } = plan;
+  const { generatedAt: _generatedAt, review: _review, ...rest } = plan;
   return JSON.stringify({ ...rest, meta: { ...rest.meta, timingsMs: {} } }, null, 2);
 }
