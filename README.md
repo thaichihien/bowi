@@ -212,6 +212,36 @@ Bowi reads `.bowi.json` from the repository root (for a pull request: the file a
 | `ai.concurrency`           | Calls to the AI at once (1–10, default 3)                                                                                                               |
 | `ai.timeoutSeconds`        | Time per call before that group keeps Bowi's own title (default 120)                                                                                    |
 
+## Questions and answers
+
+**Does Bowi review the code for me?**
+
+No. Bowi does not hunt for bugs or write review comments. It answers a different question: in what order should a person read this change? Your judgment stays where it belongs, and you get a clear place to start and a path through the change.
+
+**How does Bowi decide what belongs together? Is it guessing?**
+
+No guessing. Groups come from how the code actually connects (calls, types, imports, tests, commits), not from a model's impression. Every group shows the links that hold it together, every change appears in exactly one step, and the same input always gives the same report.
+
+**How do I know the grouping is any good?**
+
+It is measured. A benchmark squashes real runs of clean commits into synthetic pull requests and checks how well Bowi recovers the original commits, so every change to the engine is judged by numbers, not by feel.
+
+**Will I miss something because it was marked as noise?**
+
+No. Noise is collapsed, never hidden. Moved code is recognized even when it was edited during the move, and the edited lines stay in the review. Formatting-only edits are found by comparing code structure, not text, and lockfiles get a short summary of what changed.
+
+**Do I need AI or an account?**
+
+No. Everything above runs locally, with no AI and no sign-up. AI is an opt-in extra that sees only the changed code that matters, never noise or whole files, and a pull request cannot turn it on. The report is one offline file you can keep, share or archive.
+
+**Does my code leave my machine?**
+
+Only when you ask for it: Bowi fetches a pull request from GitHub when you give it a URL, and sends changed code to the AI provider when you turn AI on. It never builds, installs or runs anything from the repository it reviews.
+
+**What does it cost?**
+
+Nothing. Bowi is open source under the MIT license, with no per-seat price and no service to sign up for.
+
 ## Development
 
 Running from a clone needs **Node 22.18 or newer**, which runs the TypeScript sources directly (on 22.12–22.17, add `--experimental-strip-types` after `node`), and **Bun** (`curl -fsSL https://bun.sh/install | bash`, `brew install oven-sh/bun/bun`, or on Windows `npm install -g bun@1.4.4`).
