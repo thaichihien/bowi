@@ -6,9 +6,18 @@
  * it starts from the comments embedded when the report was written; new, edited and deleted
  * comments become drafts in this browser ("Not saved"), and the served page later offers to save
  * them. A save that fails (the server was stopped) keeps the change as a draft too. Storage can be
- * missing or throw, so every access is guarded (as in progress.ts).
+ * missing or throw, so every access is guarded (as in progress.ts). What went to GitHub (M11) is
+ * read-only here: edits, deletes and drafts leave it alone, and the server enforces the same.
  */
 
+import {
+  setPosted,
+  type PostedMark,
+  type PostFailure,
+  type PostRequest,
+  type PostResult,
+  type PostStatus,
+} from '@bowi/core/review';
 import type { Review, ReviewComment, ReviewPlan } from '@bowi/core/types';
 
 export type SaveStatus = 'file' | 'loading' | 'saving' | 'saved' | 'offline' | 'stale';
@@ -131,12 +140,13 @@ export class ReviewStore {
       this.status = 'saved';
       this.message = undefined;
       const draft = loadDraft(this.key);
-      if (draft && draft.unsaved.length + draft.deleted.length > 0) {
+      const open = draft && this.withoutSent(draft);
+      if (open && open.unsaved.length + open.deleted.length > 0) {
         this.pending = {
-          count: new Set([...draft.unsaved, ...draft.deleted]).size,
+          count: new Set([...open.unsaved, ...open.deleted]).size,
           save: () => {
             this.pending = undefined;
-            this.apply(draft);
+            this.apply(open);
           },
           discard: () => {
             this.pending = undefined;
@@ -162,6 +172,7 @@ export class ReviewStore {
   }
 
   edit(id: string, body: string): void {
+    if (this.isSent(id)) return;
     const at = new Date(this.now()).toISOString();
     const comments = this.review.comments.map((c) =>
       c.id === id ? { ...c, body, updatedAt: at } : c,
@@ -173,7 +184,7 @@ export class ReviewStore {
   remove(id: string): () => void {
     const index = this.review.comments.findIndex((c) => c.id === id);
     const comment = this.review.comments[index];
-    if (!comment) return () => {};
+    if (!comment || comment.sync) return () => {};
     this.deleted.add(id);
     this.unsaved.delete(id);
     this.change(
@@ -190,21 +201,133 @@ export class ReviewStore {
     };
   }
 
-  /** "Clear all comments": every comment and the summary. */
+  /** "Clear all comments": every comment and the summary, except what went to GitHub. */
   clear(): void {
+    const kept = this.review.comments.filter((c) => c.sync);
     for (const c of this.review.comments) {
+      if (c.sync) continue;
       this.deleted.add(c.id);
       this.unsaved.delete(c.id);
     }
-    this.change({ body: '', comments: [] }, [SUMMARY_ID], 0);
+    const { bodySync } = this.review;
+    const next: Review = bodySync
+      ? { body: this.review.body, bodySync, comments: kept }
+      : { body: '', comments: kept };
+    this.change(next, bodySync ? [] : [SUMMARY_ID], 0);
   }
 
   setBody(body: string): void {
+    if (this.review.bodySync) return;
     this.change({ ...this.review, body }, [SUMMARY_ID], TYPING_DELAY_MS);
   }
 
   retry(): void {
     if (this.status === 'offline') this.schedule(0);
+  }
+
+  /**
+   * "I submitted it" and its Undo, through the server: a save cannot change what was sent, so an
+   * old tab cannot undo this either. False if the server could not do it.
+   */
+  async setPosted(mark: PostedMark): Promise<boolean> {
+    if (!this.server) return false;
+    try {
+      const res = await this.call(
+        'POST',
+        { generatedAt: this.plan.generatedAt, ...mark },
+        '/posted',
+      );
+      if (!res.ok) return false;
+      this.review = setPosted(this.review, mark);
+      this.onChange();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private isSent(id: string): boolean {
+    return this.review.comments.some((c) => c.id === id && c.sync);
+  }
+
+  /** A draft made before its comments were sent: those stay as sent. */
+  private withoutSent(draft: Draft): Draft {
+    const keep = (id: string) => (id === SUMMARY_ID ? !this.review.bodySync : !this.isSent(id));
+    return { ...draft, unsaved: draft.unsaved.filter(keep), deleted: draft.deleted.filter(keep) };
+  }
+
+  /** Saves what is waiting, so a post sends what the page shows. False if it could not. */
+  async flush(): Promise<boolean> {
+    clearTimeout(this.timer);
+    if (this.unsaved.size + this.deleted.size > 0) await this.save();
+    return this.status === 'saved' && this.unsaved.size + this.deleted.size === 0;
+  }
+
+  /** What the dialog shows; asks GitHub through the server, which holds the token. */
+  async postStatus(): Promise<PostStatus | PostFailure> {
+    return this.host<PostStatus>('GET');
+  }
+
+  /** Posts with this token from now on, if GitHub accepts it; the server keeps it in memory. */
+  async useToken(token: string, name: string): Promise<PostStatus | PostFailure> {
+    return this.host<PostStatus>('POST', { token, name }, '/token');
+  }
+
+  /** Back to the login Bowi finds on its own. */
+  async forgetToken(): Promise<void> {
+    await this.host<unknown>('DELETE', undefined, '/token');
+  }
+
+  /** Sends to GitHub and takes over what the server recorded. */
+  async post(request: PostRequest): Promise<PostResult | PostFailure> {
+    const answer = await this.host<PostResult>('POST', {
+      generatedAt: this.plan.generatedAt,
+      ...request,
+    });
+    if ('review' in answer) {
+      this.review = answer.review;
+      this.onChange();
+    }
+    return answer;
+  }
+
+  private async host<T>(
+    method: 'GET' | 'POST' | 'DELETE',
+    body?: unknown,
+    path = '',
+  ): Promise<T | PostFailure> {
+    try {
+      const server = this.server!;
+      const res = await fetch(`${server.base}/api/github${path}`, {
+        method,
+        headers: {
+          'X-Bowi-Token': server.token,
+          ...(body !== undefined && { 'Content-Type': 'application/json' }),
+        },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
+      });
+      if (res.ok) return (await res.json()) as T;
+      if (res.status === 409) {
+        this.stale(await errorOf(res));
+        return { kind: 'other', message: this.message! };
+      }
+      const data = (await res.json().catch(() => ({}))) as {
+        kind?: PostFailure['kind'];
+        error?: string;
+        hint?: string;
+      };
+      return {
+        kind: data.kind ?? 'other',
+        message: data.error ?? `HTTP ${res.status}`,
+        ...(data.hint !== undefined && { hint: data.hint }),
+      };
+    } catch {
+      return {
+        kind: 'other',
+        message: 'bowi serve is not running.',
+        hint: 'Start it again and open the link it prints. Nothing was posted.',
+      };
+    }
   }
 
   /** Saves drafts from this browser into the served plan. */
@@ -285,9 +408,9 @@ export class ReviewStore {
     this.onChange();
   }
 
-  private call(method: 'GET' | 'PUT', body?: unknown): Promise<Response> {
+  private call(method: 'GET' | 'PUT' | 'POST', body?: unknown, path = ''): Promise<Response> {
     const server = this.server!;
-    return fetch(`${server.base}/api/review`, {
+    return fetch(`${server.base}/api/review${path}`, {
       method,
       headers: {
         'X-Bowi-Token': server.token,

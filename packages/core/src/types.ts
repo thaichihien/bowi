@@ -201,7 +201,20 @@ export interface OutsideReference {
  */
 export interface Review {
   body: string; // the review summary, Markdown; '' when none
+  bodySync?: ReviewSync; // set once the summary went to the host: it is read-only from then on
   comments: ReviewComment[];
+}
+
+/**
+ * How something went to the host (M11, §15 #70): a record of what Bowi sent, written once. Bowi
+ * reads nothing back, so `pending` stays true after the reviewer submits the review on the host.
+ */
+export interface ReviewSync {
+  host: 'github';
+  id: string; // the host's id of the comment (of the review, for the summary)
+  url: string; // https
+  syncedAt: string; // ISO timestamp
+  pending: boolean; // sent as a pending review; false once posted, or marked as submitted
 }
 
 export interface ReviewComment {
@@ -214,6 +227,7 @@ export interface ReviewComment {
   updatedAt: string;
   /** Outdated: the lines changed since; the comment keeps its anchor and snippet as written. */
   status: 'active' | 'outdated';
+  sync?: ReviewSync; // set once it went to the host: it is read-only from then on
 }
 
 /**

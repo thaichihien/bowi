@@ -1,21 +1,23 @@
 /**
  * Comments tab (UI-27): the review summary, every comment by file in GitHub's order with the
- * lines it is about, outdated comments last; filters (all, not saved, outdated), folding, "Copy
- * all as Markdown" and "Clear all comments" (asks first, inline). Opened as a file, it says how
- * to save. The design is the M10 canvas linked in docs/plan.md.
+ * lines it is about, outdated comments last; filters (all, not on GitHub, not saved, outdated),
+ * folding, "Copy all as Markdown" and "Clear all comments" (asks first, inline). Opened as a file,
+ * it says how to save. What went to GitHub is read-only (UI-28). The designs are the M10 and M11
+ * canvases linked in docs/plan.md.
  */
 
 import { anchorLabel, reviewMarkdown, sortComments } from '@bowi/core/review';
 import type { ReviewComment } from '@bowi/core/types';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { BubbleIcon, useComments } from './Comments.tsx';
+import { BubbleIcon, ReadOnlyNote, SentChip, useComments } from './Comments.tsx';
 import { Markdown, MarkdownEditor } from './Editor.tsx';
 import { Chevron } from './Icons.tsx';
 import { comparePaths, relativeTime, type Model } from './model.ts';
+import { MarkPosted, PendingBanner } from './Post.tsx';
 import { reportFolder, serveCommand, SUMMARY_ID } from './review-store.ts';
 
-type Filter = 'all' | 'unsaved' | 'outdated';
+type Filter = 'all' | 'waiting' | 'pending' | 'posted' | 'unsaved' | 'outdated';
 
 export function CommentsTab(props: {
   model: Model;
@@ -36,14 +38,37 @@ export function CommentsTab(props: {
   }, [copied]);
 
   const unsavedShown = store.mode === 'file' || store.status === 'offline';
-  const shownFilter: Filter = filter === 'unsaved' && !unsavedShown ? 'all' : filter;
+  const isPr = props.model.plan.source.kind === 'github';
   const all = sortComments(review.comments);
+  const isPending = (c: ReviewComment) => !!c.sync?.pending;
+  const isPosted = (c: ReviewComment) => !!c.sync && !c.sync.pending;
+  const sentPending = all.filter(isPending).length;
+  const sentPosted = all.filter(isPosted).length;
+  // A filter left with nothing (after "Mark as posted", say) falls back to all.
+  const shownFilter: Filter =
+    (filter === 'unsaved' && !unsavedShown) ||
+    (filter === 'pending' && sentPending === 0) ||
+    (filter === 'posted' && sentPosted === 0)
+      ? 'all'
+      : filter;
   const active = all.filter((c) => c.status === 'active');
   const outdated = all.filter((c) => c.status === 'outdated');
   const unsaved = all.filter((c) => store.isUnsaved(c.id));
-  const listed = shownFilter === 'unsaved' ? unsaved.filter((c) => c.status === 'active') : active;
+  const waiting = all.filter((c) => !c.sync);
+  const keep: Record<Filter, (c: ReviewComment) => boolean> = {
+    all: () => true,
+    waiting: (c) => !c.sync,
+    pending: isPending,
+    posted: isPosted,
+    unsaved: (c) => store.isUnsaved(c.id),
+    outdated: () => true,
+  };
+  const listed = shownFilter === 'outdated' ? [] : active.filter(keep[shownFilter]);
   const byFile = groupByPath(listed);
-  const outdatedShown = shownFilter !== 'unsaved' ? outdated : [];
+  const outdatedShown = shownFilter === 'unsaved' ? [] : outdated.filter(keep[shownFilter]);
+  const sentAny = sentPending + sentPosted > 0;
+  const summaryClearable = review.body.trim() !== '' && !review.bodySync;
+  const clearable = waiting.length > 0 || summaryClearable;
   const sections = [...byFile.keys(), ...(outdatedShown.length ? [OUTDATED] : [])];
   const allClosed = sections.length > 0 && sections.every((k) => closed.has(k));
   const fileCount = new Set(all.map((c) => c.anchor.path)).size;
@@ -60,6 +85,7 @@ export function CommentsTab(props: {
 
   return (
     <div class="wrap tab-page comments-page">
+      <PendingBanner plan={props.model.plan} store={store} />
       {store.mode === 'file' && (unsaved.length > 0 || store.isUnsaved(SUMMARY_ID)) && (
         <div class="banner warn" role="status">
           <span class="banner-text">
@@ -82,11 +108,44 @@ export function CommentsTab(props: {
               {all.length} comment{all.length === 1 ? '' : 's'}
             </div>
             <div class="muted small">
-              on {fileCount} file{fileCount === 1 ? '' : 's'} of {props.model.plan.files.length}
+              {sentAny
+                ? [
+                    ...(sentPending ? [`${sentPending} sent as pending`] : []),
+                    ...(sentPosted ? [`${sentPosted} posted`] : []),
+                    `${waiting.length} not yet`,
+                  ].join(' · ')
+                : `on ${fileCount} file${fileCount === 1 ? '' : 's'} of ${props.model.plan.files.length}`}
             </div>
           </div>
           <div class="pills" role="radiogroup" aria-label="Show comments">
             <FilterPill id="all" label="All" n={all.length} on={shownFilter} set={setFilter} />
+            {sentPending > 0 && (
+              <FilterPill
+                id="pending"
+                label="Sent as pending"
+                n={sentPending}
+                on={shownFilter}
+                set={setFilter}
+              />
+            )}
+            {sentPosted > 0 && (
+              <FilterPill
+                id="posted"
+                label="Posted"
+                n={sentPosted}
+                on={shownFilter}
+                set={setFilter}
+              />
+            )}
+            {isPr && (
+              <FilterPill
+                id="waiting"
+                label="Not on GitHub"
+                n={waiting.length}
+                on={shownFilter}
+                set={setFilter}
+              />
+            )}
             {unsavedShown && (
               <FilterPill
                 id="unsaved"
@@ -166,16 +225,24 @@ export function CommentsTab(props: {
             <h2 class="comments-title">
               {shownFilter === 'unsaved'
                 ? 'Not saved yet'
-                : shownFilter === 'outdated'
-                  ? 'Outdated comments'
-                  : 'All comments'}
+                : shownFilter === 'waiting'
+                  ? 'Not on GitHub yet'
+                  : shownFilter === 'pending'
+                    ? 'Sent as pending'
+                    : shownFilter === 'posted'
+                      ? 'Posted'
+                      : shownFilter === 'outdated'
+                        ? 'Outdated comments'
+                        : 'All comments'}
             </h2>
             {hasAny &&
               (confirm ? (
                 <span class="reset-confirm" role="group" aria-label="Clear all comments">
                   <span class="small">
-                    Delete all {all.length} comment{all.length === 1 ? '' : 's'}
-                    {review.body.trim() ? ' and the summary' : ''}?
+                    Delete {sentAny ? '' : 'all '}
+                    {waiting.length} comment{waiting.length === 1 ? '' : 's'}
+                    {summaryClearable ? ' and the summary' : ''}?
+                    {sentAny && ` The ${sentPending + sentPosted} on GitHub stay.`}
                   </span>
                   <button
                     class="btn small danger-solid"
@@ -192,6 +259,7 @@ export function CommentsTab(props: {
                 </span>
               ) : (
                 <div class="toolbar-group">
+                  {shownFilter === 'pending' && <MarkPosted store={store} />}
                   {sections.length > 0 && (
                     <button
                       class="btn small"
@@ -213,9 +281,11 @@ export function CommentsTab(props: {
                   >
                     {copied ? 'Copied' : 'Copy all as Markdown'}
                   </button>
-                  <button class="btn small danger" onClick={() => setConfirm(true)}>
-                    Clear all comments
-                  </button>
+                  {clearable && (
+                    <button class="btn small danger" onClick={() => setConfirm(true)}>
+                      Clear all comments
+                    </button>
+                  )}
                 </div>
               ))}
           </div>
@@ -230,28 +300,47 @@ export function CommentsTab(props: {
             </div>
           )}
 
+          {hasAny && shownFilter !== 'all' && byFile.size === 0 && outdatedShown.length === 0 && (
+            <p class="comments-none" role="status">
+              {EMPTY[shownFilter]}.{' '}
+              <button class="link-btn" onClick={() => setFilter('all')}>
+                Show all comments
+              </button>
+            </p>
+          )}
+
           {shownFilter === 'all' && (
             <section id="comments-summary" class="card summary-card">
-              <div class="strong" id="summary-label">
-                Review summary
+              <div class="summary-head">
+                <span class="strong" id="summary-label">
+                  Review summary
+                </span>
+                {review.bodySync && <SentChip sync={review.bodySync} />}
+                {review.bodySync && <ReadOnlyNote />}
               </div>
-              <div class="muted small summary-help">
-                What you would write when submitting a review on GitHub. It goes at the top of “Copy
-                all as Markdown”.
-              </div>
-              <MarkdownEditor
-                value={review.body}
-                onInput={(v) => store.setBody(v)}
-                label="Review summary"
-                placeholder="Sum up your review"
-                note={
-                  store.isUnsaved(SUMMARY_ID)
-                    ? 'Markdown is supported · not saved'
-                    : store.mode === 'served'
-                      ? 'Markdown is supported · saved to review-plan.json as you type'
-                      : 'Markdown is supported · kept in this browser'
-                }
-              />
+              {review.bodySync ? (
+                <Markdown text={review.body} />
+              ) : (
+                <>
+                  <div class="muted small summary-help">
+                    What you would write when submitting a review on GitHub. It goes at the top of
+                    the review, and of “Copy all as Markdown”.
+                  </div>
+                  <MarkdownEditor
+                    value={review.body}
+                    onInput={(v) => store.setBody(v)}
+                    label="Review summary"
+                    placeholder="Sum up your review"
+                    note={
+                      store.isUnsaved(SUMMARY_ID)
+                        ? 'Markdown is supported · not saved'
+                        : store.mode === 'served'
+                          ? ''
+                          : 'Markdown is supported · kept in this browser'
+                    }
+                  />
+                </>
+              )}
             </section>
           )}
 
@@ -295,6 +384,16 @@ export function CommentsTab(props: {
     </div>
   );
 }
+
+/** What a filter with nothing in it says, in the middle of the list. */
+const EMPTY: Record<Filter, string> = {
+  all: 'No comments yet',
+  waiting: 'Every comment is on GitHub',
+  pending: 'No comments are waiting to be submitted on GitHub',
+  posted: 'No comments posted yet',
+  unsaved: 'Every comment is saved',
+  outdated: 'No outdated comments',
+};
 
 const OUTDATED = '#outdated';
 const sectionId = (key: string) =>
@@ -391,7 +490,9 @@ function CommentCard(props: {
           )}
         </span>
         {api.store.isUnsaved(c.id) && <span class="chip k-draft">Not saved</span>}
+        {c.sync && <SentChip sync={c.sync} />}
         <span class="comment-actions">
+          {c.sync && <ReadOnlyNote />}
           {place && (
             <a
               class="go-link"
@@ -417,7 +518,7 @@ function CommentCard(props: {
               </svg>
             </a>
           )}
-          {editing === undefined && (
+          {editing === undefined && !c.sync && (
             <>
               <button
                 class="icon-btn"

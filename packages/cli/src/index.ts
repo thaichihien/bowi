@@ -65,6 +65,8 @@ export interface CliIo {
   now?: () => Date;
   /** Opens the report in a browser (CLI-5). Default: the system opener. */
   openFile?: (path: string) => void;
+  /** Asks on the terminal (`bowi comments push`). Default: stdin, when it is a terminal. */
+  ask?: (question: string) => Promise<string>;
   /** For tests: GitHub API access and where to clone from. */
   github?: GithubOptions & { remoteUrl?: string };
   /** For tests: the Claude Code executable, or a whole enricher instead of Claude Code. */
@@ -98,7 +100,7 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
   const program = new Command('bowi')
     .description('Turn a pull request into a guided, grouped review.')
     .usage(
-      '<github-pr-url> | --local [options]\n       bowi serve <dir>\n       bowi comments <dir> [--markdown]\n       bowi cache clear',
+      '<github-pr-url> | --local [options]\n       bowi serve <dir>\n       bowi comments <dir> [--markdown]\n       bowi comments push <dir> [--yes] [--now] [--outdated]\n       bowi cache clear',
     )
     .argument('[pr-url]', 'GitHub pull request URL, e.g. https://github.com/owner/repo/pull/123')
     .option('--local', 'review the current repository: merge base of --base vs the working tree')

@@ -91,6 +91,26 @@ bowi comments .bowi/<repo>-<pr-or-branch>  # list the comments (--markdown to pa
 
 `bowi serve` listens on `127.0.0.1` only, with a random token in the link it prints, and writes nothing but the comments of that report. When you run Bowi again into the same folder, comments move with their lines; a comment whose lines changed is kept as outdated, with the code it was written on. `--no-comments` leaves them out of `review.html` (for sharing the page); the plan keeps them.
 
+### Sending comments to GitHub
+
+When the report is of a pull request, **Post to GitHub** in the served page sends your comments to it, under your own login. A dialog first shows where they go and as whom, and you can leave any comment out. Nothing is ever sent without this step, and Bowi contacts GitHub only when you press the button.
+
+- **Pending review** (the default) is a draft on GitHub that only you can see. It is not public until you submit it on GitHub: **Open on GitHub**, at the top of the report, takes you to the pull request's files, and on GitHub you can also approve or request changes.
+- **Post now** makes the comments public right away.
+
+From the terminal:
+
+```bash
+bowi comments push .bowi/<repo>-<pr>            # lists what goes where, then asks
+bowi comments push .bowi/<repo>-<pr> --yes       # no question; stops if the pull request has new commits
+bowi comments push .bowi/<repo>-<pr> --now       # post at once, public
+bowi comments push .bowi/<repo>-<pr> --outdated  # also send outdated comments, on their files
+```
+
+Posting needs a GitHub login that can write to the pull request: `gh auth login` ([GitHub CLI](https://cli.github.com)), or a `GITHUB_TOKEN` with "Pull requests: write" (the `repo` scope for a classic token). The token stays on your computer, in the local server. In the dialog, **Use another token** lets you paste a different token (and give it a name), even when you are logged in with `gh`; Bowi keeps it in memory until `bowi serve` stops and never saves it.
+
+Bowi only sends. What you sent is read-only in the report, and you change it on GitHub; Bowi never changes or removes anything there, and it does not read comments back. So after you submit a pending review on GitHub, press **I submitted it** in the report to have its comments marked as posted.
+
 ### AI enrichment (optional)
 
 With `--ai`, Bowi asks an AI model to name each group of code changes, explain in 1–3 sentences what it does, and write an overview of the whole change (shown in the Description tab). Everything the AI wrote is marked "AI" in the report, together with the model that wrote it. AI is off by default; without it, Bowi writes its own titles and descriptions.

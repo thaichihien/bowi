@@ -13,6 +13,7 @@ import type {
   Review,
   ReviewComment,
   ReviewPlan,
+  ReviewSync,
   SnippetLine,
 } from './types.ts';
 
@@ -145,7 +146,7 @@ export function carryReview(old: Review, plan: ReviewPlan): CarryResult {
     if (next.moved) moved++;
     return { ...c, anchor: { ...next.anchor, headSha } };
   });
-  return { review: { body: old.body, comments }, kept, moved, outdated };
+  return { review: { ...old, comments }, kept, moved, outdated };
 }
 
 function relocate(
@@ -225,13 +226,7 @@ export function reviewMarkdown(review: Review): string {
         ? `${title} (outdated, written on ${c.anchor.headSha.slice(0, 7)})`
         : title,
     ];
-    if (c.snippet.length > 0) {
-      const code = c.snippet
-        .map((l) => (l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' ') + l.text)
-        .join('\n');
-      const fence = '`'.repeat(Math.max(3, longestRun(code, '`') + 1));
-      out.push(`${fence}diff\n${code}\n${fence}`);
-    }
+    if (c.snippet.length > 0) out.push(snippetFence(c.snippet));
     out.push(c.body.trim());
     return out.join('\n\n');
   };
@@ -242,6 +237,14 @@ export function reviewMarkdown(review: Review): string {
   return parts.join('\n\n') + (parts.length ? '\n' : '');
 }
 
+function snippetFence(snippet: readonly SnippetLine[]): string {
+  const code = snippet
+    .map((l) => (l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' ') + l.text)
+    .join('\n');
+  const fence = '`'.repeat(Math.max(3, longestRun(code, '`') + 1));
+  return `${fence}diff\n${code}\n${fence}`;
+}
+
 function longestRun(text: string, ch: string): number {
   let best = 0;
   let run = 0;
@@ -250,4 +253,118 @@ function longestRun(text: string, ch: string): number {
     best = Math.max(best, run);
   }
   return best;
+}
+
+/**
+ * A save from the page, with what already went to the host taken from `current` (§15 #70): sent
+ * comments and a sent summary are read-only, whatever an old tab or a hand-made request says, and
+ * only the server marks something as sent or posted (`setPosted`).
+ */
+export function keepSent(current: Review, incoming: Review): Review {
+  const sent = new Map(current.comments.filter((c) => c.sync).map((c) => [c.id, c]));
+  const comments = incoming.comments.map((c) => {
+    const kept = sent.get(c.id);
+    if (kept) return kept;
+    if (!c.sync) return c;
+    const copy = { ...c };
+    delete copy.sync;
+    return copy;
+  });
+  const shown = new Set(comments.map((c) => c.id));
+  for (const c of sent.values()) if (!shown.has(c.id)) comments.push(c);
+  return current.bodySync
+    ? { body: current.body, bodySync: current.bodySync, comments }
+    : { body: incoming.body, comments };
+}
+
+/** What "I submitted it" changes, and what its Undo changes back (§15 #72). */
+export interface PostedMark {
+  ids: string[];
+  summary: boolean;
+  posted: boolean;
+}
+
+/**
+ * The review with the given sent comments (and the summary) marked as posted, or back to pending:
+ * the reviewer says the pending review was submitted on the host, or takes that back.
+ */
+export function setPosted(review: Review, mark: PostedMark): Review {
+  const ids = new Set(mark.ids);
+  const set = (s: ReviewSync) => ({ ...s, pending: !mark.posted });
+  return {
+    ...review,
+    ...(review.bodySync && { bodySync: mark.summary ? set(review.bodySync) : review.bodySync }),
+    comments: review.comments.map((c) =>
+      c.sync && ids.has(c.id) ? { ...c, sync: set(c.sync) } : c,
+    ),
+  };
+}
+
+/**
+ * The text of a comment placed on its file instead of its lines: an outdated comment, quoting the
+ * lines it was written on, or one whose lines the host refused, starting with them.
+ */
+export function bodyOnFile(c: ReviewComment): string {
+  const where = anchorLabel(c.anchor);
+  if (c.anchor.line === undefined) return c.body;
+  if (c.status === 'outdated' && c.snippet.length > 0) {
+    const head = `${where}, written on \`${c.anchor.headSha.slice(0, 7)}\`:`;
+    return `${head}\n\n${snippetFence(c.snippet)}\n\n${c.body}`;
+  }
+  return `${where}:\n\n${c.body}`;
+}
+
+/** The address of a report's pull request; undefined for a local report. */
+export function pullRequestUrl(source: {
+  kind: string;
+  repo: string;
+  prNumber?: number;
+}): string | undefined {
+  if (source.kind !== 'github' || source.prNumber === undefined) return undefined;
+  return `https://github.com/${source.repo}/pull/${source.prNumber}`;
+}
+
+/** What the page and `bowi comments push` learn before sending (M11, UI-28). */
+export interface PostStatus {
+  login: string;
+  /** Which login: the GitHub CLI's, the environment variable, or a token pasted in the dialog. */
+  via: 'gh' | 'GITHUB_TOKEN' | 'token';
+  /** The name the reviewer gave a pasted token, if any. */
+  tokenName?: string;
+  /** The pull request's head on the host now; the report's own is in the plan. */
+  headSha: string;
+  /** The reviewer's pending review on this pull request, if any. */
+  pending?: { comments: number; hasBody: boolean; headSha: string };
+}
+
+export interface PostRequest {
+  mode: 'pending' | 'now';
+  commentIds: string[];
+  summary: boolean;
+}
+
+export type PostFailureKind = 'login' | 'read-only' | 'uncertain' | 'limit' | 'other';
+
+export interface PostFailure {
+  kind: PostFailureKind;
+  message: string;
+  hint?: string;
+}
+
+/** What a send did. Everything in `sent` is recorded, also when it stopped half way. */
+export interface PostResult {
+  review: Review;
+  /** Who it went as; undefined when it stopped before asking the host. */
+  login?: string;
+  mode: 'pending' | 'now';
+  sent: number;
+  summarySent: boolean;
+  /** The reviewer's pending review already has a summary. */
+  summaryLeftOut: boolean;
+  /** Sent, but on the file because the host refused the lines. */
+  onFile: { id: string; path: string; label: string }[];
+  /** Not sent: the host refused the file too. */
+  failed: { id: string; path: string; label: string; message: string }[];
+  /** Why it stopped before the end, or could not publish. */
+  error?: PostFailure;
 }

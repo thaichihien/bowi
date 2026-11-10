@@ -80,16 +80,28 @@ export interface GithubOptions {
   apiBase?: string;
 }
 
+/** The GitHub CLI's token, or why there is none. */
+export function ghToken(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ token: string } | { missing: 'not-installed' | 'not-logged-in' }> {
+  return new Promise((resolve) => {
+    execFile('gh', ['auth', 'token'], { timeout: 5000, env }, (err, stdout) => {
+      if ((err as NodeJS.ErrnoException | null)?.code === 'ENOENT') {
+        return resolve({ missing: 'not-installed' });
+      }
+      const token = err ? '' : stdout.trim();
+      resolve(token ? { token } : { missing: 'not-logged-in' });
+    });
+  });
+}
+
 /** GITHUB_TOKEN, else the token of the GitHub CLI if it is installed and logged in. */
 export async function resolveToken(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | undefined> {
   if (env.GITHUB_TOKEN) return env.GITHUB_TOKEN;
-  return new Promise((resolve) => {
-    execFile('gh', ['auth', 'token'], { timeout: 5000 }, (err, stdout) =>
-      resolve(err ? undefined : stdout.trim() || undefined),
-    );
-  });
+  const gh = await ghToken(env);
+  return 'token' in gh ? gh.token : undefined;
 }
 
 const MAX_COMMITS = 250;
