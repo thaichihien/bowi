@@ -6,7 +6,8 @@
  * (`?t=`) for the page, in the `X-Bowi-Token` header for the API, so no other page in the browser
  * can read or write. The `Host` header must name this server and an `Origin`, when sent, the
  * page's own, which shuts out DNS rebinding. The only thing it writes is the review of this one
- * folder; it makes no requests of its own (NFR-3).
+ * folder. It contacts GitHub only when the reviewer presses "Post to GitHub", with the login found
+ * at that moment; the page never sees the token and talks only to this server (NFR-3, M11).
  */
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -14,10 +15,21 @@ import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
-import { emptyReview, hasReview, parseReview, UsageError } from '@bowi/core';
+import {
+  emptyReview,
+  hasReview,
+  HostError,
+  keepSent,
+  parseReview,
+  setPosted,
+  UsageError,
+  type PostedMark,
+  type PostRequest,
+} from '@bowi/core';
 import { supportsComments, withReview } from '@bowi/render-html';
 import { HTML_FILE, PLAN_FILE, planJson, readReport, writeFileAtomic } from './comments.ts';
 import type { CliIo } from './index.ts';
+import { hostOf, postStatus, sendReview, sentWhat, type PastedToken } from './post.ts';
 import type { Progress } from './progress.ts';
 
 /** What tests get instead of waiting for Ctrl+C. */
@@ -66,6 +78,8 @@ export async function serveReport(
     const b = Buffer.from(token);
     return a.length === b.length && timingSafeEqual(a, b);
   };
+  // A token pasted in the post dialog: in memory, until this server stops (§15 #73).
+  let pasted: PastedToken | undefined;
   // Saves one at a time, so two quick saves never interleave their writes.
   let queue: Promise<unknown> = Promise.resolve();
   let hosts = new Set<string>();
@@ -100,8 +114,12 @@ export async function serveReport(
       const page = await readFile(htmlPath);
       return send(res, 200, 'text/html; charset=utf-8', page, PAGE_HEADERS);
     }
-    if (url.pathname !== '/api/review') return sendJson(res, 404, { error: 'not found' });
+    const api = ['/api/review', '/api/review/posted', '/api/github', '/api/github/token'];
+    if (!api.includes(url.pathname)) return sendJson(res, 404, { error: 'not found' });
     if (!tokenOk(req.headers['x-bowi-token'])) return sendJson(res, 403, { error: 'token' });
+    if (url.pathname === '/api/github') return github(req, res);
+    if (url.pathname === '/api/github/token') return useToken(req, res);
+    if (url.pathname === '/api/review/posted') return posted(req, res);
 
     if (req.method === 'GET') {
       const current = await readReport(dir);
@@ -131,7 +149,9 @@ export async function serveReport(
       const current = await readReport(dir);
       // A run wrote a new report into the folder since the page loaded: its anchors are stale.
       if (current.generatedAt !== input.generatedAt) return 'stale' as const;
-      if (hasReview(parsed.review)) current.review = parsed.review;
+      // What went to GitHub is read-only, whatever this save says about it.
+      const next = keepSent(current.review ?? emptyReview(), parsed.review);
+      if (hasReview(next)) current.review = next;
       else delete current.review;
       await writeFileAtomic(join(dir, PLAN_FILE), planJson(current));
       const page = await readFile(htmlPath, 'utf8');
@@ -145,6 +165,159 @@ export async function serveReport(
       });
     }
     return sendJson(res, 200, { savedAt: new Date().toISOString() });
+  }
+
+  /** "I submitted it" and its Undo (§15 #72): the one change to what was sent, made here only. */
+  async function posted(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method' });
+    if (!/^application\/json\b/.test(req.headers['content-type'] ?? '')) {
+      return sendJson(res, 415, { error: 'Send JSON.' });
+    }
+    const body = await readBody(req);
+    if (body === undefined) return sendJson(res, 413, { error: 'Too large.' });
+    let input: Partial<PostedMark> & { generatedAt?: unknown };
+    try {
+      input = JSON.parse(body) as typeof input;
+    } catch {
+      return sendJson(res, 400, { error: 'Not JSON.' });
+    }
+    const { ids, summary, posted: isPosted } = input;
+    if (
+      !Array.isArray(ids) ||
+      !ids.every((id) => typeof id === 'string') ||
+      typeof summary !== 'boolean' ||
+      typeof isPosted !== 'boolean'
+    ) {
+      return sendJson(res, 400, { error: 'Not a mark.' });
+    }
+    const marking = queue.then(async () => {
+      const current = await readReport(dir);
+      if (current.generatedAt !== input.generatedAt || !current.review) return 'stale' as const;
+      current.review = setPosted(current.review, { ids, summary, posted: isPosted });
+      await writeFileAtomic(join(dir, PLAN_FILE), planJson(current));
+      const page = await readFile(htmlPath, 'utf8');
+      await writeFileAtomic(htmlPath, withReview(page, current.review));
+      return 'saved' as const;
+    });
+    queue = marking.catch(() => undefined);
+    if ((await marking) === 'stale') {
+      return sendJson(res, 409, {
+        error: 'The report was written again since this page was opened. Reload the page.',
+      });
+    }
+    return sendJson(res, 200, { savedAt: new Date().toISOString() });
+  }
+
+  /**
+   * "Use another token" (§15 #73): `POST` checks a pasted token with GitHub and, if it works, uses
+   * it instead of the login Bowi finds; `DELETE` goes back to that. The token is kept in memory
+   * only, never written or printed, and never sent back to the page.
+   */
+  async function useToken(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (req.method === 'DELETE') {
+      pasted = undefined;
+      return sendJson(res, 200, {});
+    }
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method' });
+    if (!/^application\/json\b/.test(req.headers['content-type'] ?? '')) {
+      return sendJson(res, 415, { error: 'Send JSON.' });
+    }
+    const body = await readBody(req);
+    if (body === undefined) return sendJson(res, 413, { error: 'Too large.' });
+    let input: { token?: unknown; name?: unknown };
+    try {
+      input = JSON.parse(body) as typeof input;
+    } catch {
+      return sendJson(res, 400, { error: 'Not JSON.' });
+    }
+    const token = typeof input.token === 'string' ? input.token.trim() : '';
+    const name = typeof input.name === 'string' ? input.name.trim().slice(0, 60) : '';
+    if (!/^[\x21-\x7e]{1,255}$/.test(token)) {
+      return sendJson(res, 400, {
+        kind: 'login',
+        error: 'That does not look like a GitHub token.',
+        hint: 'Paste the whole token, without spaces.',
+      });
+    }
+    const candidate: PastedToken = { token, ...(name && { name }) };
+    try {
+      const status = await postStatus(await hostOf(await readReport(dir), io, candidate));
+      pasted = candidate;
+      return sendJson(res, 200, status);
+    } catch (e) {
+      if (!(e instanceof HostError) && !(e instanceof UsageError)) throw e;
+      const kind = e instanceof HostError ? e.kind : 'other';
+      return sendJson(res, 502, { kind, error: e.message, hint: e.hint });
+    }
+  }
+
+  /** "Post to GitHub": `GET` what the dialog shows, `POST` to send. Only ever on these requests. */
+  async function github(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const failed = (e: unknown) => {
+      if (!(e instanceof HostError) && !(e instanceof UsageError)) throw e;
+      const kind = e instanceof HostError ? e.kind : 'other';
+      return sendJson(res, 502, { kind, error: e.message, hint: e.hint });
+    };
+    if (req.method === 'GET') {
+      try {
+        return sendJson(
+          res,
+          200,
+          await postStatus(await hostOf(await readReport(dir), io, pasted)),
+        );
+      } catch (e) {
+        return failed(e);
+      }
+    }
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method' });
+    if (!/^application\/json\b/.test(req.headers['content-type'] ?? '')) {
+      return sendJson(res, 415, { error: 'Send JSON.' });
+    }
+    const body = await readBody(req);
+    if (body === undefined) return sendJson(res, 413, { error: 'Too large.' });
+    let input: Partial<PostRequest> & { generatedAt?: unknown };
+    try {
+      input = JSON.parse(body) as typeof input;
+    } catch {
+      return sendJson(res, 400, { error: 'Not JSON.' });
+    }
+    const { mode, commentIds, summary } = input;
+    if (
+      (mode !== 'pending' && mode !== 'now') ||
+      !Array.isArray(commentIds) ||
+      !commentIds.every((id) => typeof id === 'string') ||
+      typeof summary !== 'boolean'
+    ) {
+      return sendJson(res, 400, { error: 'Not a post request.' });
+    }
+    // In the queue: a save from another tab waits, and a second post finds these marked as sent.
+    const posting = queue.then(async () => {
+      const current = await readReport(dir);
+      if (current.generatedAt !== input.generatedAt) return 'stale' as const;
+      const access = await hostOf(current, io, pasted);
+      const result = await sendReview(dir, { mode, commentIds, summary }, access, io.now);
+      return { result, source: current.source };
+    });
+    queue = posting.catch(() => undefined);
+    let outcome: Awaited<typeof posting>;
+    try {
+      outcome = await posting;
+    } catch (e) {
+      return failed(e);
+    }
+    if (outcome === 'stale') {
+      return sendJson(res, 409, {
+        error: 'The report was written again since this page was opened. Reload the page.',
+      });
+    }
+    const { result, source } = outcome;
+    if (result.sent > 0 || result.summarySent) {
+      const what = sentWhat(result.sent, result.summarySent);
+      const to = `to ${source.repo}#${source.prNumber} as @${result.login}`;
+      if (mode === 'pending') progress.line('Sent', `${what} ${to}, as a pending review`);
+      else progress.line('Posted', `${what} ${to}`);
+    }
+    return sendJson(res, 200, result);
   }
 
   await new Promise<void>((ok, fail) => {

@@ -37,6 +37,17 @@ const snippetLine = z
   })
   .strict();
 
+const sync = z
+  .object({
+    host: z.literal('github'),
+    id: text(256).min(1),
+    // Shown as a link in the page, and a plan file may have been edited by hand.
+    url: text(2048).regex(/^https:\/\//, 'must be an https address'),
+    syncedAt: text(40),
+    pending: z.boolean(),
+  })
+  .strict();
+
 const comment = z
   .object({
     id: text(64).min(1),
@@ -46,12 +57,14 @@ const comment = z
     createdAt: text(40),
     updatedAt: text(40),
     status: z.enum(['active', 'outdated']),
+    sync: sync.optional(),
   })
   .strict();
 
 export const reviewSchema = z
   .object({
     body: text(65_536),
+    bodySync: sync.optional(),
     comments: z
       .array(comment)
       .max(10_000)

@@ -1,6 +1,8 @@
+export { findGithubLogin, githubReviewHost, type GithubLogin } from './github-review.ts';
 export { openLocalSnapshot, repoRoot, type LocalSourceOptions } from './local.ts';
 export {
   fetchPullRequest,
+  ghToken,
   linkedIssues,
   openGithubSnapshot,
   parsePullRequestUrl,

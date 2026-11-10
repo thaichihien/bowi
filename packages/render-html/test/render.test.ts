@@ -83,8 +83,14 @@ describe('renderHtml', () => {
     // check everything else.
     const outsidePlan = html.replace(/<script id="bowi-plan"[^>]*>[\s\S]*?<\/script>/, '');
     const urls = [...outsidePlan.matchAll(/https?:\/\/[^\s"'`<>)]+/g)].map((m) => m[0]);
-    // Only XML namespace identifiers inside the bundled UI code, which are never fetched.
-    expect(urls.every((u) => u.startsWith('http://www.w3.org/'))).toBe(true);
+    // Only XML namespace identifiers inside the bundled UI code, which are never fetched, and
+    // links the reviewer clicks (M11): the report's pull request and GitHub's token pages.
+    const allowed = (u: string) =>
+      u.startsWith('http://www.w3.org/') ||
+      u.startsWith('https://github.com/${') ||
+      u === 'https://github.com/settings/personal-access-tokens/new' ||
+      u === 'https://github.com/settings/tokens/new?scopes=repo&description=Bowi';
+    expect(urls.filter((u) => !allowed(u))).toEqual([]);
     expect(html.match(/<\/script>/g)).toHaveLength(2);
   });
 

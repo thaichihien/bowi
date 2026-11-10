@@ -14,7 +14,7 @@ import {
   snippetOf,
   type Side,
 } from '@bowi/core/review';
-import type { Hunk, ReviewComment } from '@bowi/core/types';
+import type { Hunk, ReviewComment, ReviewSync } from '@bowi/core/types';
 import { createContext, type ComponentChildren } from 'preact';
 import { useContext, useEffect, useRef, useState } from 'preact/hooks';
 import { Markdown, MarkdownEditor } from './Editor.tsx';
@@ -58,7 +58,9 @@ export interface CommentsApi {
   hide(id: string): void;
   show(ids: string[]): void;
   remove(id: string): void;
-  toast: { undo(): void } | undefined;
+  toast: { text: string; undo(): void } | undefined;
+  /** A message with Undo, bottom left: "Comment deleted", "Marked 5 comments as posted". */
+  notify(text: string, undo: () => void): void;
   dismissToast(): void;
 }
 
@@ -75,7 +77,7 @@ export function useCommentsApi(store: ReviewStore, headSha: string, now: number)
   const [fileDraft, setFileDraft] = useState('');
   const [hideAll, setHideAll] = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const [toast, setToast] = useState<{ undo(): void; id: number }>();
+  const [toast, setToast] = useState<{ text: string; undo(): void; id: number }>();
   const dragging = useRef(false);
 
   useEffect(() => {
@@ -175,8 +177,9 @@ export function useCommentsApi(store: ReviewStore, headSha: string, now: number)
     },
     remove(id) {
       const undo = store.remove(id);
-      setToast({ undo, id: Date.now() });
+      setToast({ text: 'Comment deleted', undo, id: Date.now() });
     },
+    notify: (text, undo) => setToast({ text, undo, id: Date.now() }),
     toast,
     dismissToast: () => setToast(undefined),
   };
@@ -322,9 +325,7 @@ function LineComposer({ variant }: { variant: Variant }) {
 }
 
 function saveNote(store: ReviewStore): string {
-  return store.mode === 'served'
-    ? 'Markdown is supported · saved to review-plan.json'
-    : 'Markdown is supported · kept in this browser';
+  return store.mode === 'served' ? '' : 'Markdown is supported · kept in this browser';
 }
 
 /** One comment: where it is, when, "Not saved", Hide / Edit / Delete; its text or the editor. */
@@ -352,9 +353,11 @@ export function Thread({ comment, variant }: { comment: ReviewComment; variant: 
             Not saved
           </span>
         )}
+        {comment.sync && <SentChip sync={comment.sync} />}
         <span class="grow" />
         {editing === undefined && (
           <>
+            {comment.sync && <ReadOnlyNote />}
             <button
               class="link-btn"
               title="Hide this comment. The badge on its line shows it again."
@@ -362,12 +365,16 @@ export function Thread({ comment, variant }: { comment: ReviewComment; variant: 
             >
               Hide
             </button>
-            <button class="link-btn" onClick={() => setEditing(comment.body)}>
-              Edit
-            </button>
-            <button class="link-btn" onClick={() => api.remove(comment.id)}>
-              Delete
-            </button>
+            {!comment.sync && (
+              <>
+                <button class="link-btn" onClick={() => setEditing(comment.body)}>
+                  Edit
+                </button>
+                <button class="link-btn" onClick={() => api.remove(comment.id)}>
+                  Delete
+                </button>
+              </>
+            )}
           </>
         )}
       </div>
@@ -397,6 +404,79 @@ export function Thread({ comment, variant }: { comment: ReviewComment; variant: 
     </div>
   );
 }
+
+/**
+ * How a comment went to GitHub, and the way to it. The chip records what Bowi sent and never
+ * changes: Bowi reads nothing back, so it stays "Sent as pending" after the review is submitted.
+ */
+export function SentChip({ sync }: { sync: ReviewSync }) {
+  return (
+    <>
+      {sync.pending ? (
+        <span class="chip k-pending" title="A draft on GitHub until you submit the review there">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="8" cy="8" r="6" />
+            <path d="M8 4.8V8l2.2 1.6" />
+          </svg>
+          Sent as pending
+        </span>
+      ) : (
+        <span class="chip k-posted" title="Public on the pull request">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3.5 8.5l3 3 6-7" />
+          </svg>
+          Posted
+        </span>
+      )}
+      {sync.url.startsWith('https://') && (
+        <a class="sent-view" href={sync.url} target="_blank" rel="noopener noreferrer">
+          View
+          <OutIcon />
+        </a>
+      )}
+    </>
+  );
+}
+
+export const ReadOnlyNote = () => (
+  <span class="muted small read-only">Read-only · change it on GitHub</span>
+);
+
+export const OutIcon = () => (
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 12 12"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M4 2.5h5.5V8M9.5 2.5L3 9" />
+  </svg>
+);
 
 /** Comments on a whole file, and the box to write one, under the file's header. */
 export function FileComments({
@@ -526,14 +606,14 @@ export function HideCommentsToggle() {
   );
 }
 
-/** "Comment deleted · Undo", bottom left, away from the step buttons. */
+/** "Comment deleted · Undo" and the like, bottom left, away from the step buttons. */
 export function UndoToast() {
   const api = useComments();
   if (!api?.toast) return null;
-  const { undo } = api.toast;
+  const { text, undo } = api.toast;
   return (
     <div class="toast" role="status">
-      Comment deleted
+      {text}
       <button
         onClick={() => {
           undo();

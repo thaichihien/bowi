@@ -15,6 +15,17 @@
 - The page is bigger: the template grew from 86 KB to 210 KB, most of it micromark with GitHub-flavored Markdown, which comments need in the browser (the fixture's report: 190 KB → 311 KB).
 - The smoke test also serves the installed package's report and saves a comment into it.
 
+### M11 — Post comments to GitHub
+
+- "Post to GitHub" in the served report (UI-28) sends the comments to the pull request, under your own login. It is never automatic: a dialog says where and as whom, and lists what goes where, each with a checkbox. Bowi contacts GitHub only when you press the button.
+- Pending review by default: a draft on GitHub that only you see until you submit it there. "Post now" makes it public at once. The two never look alike ("Sent as pending" against "Posted"), and "Open on GitHub" is always at the top of a pull request's report (after a pending review it opens the files, where you submit). The reminder of a pending review can be dismissed, and "I submitted it" marks the review as posted once you submitted it on GitHub. Filters "Sent as pending" and "Posted".
+- "Use another token" in the dialog posts with a GitHub token you paste, with an optional name, even when `gh` or `GITHUB_TOKEN` already gives a login. `bowi serve` checks it with GitHub and keeps it in memory until it stops; it is never saved.
+- `bowi comments push <dir>` does the same from the terminal (CLI-16): it lists, then asks. `--yes` skips the question and stops if the pull request has new commits since the report, `--now` posts at once, `--outdated` includes outdated comments.
+- One direction (§15 #70): Bowi sends and reads nothing back. What was sent is read-only in Bowi and changed on GitHub; Bowi never changes or removes anything there. A comment records how it was sent in the plan (`sync`, `bodySync`; an addition, `schemaVersion` stays 1), so nothing is sent twice, also after a send that stopped half way.
+- A line GitHub refuses goes on its file, starting with its lines, and the dialog says which. An outdated comment starts unticked and, if ticked, goes on its file quoting the old lines. A timeout says to check the pull request before trying again.
+- The token stays in the local server; the page talks only to that. `gh` stays optional: with no login, the message says whether `gh` is missing or only not logged in.
+- Fixed: the Outdated filter of the Comments tab also listed every active comment.
+
 ## 0.1.1 (2026-11-04)
 
 ### M9.1 — Windows

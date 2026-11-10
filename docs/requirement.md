@@ -72,7 +72,7 @@ These belong to other components or later phases. Do not implement them.
 - **CI checks and gates** — pass/fail status checks, PR size limits, blocking merges, lint enforcement.
 - **Automated code review comments** — the tool does not judge code quality or post review comments.
 - **Auto-fixing or rewriting code**, splitting a PR into new branches, or creating stacked PRs.
-- **Posting to GitHub** (PR comments, check runs). Planned for phase 2 via a renderer that reads `review-plan.json`.
+- **Posting to GitHub on its own** (bot comments, check runs). Planned for phase 2 via a renderer that reads `review-plan.json`. The reviewer's own comments, sent when the reviewer asks, are in scope since M11 (§15 #70).
 - **Web service, accounts, database, team dashboards.** Planned for phase 3.
 - **MCP server.** Planned for phase 2.
 - **Running the target repository's code** — never install its dependencies, run its scripts, build it, or start language servers in v0.1.
@@ -134,6 +134,7 @@ Priorities: **P0** = required for v0.1, **P1** = should have in v0.1, **P2** = l
 | CLI-13 | P0 | `bowi serve <dir> [--no-open]` serves a report folder on `127.0.0.1` (free port, random token in the address, `Host` and `Origin` checked) so its page can save comments into `review-plan.json` and `review.html`; Ctrl+C stops it. `--serve` on a run writes the report, then serves it (not with `--json-only`). A folder without a report, without `review.html`, or with a report from before comments exits 1 with what to run. Since M10 (§15 #65) |
 | CLI-14 | P1 | `bowi comments <dir>` lists the comments of a report; `--markdown` prints them as Markdown, the same text as "Copy all as Markdown". Since M10 |
 | CLI-15 | P1 | A run writing into a folder whose plan has comments carries them over (§15 #64) and prints how many were kept, moved and outdated; `--no-comments` leaves them out of `review.html` (the plan keeps them). Since M10 |
+| CLI-16 | P0 | `bowi comments push <dir>` sends a report's comments to its pull request, listing what goes where and as whom and asking first (`[y/N]`). `--yes` skips the question and stops with an error if the pull request has new commits since the report; `--now` posts at once instead of as a pending review; `--outdated` includes outdated comments. Without a terminal and without `--yes` it refuses. A second push sends only what is new. Since M11 (§15 #70) |
 
 ### 7.2 Sources
 
@@ -284,6 +285,7 @@ The interactive prototype was the reference design up to M4. Since M5.5 the refe
 | UI-25 | P0 | Line comments, as on GitHub: a "+" on a hovered line (Shift-click or drag for a range within a hunk) in the Review tab (step files, expanded noise, moved code by its new lines) and the Changes tab (unified, and split by column); only lines shown in a hunk. A comment box under the last selected line; comments under their lines, in Bowi's look in Review and GitHub's in Changes; a button in each file header for a comment on the whole file. Each comment can be edited, deleted ("Comment deleted · Undo", no question) or hidden; "Hide comments" in both tabs hides them all; hidden comments leave a badge on their line that shows them again; hiding is never remembered. File headers count comments, outdated ones apart. Since M10 (§15 #67, #68) |
 | UI-26 | P0 | The comment editor: Write / Preview, a toolbar that writes Markdown (Bold, Italic, Quote, Code, Link, bulleted and numbered lists), ⌘/Ctrl+B, I, K, ⌘/Ctrl+Enter to add, Escape to cancel. Comments show as GitHub-flavored Markdown with a single line break kept (UI-15). Since M10 |
 | UI-27 | P0 | Comments tab: the review summary (same editor), every comment by file in GitHub's order with the lines it is about and a link to its step, outdated comments last with the head they were written on; filters all / not saved / outdated, folding per file, "Copy all as Markdown", "Clear all comments" (comments and summary) after an inline confirmation. A save status next to the tabs says whether comments are saved; opened as a file, the page says how to save them (`bowi serve`). Since M10 (§15 #65, #67) |
+| UI-28 | P0 | "Post to GitHub" next to the save status, for pull request reports, with the number of comments not sent yet (none on a `--local` report; a plain file says to run `bowi serve`). A dialog says where and as whom and lists what goes where, each with a checkbox, outdated ones unticked, scrolling when long; pending review is the default and "Post now" the other choice; the title and main button say which. "Sent as pending" (amber, clock) and "Posted" (green, check) never look alike. "Open on GitHub" sits at the top on every tab of a pull request's report; after a pending review it goes to the pull request's files, where the review is submitted. The Comments tab's reminder of a pending review can be dismissed, remembered in the browser until something new is sent as pending. "I submitted it" (in the reminder, and with the "Sent as pending" filter) marks every pending item as posted in one click, with Undo in a message at the bottom left. Filters "Sent as pending" and "Posted" appear when they have comments. "Use another token" in the dialog takes a GitHub token of the reviewer's choice, with an optional name, even when `gh` or `GITHUB_TOKEN` gives a login; it opens by itself when there is no login or it cannot post (§15 #73). What went to GitHub is read-only: a View link, no edit or delete, and "Clear all comments" skips it. Filter "Not on GitHub". Since M11 (§15 #70, #71) |
 
 ---
 
@@ -443,7 +445,17 @@ export interface ReviewHint {
 // M10 (§15 #64): comments written in the report. No author: the report may be shared.
 export interface Review {
   body: string;                              // review summary, Markdown; '' when none
+  bodySync?: ReviewSync;                     // the summary went to the host: read-only from then on
   comments: ReviewComment[];
+}
+
+// M11 (§15 #70): a record of what Bowi sent, written once. Bowi reads nothing back.
+export interface ReviewSync {
+  host: 'github';
+  id: string;                                // the host's id of the comment (of the review, for the summary)
+  url: string;                               // https
+  syncedAt: string;                          // ISO timestamp
+  pending: boolean;                          // sent as a pending review, rather than posted
 }
 
 export interface ReviewComment {
@@ -453,6 +465,7 @@ export interface ReviewComment {
   snippet: SnippetLine[];                    // the commented lines when written; none for a file comment
   createdAt: string; updatedAt: string;      // ISO timestamps
   status: 'active' | 'outdated';             // outdated: the lines changed since; anchor and snippet as written
+  sync?: ReviewSync;                         // it went to the host: read-only from then on
 }
 
 // Like GitHub's review comments: line/side = last line, startLine/startSide = first line of a range.
@@ -475,7 +488,7 @@ export interface SnippetLine { kind: 'context' | 'add' | 'del'; text: string; ol
 |---|---|---|
 | NFR-1 | P0 | **Speed (AI off, repo cached):** ≤ 10 s for a PR with ≤ 50 files and ≤ 2,000 changed lines; ≤ 60 s for 300 files / 20,000 lines |
 | NFR-2 | P0 | **Determinism:** identical output for identical input with AI off (GRP-12) |
-| NFR-3 | P0 | **Privacy:** no network calls except GitHub (only in URL mode) and the AI provider (only when enabled). `bowi serve` (M10) only listens on `127.0.0.1` for the page it serves and makes no requests of its own |
+| NFR-3 | P0 | **Privacy:** no network calls except GitHub (only in URL mode) and the AI provider (only when enabled). `bowi serve` (M10) only listens on `127.0.0.1` for the page it serves, and contacts GitHub only when the reviewer presses "Post to GitHub". GitHub is written to only when the reviewer confirms a post, in the dialog or with `bowi comments push` (M11) |
 | NFR-4 | P0 | **Safety:** never execute target repo code; git hooks disabled; output HTML escapes all content |
 | NFR-5 | P0 | **Resilience:** any single-file failure degrades that file to tier 0 and adds a warning; the run continues |
 | NFR-6 | P0 | **Platforms:** Node.js ≥ 22.12 (was ≥ 20 until M9, §15 #59) and git ≥ 2.31 (§15 #61) on macOS, Linux and Windows (Windows since 0.1.1, §15 #63) |
@@ -657,7 +670,7 @@ Rules for implementation:
 ## 14. Future phases (for context only, do not build now)
 
 - **Phase 2:** GitHub Action that posts a grouped checklist comment linking to each file's diff anchor and attaches `review.html`; MCP server exposing the engine to agents; suggesting stacked-PR split points from groups.
-- **Phase 3:** self-hostable service with web UI, saved review progress, interdiff between pushes, comments synced to GitHub, GitLab/Gitea support.
+- **Phase 3:** self-hostable service with web UI, saved review progress, interdiff between pushes, comments synced both ways with GitHub (M11 only sends), GitLab/Gitea support.
 
 ---
 
@@ -732,6 +745,10 @@ Rules for implementation:
 67. **Drafts in the browser (M10, UI-25, UI-27).** Opened as a file, the page starts from the comments embedded when the report was written; new, edited and deleted comments and summary changes are drafts in `localStorage`, per repository and pull request (or branch), so they outlive re-runs; drafts not touched for 30 days are deleted (longer than review progress, UI-12, because they are written work). They show "Not saved". The served page finds them and offers "Save all" or "Discard" (after an inline confirmation); saving applies the changed and deleted comments onto the saved review. A save that fails while serving keeps the change as a draft the same way.
 68. **Hiding comments is a view, not data (M10, UI-25; owner's decision 2026-11-05).** "Hide comments" (all) and Hide on a comment (one) last until the page closes; neither is remembered nor written to the plan. Writing a comment shows the comments again. Both tabs share the state.
 69. **Comment layout decisions (M10; owner's approval of the canvas 2026-11-05).** A fifth tab, Comments, rather than a side panel; one comment per line range and no replies, since a report has one reviewer; "Clear all comments" clears the summary too; the save status sits next to the tabs; a file can have any number of file comments; in the Changes tab comments look as on a GitHub pull request.
+70. **Sending comments to GitHub (M11, CLI-16, UI-28; owner's decisions 2026-11-07).** One direction: the flow is a pull request, a Bowi run, comments in Bowi, then sending them; everything after that is GitHub's job. Bowi reads no comments or review states back, so a chip does not change after the review is submitted, and a comment discarded on GitHub stays read-only here with a dead View link. A sent comment or summary is read-only in Bowi, pending or not, and Bowi never changes or removes anything on GitHub; the server enforces this on every save, so an old tab cannot undo it, and only the server can mark something as sent. The token stays in the local server, which looks for the login each time (`GITHUB_TOKEN`, else `gh auth token`), so `gh auth login` needs no restart. `gh` stays optional and nothing checks for it at install: with no token, the message says whether `gh` is missing or only not logged in. All writes use GraphQL, one comment per request (`addPullRequestReview`, `addPullRequestReviewThread`, `updatePullRequestReview`, `submitPullRequestReview`), not REST as first planned: REST takes all comments at once (one bad line refuses them all), has no file comments in a review and cannot add to an existing pending review. Each comment is recorded as soon as GitHub has it, so a send that stops half way never posts anything twice; after a timeout the page says to look first, since the last comment may have arrived. A line GitHub refuses goes on its file, starting with its lines. An outdated comment, if ticked, goes on its file quoting the old lines. `--yes` stops on new commits, so a script never posts on an old head by accident. Lines are read against a review's commit, so a pending review on another commit than the report's stops the send, and a pending review rules out "Post now". The API shapes were checked against GitHub's live schema; posting itself is tested against `fake-github.ts`.
+71. **Pending and posted must not look alike (M11, UI-28; owner's feedback on the canvas 2026-11-07).** Both first read "On GitHub", and a dismissible banner was the only way to the submit button. Now each has its own chip, words and color everywhere. Because Bowi reads nothing back, the reminder words itself to stay true after the submit ("If you already did, there is nothing more to do"). Changed 2026-11-09 (owner's request): "Open on GitHub", always at the top of a pull request's report, replaces "Submit on GitHub" there, so the reminder can be dismissed again without losing the way to GitHub.
+72. **Marking a pending review as submitted (M11, UI-28; owner's request 2026-11-09).** Bowi reads nothing back, so after the reviewer submits on GitHub the chips would keep saying "Sent as pending". "I submitted it" lets the reviewer say so: every pending comment and the summary become "Posted" in one click, with Undo in the message that follows (an inline confirmation in the reminder broke its layout, owner's feedback the same day). All at once, because GitHub submits a pending review as a whole. Only the server makes this change, through its own request (`POST /api/review/posted`, `setPosted`): a save still cannot change anything that was sent, so an old tab cannot undo it. Only in the served page, which can save it. A re-run keeps the record as it is, so comments sent as pending stay so until marked.
+73. **A token pasted in the post dialog (M11, UI-28; owner's decision 2026-11-09).** Of four ways to give the dialog a login (paste a token; paste and remember it in the system keychain; "Sign in with GitHub" through the device flow, which needs a GitHub or OAuth App registered for Bowi; start `gh auth login` from the page), only pasting, kept in memory. "Use another token" works also when `gh` or `GITHUB_TOKEN` gives a login, and takes an optional name, shown as "token “Work”". The page sends it once to `bowi serve` (`POST /api/github/token`), which checks it with GitHub, keeps it only if GitHub accepts it, and uses it before the logins it finds until it stops or "Use my usual login" (`DELETE`). It is never written to the plan or the page, printed, or sent back to the page, and the page keeps no copy. `bowi comments push` still uses `GITHUB_TOKEN` or `gh`.
 
 ---
 

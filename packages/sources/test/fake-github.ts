@@ -132,3 +132,149 @@ export function fakeApi(
     return json({ message: 'Not Found' }, 404);
   }) as typeof fetch;
 }
+
+export interface FakeThread {
+  pullRequestReviewId: string;
+  path: string;
+  body: string;
+  subjectType: 'FILE' | 'LINE';
+  line?: number;
+  side?: 'LEFT' | 'RIGHT';
+  startLine?: number;
+  startSide?: 'LEFT' | 'RIGHT';
+}
+
+export interface FakeReview {
+  id: string;
+  body: string;
+  commit: string;
+  submitted: boolean;
+  threads: FakeThread[];
+}
+
+/**
+ * `fakeApi` plus GitHub's review mutations (M11), keeping what was sent in `reviews`. `refuse`
+ * makes a thread fail as a line outside the diff does, `forbid` answers as a read-only token gets
+ * answered, and `dropAfter` loses the connection after that many threads.
+ */
+export function fakeReviewApi(
+  pr: FakePr,
+  options: {
+    login?: string;
+    headSha?: string;
+    reviews?: FakeReview[];
+    refuse?: (thread: FakeThread) => boolean;
+    forbid?: boolean;
+    dropAfter?: number;
+    status?: number;
+    writeStatus?: number;
+    /** Tokens GitHub knows, and whose they are; any other token gets 401. */
+    logins?: Record<string, string>;
+  } = {},
+): { fetch: typeof fetch; reviews: FakeReview[]; operations: string[] } {
+  const rest = fakeApi(pr);
+  const reviews = options.reviews ?? [];
+  const operations: string[] = [];
+  let threads = 0;
+  const reviewRef = (r: FakeReview) => ({
+    id: r.id,
+    url: `https://github.com/${pr.owner}/${pr.repo}/pull/${pr.number}#pullrequestreview-${r.id}`,
+  });
+  const reply = (body: unknown, code = 200) =>
+    new Response(JSON.stringify(body), {
+      status: code,
+      headers: { 'content-type': 'application/json' },
+    });
+  const fetchFake = (async (input: string | URL | Request, init?: RequestInit) => {
+    const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (new URL(href).pathname !== '/graphql') return rest(input, init);
+    const { query, variables: v } = JSON.parse(init!.body as string) as {
+      query: string;
+      variables: Record<string, unknown>;
+    };
+    const operation = /^(?:query|mutation) (\w+)/.exec(query)![1]!;
+    operations.push(operation);
+    if (options.status) return reply({ message: 'error' }, options.status);
+    const token = (init!.headers as Record<string, string>).Authorization?.replace(/^Bearer /, '');
+    if (options.logins && !(token! in options.logins)) {
+      return reply({ message: 'Bad credentials' }, 401);
+    }
+    const login = options.logins?.[token!] ?? options.login ?? 'alice';
+    if (operation === 'BowiStatus') {
+      return reply({
+        data: {
+          viewer: { login },
+          repository: {
+            pullRequest: {
+              id: 'PR_1',
+              headRefOid: options.headSha ?? pr.headSha,
+              reviews: {
+                nodes: reviews
+                  .filter((r) => !r.submitted)
+                  .map((r) => ({
+                    id: r.id,
+                    body: r.body,
+                    viewerDidAuthor: true,
+                    commit: { oid: r.commit },
+                    comments: { totalCount: r.threads.length },
+                  })),
+              },
+            },
+          },
+        },
+      });
+    }
+    if (options.writeStatus) return reply({ message: 'error' }, options.writeStatus);
+    if (options.forbid) {
+      return reply({
+        data: null,
+        errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by integration' }],
+      });
+    }
+    const find = (id: unknown) => reviews.find((r) => r.id === id)!;
+    if (operation === 'BowiStartReview') {
+      const review: FakeReview = {
+        id: `R_${reviews.length + 1}`,
+        body: (v.body as string | undefined) ?? '',
+        commit: v.commit as string,
+        submitted: false,
+        threads: [],
+      };
+      reviews.push(review);
+      return reply({ data: { addPullRequestReview: { pullRequestReview: reviewRef(review) } } });
+    }
+    if (operation === 'BowiSetSummary') {
+      const review = find(v.review);
+      review.body = v.body as string;
+      return reply({ data: { updatePullRequestReview: { pullRequestReview: reviewRef(review) } } });
+    }
+    if (operation === 'BowiAddThread') {
+      if (options.dropAfter !== undefined && threads >= options.dropAfter) {
+        throw new TypeError('fetch failed');
+      }
+      const thread = v.input as FakeThread;
+      if (options.refuse?.(thread)) {
+        return reply({
+          data: { addPullRequestReviewThread: null },
+          errors: [{ type: 'UNPROCESSABLE', message: 'Line must be part of the diff' }],
+        });
+      }
+      threads++;
+      find(thread.pullRequestReviewId).threads.push(thread);
+      const id = `C_${threads}`;
+      const url = `https://github.com/${pr.owner}/${pr.repo}/pull/${pr.number}#discussion_r${threads}`;
+      return reply({
+        data: {
+          addPullRequestReviewThread: { thread: { comments: { nodes: [{ id, url }] } } },
+        },
+      });
+    }
+    if (operation === 'BowiSubmit') {
+      const review = find(v.review);
+      review.submitted = true;
+      return reply({ data: { submitPullRequestReview: { pullRequestReview: reviewRef(review) } } });
+    }
+    return reply({ errors: [{ message: `Unknown operation ${operation}` }] });
+  }) as typeof fetch;
+  return { fetch: fetchFake, reviews, operations };
+}

@@ -3,7 +3,11 @@ import { comparablePlanJson } from '../src/determinism.ts';
 import {
   anchorFor,
   anchorLabel,
+  bodyOnFile,
   carryReview,
+  keepSent,
+  setPosted,
+  pullRequestUrl,
   reviewMarkdown,
   rowsOf,
   snippetOf,
@@ -212,5 +216,104 @@ describe('comparablePlanJson', () => {
     expect(comparablePlanJson({ ...p, review: { body: 'x', comments: [] } })).toBe(
       comparablePlanJson(p),
     );
+  });
+});
+
+describe('what went to the host (M11)', () => {
+  const sync = {
+    host: 'github' as const,
+    id: 'C_1',
+    url: 'https://github.com/a/b/pull/1#discussion_r1',
+    syncedAt: '2026-01-02T00:00:00Z',
+    pending: true,
+  };
+  const comment = (id: string, extra: Partial<ReviewComment> = {}): ReviewComment => ({
+    id,
+    body: `Body of ${id}`,
+    anchor: { path: 'a.ts', headSha: 'abcdef1234', line: 5, side: 'new' },
+    snippet: [{ kind: 'add', text: 'x()', newNo: 5 }],
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    status: 'active',
+    ...extra,
+  });
+
+  it('accepts the record in a review, and only https addresses', () => {
+    const review: Review = { body: 'S', bodySync: sync, comments: [comment('c', { sync })] };
+    expect(parseReview(review)).toEqual({ review });
+    const evil = { ...sync, url: 'javascript:alert(1)' };
+    expect(parseReview({ body: '', comments: [comment('c', { sync: evil })] })).toHaveProperty(
+      'error',
+    );
+  });
+
+  it('keeps sent comments and summary whatever a save says', () => {
+    const current: Review = {
+      body: 'Sent summary',
+      bodySync: sync,
+      comments: [comment('sent', { sync }), comment('open')],
+    };
+    const saved = keepSent(current, {
+      body: 'Changed',
+      comments: [comment('sent', { body: 'Changed' }), comment('open', { body: 'Edited' })],
+    });
+    expect(saved.body).toBe('Sent summary');
+    expect(saved.bodySync).toEqual(sync);
+    expect(saved.comments.map((c) => c.body)).toEqual(['Body of sent', 'Edited']);
+    // Deleted in the save: it comes back.
+    expect(keepSent(current, { body: '', comments: [] }).comments.map((c) => c.id)).toEqual([
+      'sent',
+    ]);
+  });
+
+  it('marks given comments and the summary as posted, and back', () => {
+    const current: Review = {
+      body: 'S',
+      bodySync: sync,
+      comments: [comment('a', { sync }), comment('b', { sync }), comment('c')],
+    };
+    const marked = setPosted(current, { ids: ['a', 'c'], summary: true, posted: true });
+    expect(marked.bodySync!.pending).toBe(false);
+    expect(marked.comments.map((c) => c.sync?.pending)).toEqual([false, true, undefined]);
+    expect(setPosted(marked, { ids: ['a'], summary: true, posted: false })).toEqual(current);
+    // A save cannot make that change, in either direction.
+    expect(keepSent(current, marked)).toEqual(current);
+    expect(keepSent(marked, current)).toEqual(marked);
+  });
+
+  it('never lets a save mark something as sent', () => {
+    const saved = keepSent(
+      { body: '', comments: [comment('open')] },
+      { body: 'S', bodySync: sync, comments: [comment('open', { sync })] },
+    );
+    expect(saved).toEqual({ body: 'S', comments: [comment('open')] });
+  });
+
+  it('keeps the record through a re-run, also when the comment turns outdated', () => {
+    const old: Review = {
+      body: 'S',
+      bodySync: sync,
+      comments: [comment('gone', { sync })],
+    };
+    const plan = { source: { headSha: 'new' }, files: [], hunks: [] } as unknown as ReviewPlan;
+    const { review } = carryReview(old, plan);
+    expect(review.bodySync).toEqual(sync);
+    expect(review.comments[0]).toMatchObject({ status: 'outdated', sync });
+  });
+
+  it('writes a comment for its file: lines first, old code quoted when outdated', () => {
+    expect(bodyOnFile(comment('c'))).toBe('Line 5:\n\nBody of c');
+    expect(bodyOnFile(comment('c', { status: 'outdated' }))).toBe(
+      'Line 5, written on `abcdef1`:\n\n```diff\n+x()\n```\n\nBody of c',
+    );
+    const file = comment('f', { anchor: { path: 'a.ts', headSha: 'h' }, snippet: [] });
+    expect(bodyOnFile(file)).toBe('Body of f');
+  });
+
+  it('knows the address of a pull request, and that a local report has none', () => {
+    expect(pullRequestUrl({ kind: 'github', repo: 'a/b', prNumber: 3 })).toBe(
+      'https://github.com/a/b/pull/3',
+    );
+    expect(pullRequestUrl({ kind: 'local', repo: 'b' })).toBeUndefined();
   });
 });

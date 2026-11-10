@@ -27,6 +27,7 @@ import { Inline } from './Inline.tsx';
 import { formatCount, Model, type ReadingMode } from './model.ts';
 import { loadProgress, progressKey, saveProgress, type Progress } from './progress.ts';
 import { ReviewTab, type Position } from './Review.tsx';
+import { PostControls } from './Post.tsx';
 import { reportFolder, ReviewStore, serveCommand, serverOf, type Server } from './review-store.ts';
 
 export type Tab = 'review' | 'description' | 'commits' | 'changes' | 'comments';
@@ -113,7 +114,12 @@ export function App({
           setTab={setTab}
           steps={flat.length}
           comments={store.review.comments.length}
-          save={<SaveStatus store={store} />}
+          save={
+            <div class="header-actions">
+              <SaveStatus store={store} />
+              <PostControls plan={plan} store={store} />
+            </div>
+          }
         />
         <SaveBanner store={store} />
         {shown === 'review' && (
@@ -181,8 +187,7 @@ function SaveStatus({ store }: { store: ReviewStore }) {
             <>
               <div class="strong">Comments are saved</div>
               <p>
-                Every change goes into <code>review-plan.json</code> right away, through{' '}
-                <code>bowi serve</code> on this computer. Stop it with Ctrl+C when you are done.
+                Every change goes into <code>review-plan.json</code> right away.
               </p>
             </>
           ) : (
