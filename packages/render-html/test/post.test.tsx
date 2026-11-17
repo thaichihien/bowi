@@ -133,14 +133,18 @@ function backend(p: ReviewPlan, given: Partial<Backend> = {}): Backend {
   return b;
 }
 
-// Waits until the page stops changing: a reply from the fake server takes a few turns, more
-// when the machine is busy, so a fixed wait was flaky.
-const settle = async () => {
+// Waits until the page stops changing and, when given, until `ready` holds. A reply from the
+// fake server takes a few turns, and the page asks for it from an effect that runs a frame or
+// more after rendering (later on a busy machine, or on Node 24), so a fixed wait was flaky.
+const settle = async (ready: () => boolean = () => true) => {
   let before: string | undefined;
-  for (let i = 0; i < 50 && document.body.innerHTML !== before; i++) {
-    before = document.body.innerHTML;
+  for (let i = 0; i < 100; i++) {
+    const now = document.body.innerHTML;
+    if (now === before && ready()) return;
+    before = now;
     await act(async () => void (await new Promise((r) => setTimeout(r, 20))));
   }
+  throw new Error('The page did not settle');
 };
 
 async function show(p: ReviewPlan, withServer: Server | null = server, hash = '#comments') {
@@ -153,7 +157,8 @@ async function show(p: ReviewPlan, withServer: Server | null = server, hash = '#
     <App plan={p} now={Date.parse('2026-01-07T12:00:00Z')} server={withServer ?? undefined} />,
     root,
   );
-  await settle();
+  // Served, the page loads the comments first.
+  await settle(() => !withServer || !root.querySelector('.save-pill.s-loading'));
 }
 
 const text = () => root.textContent ?? '';
