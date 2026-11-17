@@ -1,11 +1,16 @@
-![Bowi, a bowerbird mascot, presenting review.html: data models, then services, then API endpoints, checked off step by step](docs/images/logo_bowi.png)
+<p align="center">
+  <img src="docs/images/logo_bowi.png" alt="Bowi, a bowerbird mascot, presenting review.html: data models, then services, then API endpoints, checked off step by step" width="640">
+</p>
 
-# Bowi
+<h1 align="center">Bowi</h1>
 
-**Bowi** (short for _bowerbird_) turns a pull request into a guided review: related changes grouped together,  
-foundations before the code that uses them, noise collapsed, and every group explained with evidence.
+<p align="center"><strong>Bowi</strong> (short for <em>bowerbird</em>) turns a pull request into a guided review: related changes grouped together,<br>foundations before the code that uses them, noise collapsed, and every group explained with evidence.</p>
 
-![License: MIT](https://img.shields.io/badge/license-MIT-blue)![npm version](https://img.shields.io/npm/v/@bowi/cli?label=version&color=green)![Node 22.12 or newer](https://img.shields.io/badge/node-%3E%3D22.12-green)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+  <a href="https://www.npmjs.com/package/@bowi/cli"><img src="https://img.shields.io/npm/v/@bowi/cli?label=version&color=green" alt="npm version"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D22.12-green" alt="Node 22.12 or newer"></a>
+</p>
 
 ![A Bowi report: the change grouped into steps on the left (data shape, services, controller, tests, docs); on the right the group "Verify email addresses after sign-up" with an AI summary, hints such as "New route: GET /auth/verify-email", and the current step's diff](docs/images/review.png)
 
