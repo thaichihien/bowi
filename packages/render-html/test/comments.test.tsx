@@ -34,15 +34,20 @@ beforeEach(() => show(plan));
 afterEach(() => vi.restoreAllMocks());
 
 const text = () => root.textContent ?? '';
-// Waits until the page stops changing: a reply from the fake server takes a few turns, more
-// when the machine is busy, so a fixed wait was flaky.
-const settle = async () => {
+// Waits until the page stops changing and, when given, until `ready` holds. A reply from the
+// fake server takes a few turns, and the page asks for it from an effect that runs a frame or
+// more after rendering (later on a busy machine, or on Node 24), so a fixed wait was flaky.
+const settle = async (ready: () => boolean = () => true) => {
   let before: string | undefined;
-  for (let i = 0; i < 50 && document.body.innerHTML !== before; i++) {
-    before = document.body.innerHTML;
+  for (let i = 0; i < 100; i++) {
+    const now = document.body.innerHTML;
+    if (now === before && ready()) return;
+    before = now;
     await act(async () => void (await new Promise((r) => setTimeout(r, 20))));
   }
+  throw new Error('The page did not settle');
 };
+const pill = () => root.querySelector('.save-pill')?.textContent;
 const press = (el: Element | undefined | null) => act(() => (el as HTMLElement).click());
 const buttons = () => [...root.querySelectorAll('button')];
 const button = (label: string | RegExp) => {
@@ -347,13 +352,13 @@ describe('served by bowi serve', () => {
     const saved = seeded([{ body: 'From the plan' }]).review!;
     const calls = fakeServer(saved);
     show(plan, '#g1:service', { server });
-    await settle();
+    await settle(() => pill() === 'Saved to review-plan.json');
     expect(threads()[0]!.textContent).toContain('From the plan');
     expect(root.querySelector('.save-pill')!.textContent).toBe('Saved to review-plan.json');
     await pick('line 52', { scope: card(SERVICE) });
     await type('Unknown token?');
     await click('Add comment');
-    await settle();
+    await settle(() => calls.some((c) => c.method === 'PUT') && pill() !== 'Saving…');
     const put = calls.find((c) => c.method === 'PUT')!;
     expect(put.body!.generatedAt).toBe(plan.generatedAt);
     expect(put.body!.review.comments.map((c) => c.body)).toEqual([
@@ -373,7 +378,7 @@ describe('served by bowi serve', () => {
       document.body.innerHTML = '<div id="app"></div>';
       root = document.getElementById('app')!;
       render(<App plan={plan} now={NOW} />, root);
-      await settle();
+      await settle(() => pill() === 'Saved to review-plan.json');
       await settle();
       expect(root.querySelector('.save-pill')!.textContent).toBe('Saved to review-plan.json');
       expect(calls.filter((c) => c.method === 'GET')).toHaveLength(1);
@@ -385,11 +390,11 @@ describe('served by bowi serve', () => {
   it('keeps a change in the browser when the server is gone', async () => {
     fakeServer({ body: '', comments: [] }, { failPut: true });
     show(plan, '#g1:service', { server });
-    await settle();
+    await settle(() => pill() === 'Saved to review-plan.json');
     await pick('line 52', { scope: card(SERVICE) });
     await type('Unknown token?');
     await click('Add comment');
-    await settle();
+    await settle(() => pill() === 'bowi serve stopped');
     expect(root.querySelector('.save-pill')!.textContent).toBe('bowi serve stopped');
     expect(root.querySelector('.banner')!.textContent).toContain('bowi serve /r');
     expect(threads()[0]!.textContent).toContain('Not saved');
@@ -403,12 +408,12 @@ describe('served by bowi serve', () => {
     await click('Add comment');
     const calls = fakeServer({ body: '', comments: [] });
     show(plan, '#g1:service', { keepStorage: true, server });
-    await settle();
+    await settle(() => !!root.querySelector('.banner'));
     expect(root.querySelector('.banner')!.textContent).toContain(
       '1 change written in this browser is not in review-plan.json yet.',
     );
     await click('Save it');
-    await settle();
+    await settle(() => calls.some((c) => c.method === 'PUT') && !root.querySelector('.banner'));
     const put = calls.find((c) => c.method === 'PUT')!;
     expect(put.body!.review.comments.map((c) => c.body)).toEqual(['Written offline']);
     expect(root.querySelector('.banner')).toBeNull();
