@@ -6,7 +6,20 @@
 import { posix } from 'node:path';
 import type { FileChange } from '../types.ts';
 
-const EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.json'];
+const EXTENSIONS = [
+  '.ts',
+  '.tsx',
+  '.mts',
+  '.cts',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.json',
+  '.vue',
+  '.svelte',
+  '.astro',
+];
 
 export type ImportResolver = (fromPath: string, specifier: string) => string | undefined;
 
@@ -37,7 +50,8 @@ export function createImportResolver(files: FileChange[]): ImportResolver {
     }
     // Path aliases such as `@/mail/mail.service`: match the trailing path segments.
     if (!specifier.includes('/')) return undefined;
-    const tail = stripExt(specifier.replace(/^[@~#]\//, ''));
+    // SvelteKit's `$lib` is `src/lib`.
+    const tail = stripExt(specifier.replace(/^[@~#]\//, '').replace(/^\$lib\//, 'lib/'));
     for (const [path, id] of withoutExt) {
       if (path === tail || path.endsWith(`/${tail}`)) return id;
     }

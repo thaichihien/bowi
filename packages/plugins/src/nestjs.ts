@@ -25,7 +25,8 @@ import type {
   PluginGraphInput,
   PluginRepo,
 } from '@bowi/core';
-import type { DecoratorUse, ParsedSource } from '@bowi/lang';
+import type { DecoratorUse } from '@bowi/lang';
+import { Changes as Graph, injectionEdges, shown, usesPackage } from './shared.ts';
 
 const NEST_PACKAGES = ['@nestjs/core', '@nestjs/common'];
 const TEST_PATH = /(^|\/)(test|tests|__tests__|e2e)\/|\.(spec|test|e2e-spec)\.[cm]?[jt]sx?$/;
@@ -96,25 +97,12 @@ const CONSUMER_DECORATORS = new Set([
 ]);
 /** Producers in code: `queue.add('send', …)`, `events.emit('user.created', …)`, `client.send('x')`. */
 const PRODUCER_CALL = /\.(add|addBulk|emit|emitAsync|send)\(\s*['"`]([^'"`]+)['"`]/g;
-/** Wrapper types whose type argument is the real dependency: `Repository<User>`. */
-const WRAPPER_TYPES = new Set(['Repository', 'Model', 'Queue', 'Promise', 'Array', 'Partial']);
 
 export const nestjsPlugin: FrameworkPlugin = {
   id: 'nestjs',
 
-  async detect(repo: PluginRepo): Promise<boolean> {
-    // The root package.json, and the nearest one of each changed file (monorepos).
-    const dirs = new Set<string>(['']);
-    for (const f of repo.files) {
-      const parts = f.path.split('/').slice(0, -1);
-      for (let i = parts.length; i > 0; i--) dirs.add(parts.slice(0, i).join('/'));
-    }
-    for (const dir of [...dirs].sort()) {
-      const path = dir ? `${dir}/package.json` : 'package.json';
-      const text = (await repo.readFile('new', path)) ?? (await repo.readFile('old', path));
-      if (text && dependsOnNest(text)) return true;
-    }
-    return false;
+  detect(repo: PluginRepo): Promise<boolean> {
+    return usesPackage(repo, NEST_PACKAGES);
   },
 
   layerOf(file: FileChange, sources: FileSources | undefined): Layer | undefined {
@@ -158,126 +146,6 @@ export const nestjsPlugin: FrameworkPlugin = {
     return [...routeHints(g), ...guardHints(g)];
   },
 };
-
-function dependsOnNest(text: string): boolean {
-  try {
-    const pkg = JSON.parse(text) as Record<string, Record<string, string> | undefined>;
-    return ['dependencies', 'devDependencies', 'peerDependencies'].some((field) =>
-      NEST_PACKAGES.some((name) => pkg[field]?.[name] !== undefined),
-    );
-  } catch {
-    return false;
-  }
-}
-
-/** Lookups over the changed code that every rule here needs. */
-class Graph {
-  readonly input: PluginGraphInput;
-  readonly logic: ChangedSymbol[];
-  private readonly byQualified = new Map<string, ChangedSymbol>();
-  private readonly addedLines = new Map<string, Set<number>>();
-
-  constructor(input: PluginGraphInput) {
-    this.input = input;
-    const hunkKind = new Map(input.hunks.map((h) => [h.id, h.kind]));
-    this.logic = input.symbols.filter((s) => s.hunkIds.some((id) => hunkKind.get(id) === 'logic'));
-    for (const s of this.logic) this.byQualified.set(`${s.fileId}#${s.qualifiedName}`, s);
-    for (const h of input.hunks) {
-      if (h.kind !== 'logic') continue;
-      const set = this.addedLines.get(h.fileId) ?? new Set<number>();
-      for (const l of h.lines) if (l.kind === 'add') set.add(l.newNo!);
-      this.addedLines.set(h.fileId, set);
-    }
-  }
-
-  /** Parsed head version of each changed code file. */
-  *codeFiles(): Generator<{ file: FileChange; src: ParsedSource }> {
-    for (const file of this.input.files) {
-      const src = this.input.sources.get(file.id)?.new;
-      if (src && file.language && CODE_LANGUAGES.has(file.language)) yield { file, src };
-    }
-  }
-
-  symbol(fileId: string, qualifiedName: string): ChangedSymbol | undefined {
-    return this.byQualified.get(`${fileId}#${qualifiedName}`);
-  }
-
-  /** The changed symbol for a class member, else the class, else the class's first changed member. */
-  owner(fileId: string, className: string, member?: string): ChangedSymbol | undefined {
-    return (
-      (member ? this.symbol(fileId, `${className}.${member}`) : undefined) ??
-      this.symbol(fileId, className) ??
-      this.logic.find((s) => s.fileId === fileId && s.qualifiedName.startsWith(`${className}.`))
-    );
-  }
-
-  /** Changed symbols of a class by its name, anywhere in the PR (the class itself first). */
-  classTargets(name: string, exceptFileId: string): ChangedSymbol | undefined {
-    const inOtherFiles = this.logic.filter((s) => s.fileId !== exceptFileId);
-    return (
-      inOtherFiles.find((s) => s.qualifiedName === name && s.kind === 'class') ??
-      inOtherFiles.find((s) => s.qualifiedName.startsWith(`${name}.`))
-    );
-  }
-
-  isAdded(fileId: string, line: number): boolean {
-    return this.addedLines.get(fileId)?.has(line) ?? false;
-  }
-
-  /** Changed symbol owning a changed line of a hunk, with the line's text. */
-  *changedLines(): Generator<{
-    symbol: ChangedSymbol;
-    fileId: string;
-    line: number;
-    text: string;
-  }> {
-    const byId = new Map(this.logic.map((s) => [s.id, s]));
-    for (const h of this.input.hunks) {
-      if (h.kind !== 'logic') continue;
-      const owners = this.input.lineSymbols.get(h.id) ?? [];
-      for (const [i, l] of h.lines.entries()) {
-        const symbol = byId.get(owners[i] ?? '');
-        if (l.kind === 'add' && symbol)
-          yield { symbol, fileId: h.fileId, line: l.newNo!, text: l.text };
-      }
-    }
-  }
-}
-
-const shown = (s: ChangedSymbol) =>
-  s.kind === 'method' || s.kind === 'function'
-    ? `\`${s.qualifiedName}()\``
-    : `\`${s.qualifiedName}\``;
-
-/**
- * A class that starts injecting a changed class depends on it: the constructor parameter is new
- * in this PR (`constructor(private mail: MailService)`). Injections that were already there say
- * nothing about this change; the calls through them are `calls` edges.
- */
-function injectionEdges(g: Graph): PluginEdge[] {
-  const edges: PluginEdge[] = [];
-  for (const { file, src } of g.codeFiles()) {
-    for (const c of src.classes) {
-      const from = g.owner(file.id, c.name, 'constructor');
-      if (!from) continue;
-      for (const p of c.constructorParams) {
-        if (!g.isAdded(file.id, p.line)) continue;
-        const types = p.types.filter((t) => !WRAPPER_TYPES.has(t) || p.types.length === 1);
-        for (const type of types) {
-          const to = g.classTargets(type, file.id);
-          if (!to) continue;
-          edges.push({
-            from: from.id,
-            to: to.id,
-            text: `\`${c.name}\` injects \`${type}\``,
-            locations: [{ fileId: file.id, line: p.line }],
-          });
-        }
-      }
-    }
-  }
-  return edges;
-}
 
 /** Producers of a queue job, event or message to the changed code that handles it. */
 function messageEdges(g: Graph): PluginEdge[] {
@@ -333,7 +201,7 @@ function messageEdges(g: Graph): PluginEdge[] {
 }
 
 /** A migration that names a changed entity column (`email_verified`) depends on the entity. */
-function columnEdges(g: Graph): PluginEdge[] {
+export function columnEdges(g: Graph): PluginEdge[] {
   const columns: { entity: ChangedSymbol; name: string; fileId: string; line: number }[] = [];
   for (const { file, src } of g.codeFiles()) {
     for (const d of src.decorators) {

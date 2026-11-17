@@ -101,7 +101,9 @@ function score(
 
 function languageOf(plan: ReviewPlan): string {
   const languages = new Set(plan.files.map((f) => f.language));
-  if (languages.has('typescript') || languages.has('tsx')) return 'TypeScript';
+  // Vue, Svelte and Astro components: their scripts are parsed as TypeScript (M14).
+  const scripts = ['typescript', 'tsx', 'vue', 'svelte', 'astro'];
+  if (scripts.some((l) => languages.has(l as never))) return 'TypeScript';
   if (languages.has('javascript')) return 'JavaScript';
   return 'Other';
 }

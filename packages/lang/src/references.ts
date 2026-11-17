@@ -93,6 +93,8 @@ export interface NameIndex {
   imports: ImportDeclaration[];
   decorators: DecoratorUse[];
   classes: ClassDeclaration[];
+  /** Directive prologue of the file: `use client`, `use server`. */
+  directives: string[];
 }
 
 export function indexNames(root: Node): NameIndex {
@@ -127,7 +129,18 @@ export function indexNames(root: Node): NameIndex {
           line: node.startPosition.row + 1,
         });
       }
-      return; // names in import lines are not uses
+      // Names in import lines are not uses. A re-export (`export { a } from './x'`) is: the file
+      // offers `a` to its importers, so a changed re-export depends on what it names.
+      if (type === 'export_statement') {
+        for (const n of node.descendantsOfType(['identifier', 'type_identifier'])) {
+          if (!n || n.parent?.type === 'namespace_export') continue;
+          const named = n.parent?.type === 'export_specifier' ? n.parent : null;
+          // `export { a as b }`: `a` is the use, `b` a new name.
+          if (named && named.childForFieldName('alias')?.equals(n)) continue;
+          references.push({ name: n.text, kind: 'name', line: n.startPosition.row + 1 });
+        }
+      }
+      return;
     }
     if (FIELD_TYPES.has(type)) {
       const name = node.childForFieldName('name') ?? node.childForFieldName('property');
@@ -140,7 +153,15 @@ export function indexNames(root: Node): NameIndex {
     for (const child of node.children) visit(child);
   };
   visit(root);
-  return { references, fields, imports, decorators, classes };
+  // Directives open a file: `'use client'`, `'use server'` (React frameworks, M14).
+  const directives: string[] = [];
+  for (const child of root.namedChildren) {
+    if (!child || child.type === 'comment') continue;
+    const str = child.type === 'expression_statement' ? child.namedChild(0) : null;
+    if (str?.type !== 'string') break;
+    directives.push(str.text.slice(1, -1));
+  }
+  return { references, fields, imports, decorators, classes, directives };
 }
 
 function decoratorUse(node: Node): DecoratorUse | undefined {

@@ -44,7 +44,7 @@ const RULES: Rule[] = [
   ],
   [
     'ui',
-    /(^|\/)(components?|pages|views|app|screens|layouts)\/|\.(tsx|jsx|vue|svelte|css|scss|html)$/,
+    /(^|\/)(components?|pages|views|app|screens|layouts)\/|\.(tsx|jsx|vue|svelte|astro|css|scss|html)$/,
   ],
 ];
 

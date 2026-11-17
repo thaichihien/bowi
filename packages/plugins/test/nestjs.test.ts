@@ -33,7 +33,8 @@ describe('NestJS plugin on the email-verification fixture', () => {
   });
 
   it('is detected from package.json and assigns layers from decorators', () => {
-    expect(plan.meta.plugins).toEqual(['nestjs']);
+    // The fixture uses TypeORM too.
+    expect(plan.meta.plugins).toEqual(['nestjs', 'typeorm']);
     expect(layers(plan)).toMatchObject({
       'src/auth/auth.controller.ts': 'api',
       'src/auth/auth.service.ts': 'service',
@@ -241,7 +242,8 @@ describe('NestJS plugin detection', () => {
     );
     roots.push(join(repo, '..'));
     const plan = await review(repo);
-    expect(plan.meta.plugins).toEqual([]);
+    // Express applies (it is in package.json); NestJS does not.
+    expect(plan.meta.plugins).toEqual(['express']);
     expect(plan.files[0]!.layer).toBe('unknown');
   });
 });
