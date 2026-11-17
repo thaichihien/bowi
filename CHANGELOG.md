@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (0.2.0)
+## 0.2.0 (2026-11-17)
 
 ### M10 — Line comments in the report
 
