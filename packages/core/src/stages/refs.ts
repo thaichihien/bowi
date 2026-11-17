@@ -36,8 +36,20 @@ export interface RefsStageOutput {
 }
 
 /** Languages whose files can call each other: TypeScript imports JavaScript and back. */
-const CODE_LANGUAGES = new Set(['typescript', 'tsx', 'javascript']);
-export const CODE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
+const CODE_LANGUAGES = new Set(['typescript', 'tsx', 'javascript', 'vue', 'svelte', 'astro']);
+export const CODE_EXTENSIONS = [
+  '.ts',
+  '.tsx',
+  '.mts',
+  '.cts',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.vue',
+  '.svelte',
+  '.astro',
+];
 const SEARCHED_KINDS = new Set<ChangedSymbol['kind']>([
   'function',
   'method',

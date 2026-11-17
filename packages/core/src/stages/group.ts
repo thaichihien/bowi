@@ -19,7 +19,7 @@ import {
   sourceTitle,
   type GroupFacts,
 } from '../group/describe.ts';
-import { buildSteps, topoOrder } from '../group/steps.ts';
+import { buildSteps, LAYER_ORDER, topoOrder } from '../group/steps.ts';
 import { assertPartition } from '../invariants.ts';
 import type { Stage } from '../stage.ts';
 import type {
@@ -109,10 +109,18 @@ export const groupStage: Stage<GroupStageInput, GroupStageOutput> = async (input
     };
   });
 
+  /** The earliest layer of a group's code; tests and docs count only in groups of nothing else. */
+  const foundation = (groupHunks: Hunk[]) => {
+    const ranks = groupHunks.map((h) => LAYER_ORDER.indexOf(fileById.get(h.fileId)!.layer));
+    const code = ranks.filter((r) => r < LAYER_ORDER.indexOf('test'));
+    return Math.min(...(code.length > 0 ? code : ranks));
+  };
+
   const lone = sourceTitle(input.source, drafts.length);
   if (lone && drafts[0]) drafts[0].group.title = lone;
 
-  // Order logic groups: what a group uses comes first; then larger first; "Other changes" last.
+  // Order logic groups: what a group uses comes first; then foundations first (the earliest layer
+  // of its code, as for steps), then larger first; "Other changes" last.
   const groupOfSymbol = new Map<string, number>();
   drafts.forEach((d, i) => d.symbolIds.forEach((id) => groupOfSymbol.set(id, i)));
   const uses = drafts.map(() => new Set<number>());
@@ -127,6 +135,7 @@ export const groupStage: Stage<GroupStageInput, GroupStageOutput> = async (input
     .sort(
       (x, y) =>
         Number(x.d.isOther) - Number(y.d.isOther) ||
+        foundation(x.d.hunks) - foundation(y.d.hunks) ||
         y.d.size - x.d.size ||
         compareStrings(x.d.hunks[0]?.id ?? '', y.d.hunks[0]?.id ?? ''),
     )

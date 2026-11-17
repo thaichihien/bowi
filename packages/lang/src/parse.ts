@@ -7,7 +7,8 @@
 
 import type { Tree } from 'web-tree-sitter';
 import { contentLines, coverFingerprint, fingerprint } from './fingerprint.ts';
-import type { LanguageId } from './languages.ts';
+import { parseComponent } from './component.ts';
+import { COMPONENT_LANGUAGES, type LanguageId } from './languages.ts';
 import { loadLanguage } from './loader.ts';
 import { indexNames, type NameIndex } from './references.ts';
 import { extractSymbols, type SourceSymbol } from './symbols.ts';
@@ -27,8 +28,11 @@ export interface ParsedSource extends NameIndex {
 }
 
 export async function parseSource(language: LanguageId, text: string): Promise<ParsedSource> {
+  if (COMPONENT_LANGUAGES.has(language)) return parseComponent(language, text, parseSource);
   const { parser, query } = await loadLanguage(language);
-  const tree: Tree | null = parser.parse(text);
+  const tree: Tree | null = parser.parse(
+    language === 'typescript' || language === 'tsx' ? withoutTypeStar(text) : text,
+  );
   if (!tree) throw new Error(`tree-sitter returned no tree for ${language}`);
   const root = tree.rootNode;
   const lines = contentLines(root);
@@ -42,4 +46,15 @@ export async function parseSource(language: LanguageId, text: string): Promise<P
     coverFingerprint: (startLine, endLine) => coverFingerprint(root, startLine - 1, endLine - 1),
     dispose: () => tree.delete(),
   };
+}
+
+/**
+ * `export type * from './a'` (TS 5.0) with `type` blanked: the grammar (0.23.2, the latest on
+ * npm) cannot parse it and would turn the whole file to text (§15 #11). Lines and columns stay.
+ */
+function withoutTypeStar(text: string): string {
+  return text.replace(
+    /\bexport(\s+)type(\s+)\*/g,
+    (_m, a: string, b: string) => `export${a}    ${b}*`,
+  );
 }

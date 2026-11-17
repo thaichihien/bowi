@@ -13,7 +13,7 @@
 
 import type { ChangedSymbol, FileChange, Hunk } from '../types.ts';
 
-const SCRIPT_LANGUAGES = new Set(['typescript', 'tsx', 'javascript']);
+const SCRIPT_LANGUAGES = new Set(['typescript', 'tsx', 'javascript', 'vue', 'svelte', 'astro']);
 const NOT_NAMES = new Set(['import', 'from', 'type', 'as', 'default', 'export', 'typeof']);
 
 /**

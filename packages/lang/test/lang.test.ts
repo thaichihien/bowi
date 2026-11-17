@@ -228,6 +228,28 @@ describe('references', () => {
   });
 });
 
+describe('re-exports (§15 #11)', () => {
+  it('parses `export type *`, keeping lines', async () => {
+    const src = await parse("export type * from './a';\nexport function b() {}\n");
+    expect(src.hasError).toBe(false);
+    expect(src.imports.map((i) => i.source)).toEqual(['./a']);
+    expect(src.symbols.find((s) => s.name === 'b')?.startLine).toBe(2);
+  });
+
+  it('counts re-exported names as uses, not their new names', async () => {
+    const src = await parse(
+      "export { a, b as c, type T } from './x';\nexport * as ns from './y';\n",
+    );
+    expect(src.references.map((r) => `${r.name}:${r.kind}`).sort()).toEqual([
+      'T:name',
+      'a:name',
+      'b:name',
+    ]);
+    // Imports stay names of the import, not uses.
+    expect((await parse("import { a } from './x';\n")).references).toEqual([]);
+  });
+});
+
 describe('fingerprints', () => {
   it('ignore whitespace, semicolons, trailing commas, quote style and comment layout', async () => {
     const a = await parse("// note  here\nconst f=(a:number)=>g(a,'x')\n");

@@ -109,6 +109,25 @@ describe('buildSteps', () => {
     ]);
   });
 
+  // Seen in a real PR: a new module uses the router and `server.js` uses the new module; the
+  // router and `server.js` share the API step, so the steps used each other.
+  it('splits steps along their files when only that undoes a cycle', () => {
+    const router = file('f2', 'server/routers/auth-router.ts', 'api');
+    const admin = file('f1', 'server/initial-admin.ts', 'unknown');
+    const server = file('f3', 'server/server.js', 'api');
+    const split = buildSteps(
+      'g1',
+      [router, admin, server].map((f) => hunk(f.id)),
+      new Map([router, admin, server].map((f) => [f.id, f])),
+      [calls('f1', 'f2'), calls('f3', 'f1'), calls('f3', 'f2')],
+    ).steps;
+    expect(split.map((s) => [s.id, s.title, s.hunkIds])).toEqual([
+      ['g1:api', 'Auth router', ['f2:h0']],
+      ['g1:unknown', 'Initial admin', ['f1:h0']],
+      ['g1:api-2', 'Server', ['f3:h0']],
+    ]);
+  });
+
   it('puts helpers before services', () => {
     const util = file('f1', 'src/orders/helpers/mark-failed.helper.ts', 'util');
     expect(steps([service, util], [])).toEqual(['g1:util', 'g1:service']);

@@ -3,10 +3,13 @@
  *
  * One step per layer; `schema` and `data` share one "Data shape" step. Steps are ordered so that
  * a step comes after the steps whose code it calls or uses, with the layer order only breaking
- * ties: a helper called by a service is read first even when its layer comes later. Steps that
- * use each other keep the layer order. Within a step, files are ordered the same way (topological
- * order over the graph's edges; cycles are condensed with Tarjan's algorithm and kept together),
- * ties by path. Hunks of one file stay together, in file order.
+ * ties: a helper called by a service is read first even when its layer comes later. When steps
+ * use each other only because a layer step holds files on both sides of another step (a router
+ * used by a new module that `server.js` then calls), those steps are split along the files'
+ * order, so each file still comes after what it uses; steps whose files really use each other
+ * keep the layer order. Within a step, files are ordered the same way (topological order over the
+ * graph's edges; cycles are condensed with Tarjan's algorithm and kept together), ties by path.
+ * Hunks of one file stay together, in file order.
  */
 
 import { compareStrings } from '../determinism.ts';
@@ -69,43 +72,90 @@ export function buildSteps(
     dependsOn.set(from, (dependsOn.get(from) ?? new Set()).add(to));
   }
 
-  const layerSteps: Step[] = [];
-  const stepOfFile = new Map<string, string>();
-  for (const key of LAYER_ORDER) {
-    const stepHunks = byKey.get(key);
-    if (!stepHunks) continue;
-    const layers = new Set(stepHunks.map((h) => fileById.get(h.fileId)!.layer));
-    const fileIds = [...new Set(stepHunks.map((h) => h.fileId))];
-    const orderedFiles = orderFiles(fileIds, fileById, dependsOn);
-    const position = new Map(stepHunks.map((h, i) => [h.id, i]));
-    const hunkIds = orderedFiles.flatMap((fileId) =>
-      stepHunks
-        .filter((h) => h.fileId === fileId)
-        .sort((a, b) => position.get(a.id)! - position.get(b.id)!)
-        .map((h) => h.id),
-    );
-    for (const fileId of fileIds) stepOfFile.set(fileId, `${groupId}:${key}`);
-    layerSteps.push({
-      id: `${groupId}:${key}`,
+  const hunksOfFile = new Map<string, Hunk[]>();
+  for (const h of hunks) hunksOfFile.set(h.fileId, [...(hunksOfFile.get(h.fileId) ?? []), h]);
+  const usedIds = new Set<string>();
+  const makeStep = (key: Layer, fileIds: string[], ordered: boolean): Step => {
+    const orderedFiles = ordered ? fileIds : orderFiles(fileIds, fileById, dependsOn);
+    let id = `${groupId}:${key}`;
+    for (let n = 2; usedIds.has(id); n++) id = `${groupId}:${key}-${n}`;
+    usedIds.add(id);
+    const layers = new Set(orderedFiles.map((f) => fileById.get(f)!.layer));
+    return {
+      id,
       title: stepTitle(
         key,
-        orderedFiles.map((id) => fileById.get(id)!.path),
+        orderedFiles.map((f) => fileById.get(f)!.path),
       ),
       layer: layers.has('schema') ? 'schema' : key,
-      hunkIds,
-    });
+      hunkIds: orderedFiles.flatMap((f) => hunksOfFile.get(f)!.map((h) => h.id)),
+    };
+  };
+
+  let layerSteps: Step[] = [];
+  for (const key of LAYER_ORDER) {
+    const stepHunks = byKey.get(key);
+    if (stepHunks)
+      layerSteps.push(makeStep(key, [...new Set(stepHunks.map((h) => h.fileId))], false));
   }
 
-  // Dependencies between steps (GRP-7); the layer order is the tie-break.
-  const stepDeps = new Map<string, Set<string>>();
-  for (const [from, tos] of dependsOn) {
-    const fromStep = stepOfFile.get(from);
-    for (const to of tos) {
-      const toStep = stepOfFile.get(to);
-      if (!fromStep || !toStep || fromStep === toStep) continue;
-      stepDeps.set(fromStep, (stepDeps.get(fromStep) ?? new Set()).add(toStep));
+  const fileOfHunk = new Map(hunks.map((h) => [h.id, h.fileId]));
+  const filesOf = (s: Step) => [...new Set(s.hunkIds.map((id) => fileOfHunk.get(id)!))];
+  const depsBetween = (list: Step[]) => {
+    const stepOfFile = new Map<string, string>();
+    for (const s of list) for (const f of filesOf(s)) stepOfFile.set(f, s.id);
+    const stepDeps = new Map<string, Set<string>>();
+    for (const [from, tos] of dependsOn) {
+      const fromStep = stepOfFile.get(from);
+      for (const to of tos) {
+        const toStep = stepOfFile.get(to);
+        if (!fromStep || !toStep || fromStep === toStep) continue;
+        stepDeps.set(fromStep, (stepDeps.get(fromStep) ?? new Set()).add(toStep));
+      }
     }
+    return stepDeps;
+  };
+
+  // Steps that use each other: split them along their files' order when that undoes the cycle.
+  const layerRank = (f: string) => LAYER_ORDER.indexOf(stepKey(fileById.get(f)!.layer));
+  let stepDeps = depsBetween(layerSteps);
+  for (const cycle of tarjan(
+    layerSteps.map((s) => s.id),
+    (id) => [...(stepDeps.get(id) ?? [])],
+  )) {
+    if (cycle.length < 2) continue;
+    const members = layerSteps.filter((s) => cycle.includes(s.id));
+    const files = members
+      .flatMap(filesOf)
+      .sort(
+        (a, b) =>
+          layerRank(a) - layerRank(b) ||
+          compareStrings(fileById.get(a)!.path, fileById.get(b)!.path),
+      );
+    const inCycle = new Set(files);
+    const order = topoOrder(files, (f) =>
+      [...(dependsOn.get(f) ?? [])].filter((d) => inCycle.has(d)),
+    );
+    const runs: { key: Layer; files: string[] }[] = [];
+    for (const f of order) {
+      const key = stepKey(fileById.get(f)!.layer);
+      const last = runs.at(-1);
+      if (last?.key === key) last.files.push(f);
+      else runs.push({ key, files: [f] });
+    }
+    if (runs.length <= members.length) continue;
+    for (const s of members) usedIds.delete(s.id);
+    const replaced = runs.map((r) => makeStep(r.key, r.files, true));
+    const at = layerSteps.findIndex((s) => cycle.includes(s.id));
+    layerSteps = [
+      ...layerSteps.slice(0, at).filter((s) => !cycle.includes(s.id)),
+      ...replaced,
+      ...layerSteps.slice(at).filter((s) => !cycle.includes(s.id)),
+    ];
   }
+  stepDeps = depsBetween(layerSteps);
+
+  // Dependencies between steps (GRP-7); the layer order is the tie-break.
   const byId = new Map(layerSteps.map((s) => [s.id, s]));
   const steps = topoOrder(
     layerSteps.map((s) => s.id),
