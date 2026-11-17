@@ -133,7 +133,15 @@ function backend(p: ReviewPlan, given: Partial<Backend> = {}): Backend {
   return b;
 }
 
-const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 20))));
+// Waits until the page stops changing: a reply from the fake server takes a few turns, more
+// when the machine is busy, so a fixed wait was flaky.
+const settle = async () => {
+  let before: string | undefined;
+  for (let i = 0; i < 50 && document.body.innerHTML !== before; i++) {
+    before = document.body.innerHTML;
+    await act(async () => void (await new Promise((r) => setTimeout(r, 20))));
+  }
+};
 
 async function show(p: ReviewPlan, withServer: Server | null = server, hash = '#comments') {
   if (root) render(null, root);

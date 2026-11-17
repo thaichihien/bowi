@@ -59,66 +59,67 @@ export function FileCard({
     window.addEventListener('bowi:show-file', show);
     return () => window.removeEventListener('bowi:show-file', show);
   }, [file.id, onViewed]);
-  const head = (
-    <button class="file-head" aria-expanded={open} onClick={() => setOpen(!open)}>
-      <Chevron open={open} />
-      <span class="file-name">
-        <span class="mono path">{file.path}</span>
-        {named.length > 0 && (
-          <span class="mono sym">
-            {named
-              .slice(0, 2)
-              .map((s) => s.qualifiedName)
-              .join(', ')}
-            {named.length > 2 ? ` +${named.length - 2}` : ''}
-          </span>
-        )}
-        {label && <span class="chip k-tag">{label}</span>}
-        <FileCommentCount path={file.path} />
-      </span>
-      {!open && (
-        <span class="closed-note">
-          {adds + dels > LARGE_FILE_LINES ? 'Large change, ' : ''}
-          {hunks.length} hunk{hunks.length === 1 ? '' : 's'} · {adds + dels} lines hidden
-        </span>
-      )}
-      <span class="mono delta">
-        <span class="plus">+{adds}</span> <span class="minus">−{dels}</span>
-      </span>
-    </button>
-  );
+  const hunkCount = `${hunks.length} hunk${hunks.length === 1 ? '' : 's'}`;
+  // The second line always has something, so every header is two lines high.
+  const note = !open
+    ? `${adds + dels > LARGE_FILE_LINES ? 'Large change, ' : ''}${hunkCount} · ${adds + dels} lines hidden`
+    : !label && named.length === 0
+      ? hunkCount
+      : undefined;
   return (
     <div
       class={viewed ? 'card file is-viewed' : 'card file'}
       {...(onViewed && { id: `review-file-${file.id}` })}
     >
-      {onViewed ? (
-        <div class={open ? 'file-head-row' : 'file-head-row closed'}>
-          {head}
+      <div class={open ? 'file-head-row' : 'file-head-row closed'}>
+        <button
+          class="file-head"
+          aria-expanded={open}
+          title={file.path}
+          onClick={() => setOpen(!open)}
+        >
+          <Chevron open={open} />
+          <FilePath path={file.path} />
+        </button>
+        <div class="file-side">
+          <span class="mono delta">
+            <span class="plus">+{adds}</span> <span class="minus">−{dels}</span>
+          </span>
           <FileCommentButton path={file.path} />
-          <button
-            class={viewed ? 'viewed on' : 'viewed'}
-            aria-pressed={!!viewed}
-            aria-label={`Viewed: ${file.path}`}
-            title={viewed ? 'Viewed: click to mark as not viewed' : 'Mark as viewed and collapse'}
-            onClick={() => {
-              // Viewing folds the file away; marking it not viewed opens it again.
-              setOpen(!!viewed);
-              onViewed();
-            }}
-          >
-            <span class="box" aria-hidden="true">
-              {viewed && <CheckMark />}
+          {onViewed && (
+            <button
+              class={viewed ? 'viewed on' : 'viewed'}
+              aria-pressed={!!viewed}
+              aria-label={`Viewed: ${file.path}`}
+              title={viewed ? 'Viewed: click to mark as not viewed' : 'Mark as viewed and collapse'}
+              onClick={() => {
+                // Viewing folds the file away; marking it not viewed opens it again.
+                setOpen(!!viewed);
+                onViewed();
+              }}
+            >
+              <span class="box" aria-hidden="true">
+                {viewed && <CheckMark />}
+              </span>
+              Viewed
+            </button>
+          )}
+        </div>
+        <div class="file-sub">
+          {label && <span class="chip k-tag">{label}</span>}
+          {named.length > 0 && (
+            <span class="mono sym">
+              {named
+                .slice(0, 2)
+                .map((s) => s.qualifiedName)
+                .join(', ')}
+              {named.length > 2 ? ` +${named.length - 2} more` : ''}
             </span>
-            Viewed
-          </button>
+          )}
+          <FileCommentCount path={file.path} />
+          {note && <span class="closed-note">{note}</span>}
         </div>
-      ) : (
-        <div class={open ? 'file-head-row' : 'file-head-row closed'}>
-          {head}
-          <FileCommentButton path={file.path} />
-        </div>
-      )}
+      </div>
       <FileComments path={file.path} variant="bowi" open={open} />
       {open && (
         <div class="hunks">
@@ -134,6 +135,17 @@ export function FileCard({
         </div>
       )}
     </div>
+  );
+}
+
+/** The path on one line: the folder muted and cut first when space runs out, the file name whole. */
+function FilePath({ path }: { path: string }) {
+  const slash = path.lastIndexOf('/') + 1;
+  return (
+    <span class="mono path">
+      {slash > 0 && <span class="path-dir">{path.slice(0, slash)}</span>}
+      <span class="path-name">{path.slice(slash)}</span>
+    </span>
   );
 }
 
@@ -356,14 +368,20 @@ export function MovedView({ model, to, from }: { model: Model; to: Hunk; from: H
   return (
     <>
       <div class="card file">
-        <div class="file-head">
-          <span class="file-name">
-            <span class="mono path">{toFile.path}</span>
+        <div class="file-head-row moved">
+          <div class="file-head" title={toFile.path}>
+            <FilePath path={toFile.path} />
+          </div>
+          <div class="file-side">
+            <span class="mono delta">
+              similarity {Math.round((to.move?.similarity ?? 1) * 100)}%
+            </span>
+            <FileCommentButton path={toFile.path} />
+          </div>
+          <div class="file-sub">
             <span class="chip k-tag">Moved from {fromFile.path}</span>
             <FileCommentCount path={toFile.path} />
-          </span>
-          <span class="mono delta">similarity {Math.round((to.move?.similarity ?? 1) * 100)}%</span>
-          <FileCommentButton path={toFile.path} />
+          </div>
         </div>
         <FileComments path={toFile.path} variant="bowi" open />
         <div class="hunks">

@@ -273,7 +273,6 @@ function FilesView(props: Parameters<typeof Sidebar>[0]) {
   const hits = new Set([...stepsOfFile].filter(([, s]) => s.includes(shown)).map(([id]) => id));
   const stepLabel = (f: FlatStep) =>
     `Step ${number.get(f.step.id)} · ${plainTitle(f.step.title)} · ${KIND_LABELS[model.plan.groups[f.groupIndex]!.kind]}${reviewed.has(f.step.id) ? ' · reviewed' : ''}`;
-  const columns = Math.min(flat.length, 10);
 
   return (
     <div class="card fview">
@@ -292,12 +291,7 @@ function FilesView(props: Parameters<typeof Sidebar>[0]) {
             </span>
           </div>
         </div>
-        <div
-          class="strip"
-          role="group"
-          aria-label="Steps"
-          style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
-        >
+        <div class="strip" role="group" aria-label="Steps">
           {flat.map((f, i) => {
             const cur = f === shown;
             return (
