@@ -8,11 +8,12 @@
 import type { Group } from '@bowi/core/types';
 import { useEffect, useState } from 'preact/hooks';
 import { HideCommentsToggle } from './Comments.tsx';
-import { ArrowIcon, CheckIcon, Chevron, ReviewedIcon, StepIconBadge } from './Icons.tsx';
+import { ArrowIcon, CheckIcon, Chevron, StepIconBadge } from './Icons.tsx';
 import { FinishDialog, type FinishResult } from './Finish.tsx';
 import { Inline } from './Inline.tsx';
 import { KIND_LABELS, writtenBy, type FlatStep, type Model, type ReadingMode } from './model.ts';
 import { emptyProgress, markStep, toggleViewed, viewedKey, type Progress } from './progress.ts';
+import { Sidebar } from './Sidebar.tsx';
 import { StepBody } from './StepView.tsx';
 
 export interface Position {
@@ -155,6 +156,7 @@ export function ReviewTab(props: {
         <Sidebar
           model={model}
           mode={mode}
+          flat={flat}
           current={current}
           reviewed={reviewed}
           go={go}
@@ -309,76 +311,6 @@ function CurrentStep(props: {
 }
 
 const plainTitle = (title: string) => title.replace(/`/g, '');
-
-function Sidebar(props: {
-  model: Model;
-  mode: ReadingMode;
-  current: Position;
-  reviewed: Set<string>;
-  go: (g: number, s?: string) => void;
-  mark: (stepId: string, on: boolean) => void;
-}) {
-  const { model, reviewed } = props;
-  return (
-    <nav class="sidebar" aria-label="Change groups">
-      {model.plan.groups.map((g, gi) => {
-        const steps = model.stepsOf(g, props.mode);
-        const groupDone = steps.filter((s) => reviewed.has(s.id)).length;
-        return (
-          <div class="card nav-group" key={g.id}>
-            <button
-              class={gi === props.current.groupIndex ? 'grp on' : 'grp'}
-              aria-current={gi === props.current.groupIndex}
-              onClick={() => props.go(gi, steps[0]?.id)}
-            >
-              <span class="grp-top">
-                <span class={`chip k-${g.kind}`}>{KIND_LABELS[g.kind]}</span>
-                <span class="mono muted small">
-                  {groupDone}/{steps.length}
-                </span>
-              </span>
-              <span class="grp-title">
-                <Inline text={g.title} />
-              </span>
-              <span class="muted small">{model.groupFiles(g).size} files</span>
-            </button>
-            {steps.map((s, i) => {
-              const isDone = reviewed.has(s.id);
-              const name = plainTitle(s.title);
-              return (
-                <div key={s.id} class={s.id === props.current.stepId ? 'step-row on' : 'step-row'}>
-                  <button
-                    class="step-btn"
-                    aria-current={s.id === props.current.stepId ? 'step' : undefined}
-                    onClick={() => props.go(gi, s.id)}
-                  >
-                    <StepIconBadge kind={model.stepIcon(g, s)} />
-                    <span class="step-text">
-                      <span class="step-name">
-                        {i + 1}. <Inline text={s.title} />
-                      </span>
-                      <span class="muted small">{model.stepSubtitle(s)}</span>
-                    </span>
-                  </button>
-                  {/* Marks the step without opening it. */}
-                  <button
-                    class="quick-mark"
-                    aria-pressed={isDone}
-                    aria-label={isDone ? `${name}: reviewed` : `Mark ${name} as reviewed`}
-                    title={isDone ? 'Reviewed: click to mark as not reviewed' : 'Mark as reviewed'}
-                    onClick={() => props.mark(s.id, !isDone)}
-                  >
-                    <ReviewedIcon done={isDone} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
-    </nav>
-  );
-}
 
 function GroupHeader({ model, group, index }: { model: Model; group: Group; index: number }) {
   // Closed by default: the reasons are evidence to check when the grouping looks surprising.
