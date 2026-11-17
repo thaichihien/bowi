@@ -38,6 +38,8 @@
 ### Review tab: Steps and Files
 
 - The Review tab's left column has two tabs, remembered (UI-3, §15 #78). **Steps** is the list of groups and steps; the current step now shows where its files live ("▾ 2 files"), and its row shows or hides a folder tree of them, from which a file jumps to its card. **Files** is the whole pull request as a folder tree: the current step's files highlighted, the rest dimmed, each file with the number of its step, noise files tagged. Above it, the current step and a pill per step in the colour of its kind (filled for the current one, a check once reviewed); pills and files of other steps go to their step.
+- File cards have a two-line header of fixed height: the path on the first line (folder muted and cut with "…" when it does not fit, file name bold and whole) with the line counts, comment button and Viewed always at the right; the tag, symbols, comments and "N lines hidden" on the second. The step pills keep their size however few steps there are.
+- "Back to top": a round button at the bottom right once the page has scrolled past one screen, on every tab; on the Review tab it sits to the left of the step bar (above it on a phone).
 
 ## 0.1.1 (2026-11-04)
 

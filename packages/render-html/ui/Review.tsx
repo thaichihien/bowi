@@ -8,6 +8,7 @@
 import type { Group } from '@bowi/core/types';
 import { useEffect, useState } from 'preact/hooks';
 import { HideCommentsToggle } from './Comments.tsx';
+import { Dock } from './Dock.tsx';
 import { ArrowIcon, CheckIcon, Chevron, StepIconBadge } from './Icons.tsx';
 import { FinishDialog, type FinishResult } from './Finish.tsx';
 import { Inline } from './Inline.tsx';
@@ -253,59 +254,63 @@ function CurrentStep(props: {
           toggle: (fileId) => updateProgress((p) => toggleViewed(p, step.id, fileId, files)),
         }}
       />
-      <div class="fab" role="region" aria-label="Step actions">
-        <span class="fab-pos">
-          Step {position + 1} of {flat.length}
-          {files.length > 0 && (
-            <>
-              {' '}
-              · {viewedCount} of {files.length} file{files.length === 1 ? '' : 's'} viewed
-            </>
-          )}
-        </span>
-        <button
-          class="btn"
-          disabled={!prev}
-          aria-label={prev ? `Previous: ${plainTitle(prev.step.title)}` : 'Previous'}
-          title={prev ? `Previous: ${plainTitle(prev.step.title)} (k)` : 'This is the first step'}
-          onClick={() => prev && go(prev.groupIndex, prev.step.id)}
-        >
-          <ArrowIcon dir="left" />
-          <span class="fab-long">Previous</span>
-        </button>
-        <button
-          class={isDone ? 'btn done' : 'btn'}
-          aria-pressed={isDone}
-          title={isDone ? 'Mark as not reviewed (r)' : 'Mark as reviewed (r)'}
-          onClick={() => updateProgress((p) => markStep(p, step.id, !p.reviewed.has(step.id)))}
-        >
-          {isDone && <CheckIcon />}
-          {isDone ? 'Reviewed' : 'Mark as reviewed'}
-        </button>
-        <button
-          class="btn primary"
-          title={
-            next ? 'Mark as reviewed and go to the next step (j: next without marking)' : undefined
-          }
-          onClick={() => {
-            if (!next) return props.finish();
-            updateProgress((p) => markStep(p, step.id, true));
-            go(next.groupIndex, next.step.id);
-          }}
-        >
-          {next ? (
-            <>
-              <span>
-                <span class="fab-long">Next: </span>
-                <Inline text={next.step.title} />
-              </span>
-              <ArrowIcon dir="right" />
-            </>
-          ) : (
-            'Finish review'
-          )}
-        </button>
-      </div>
+      <Dock>
+        <div class="fab" role="region" aria-label="Step actions">
+          <span class="fab-pos">
+            Step {position + 1} of {flat.length}
+            {files.length > 0 && (
+              <>
+                {' '}
+                · {viewedCount} of {files.length} file{files.length === 1 ? '' : 's'} viewed
+              </>
+            )}
+          </span>
+          <button
+            class="btn"
+            disabled={!prev}
+            aria-label={prev ? `Previous: ${plainTitle(prev.step.title)}` : 'Previous'}
+            title={prev ? `Previous: ${plainTitle(prev.step.title)} (k)` : 'This is the first step'}
+            onClick={() => prev && go(prev.groupIndex, prev.step.id)}
+          >
+            <ArrowIcon dir="left" />
+            <span class="fab-long">Previous</span>
+          </button>
+          <button
+            class={isDone ? 'btn done' : 'btn'}
+            aria-pressed={isDone}
+            title={isDone ? 'Mark as not reviewed (r)' : 'Mark as reviewed (r)'}
+            onClick={() => updateProgress((p) => markStep(p, step.id, !p.reviewed.has(step.id)))}
+          >
+            {isDone && <CheckIcon />}
+            {isDone ? 'Reviewed' : 'Mark as reviewed'}
+          </button>
+          <button
+            class="btn primary"
+            title={
+              next
+                ? 'Mark as reviewed and go to the next step (j: next without marking)'
+                : undefined
+            }
+            onClick={() => {
+              if (!next) return props.finish();
+              updateProgress((p) => markStep(p, step.id, true));
+              go(next.groupIndex, next.step.id);
+            }}
+          >
+            {next ? (
+              <>
+                <span>
+                  <span class="fab-long">Next: </span>
+                  <Inline text={next.step.title} />
+                </span>
+                <ArrowIcon dir="right" />
+              </>
+            ) : (
+              'Finish review'
+            )}
+          </button>
+        </div>
+      </Dock>
     </section>
   );
 }

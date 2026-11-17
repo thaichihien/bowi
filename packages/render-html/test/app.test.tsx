@@ -143,7 +143,7 @@ describe('Review tab', () => {
     await press(head);
     expect(head.getAttribute('aria-expanded')).toBe('false');
     expect(root.querySelectorAll('.ln').length).toBeLessThan(lines);
-    expect(head.textContent).toMatch(/1 hunk · \d+ lines hidden/);
+    expect(head.closest('.file-head-row')!.textContent).toMatch(/1 hunk · \d+ lines hidden/);
   });
 
   it('marks steps reviewed and moves to the next step (UI-11)', async () => {
@@ -167,6 +167,36 @@ describe('Review tab', () => {
     expect(previous().getAttribute('aria-label')).toBe('Previous: Data shape');
     await press(previous());
     expect(root.querySelector('.step h3')!.textContent).toBe('Step 1 of 5 · Data shape');
+  });
+
+  it('offers Back to top next to the bar once scrolled past one screen, on every tab', async () => {
+    const toTop = () => root.querySelector('.dock .to-top') as HTMLButtonElement | null;
+    // The page renders outside act, so its scroll listener is added a frame or more later:
+    // scroll until it answers.
+    const scrollTo = async (y: number) => {
+      for (let i = 0; i < 50; i++) {
+        await act(() => {
+          Object.defineProperty(window, 'scrollY', { value: y, configurable: true });
+          window.dispatchEvent(new Event('scroll'));
+        });
+        if (!!toTop() === y > window.innerHeight) return;
+        await act(() => new Promise((r) => setTimeout(r, 20)));
+      }
+    };
+    expect(toTop()).toBeNull();
+    await scrollTo(window.innerHeight * 2);
+    expect(toTop()!.nextElementSibling!.classList.contains('fab')).toBe(true);
+    const calls: unknown[] = [];
+    const original = window.scrollTo;
+    window.scrollTo = ((options: unknown) => void calls.push(options)) as typeof window.scrollTo;
+    await press(toTop());
+    window.scrollTo = original;
+    expect(calls).toEqual([{ top: 0, behavior: 'smooth' }]);
+    await tab('Changes');
+    expect(toTop()).not.toBeNull();
+    expect(root.querySelector('.fab')).toBeNull();
+    await scrollTo(0);
+    expect(toTop()).toBeNull();
   });
 
   it('marks a step from the sidebar without opening it', async () => {

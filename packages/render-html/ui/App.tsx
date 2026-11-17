@@ -26,6 +26,7 @@ import { DiffBlocks } from './Diff.tsx';
 import { Inline } from './Inline.tsx';
 import { formatCount, Model, type ReadingMode } from './model.ts';
 import { loadProgress, progressKey, saveProgress, type Progress } from './progress.ts';
+import { Dock } from './Dock.tsx';
 import { ReviewTab, type Position } from './Review.tsx';
 import { PostControls } from './Post.tsx';
 import { reportFolder, ReviewStore, serveCommand, serverOf, type Server } from './review-store.ts';
@@ -152,6 +153,7 @@ export function App({
             }}
           />
         )}
+        {shown !== 'review' && <Dock />}
         <UndoToast />
       </div>
     </CommentsContext.Provider>

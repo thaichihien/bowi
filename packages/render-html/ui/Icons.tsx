@@ -203,6 +203,12 @@ export const ArrowIcon = ({ dir }: { dir: 'left' | 'right' }) => (
   </Svg>
 );
 
+export const UpIcon = () => (
+  <Svg size={16}>
+    <path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" />
+  </Svg>
+);
+
 export const CloseIcon = () => (
   <Svg size={16}>
     <path d="M4 4l8 8M12 4l-8 8" />
