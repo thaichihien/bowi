@@ -6,7 +6,7 @@
 
 import type { DiffLine, FileChange, Hunk } from '@bowi/core/types';
 import { Fragment, type ComponentChildren } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import {
   FileCommentButton,
   FileCommentCount,
@@ -52,6 +52,13 @@ export function FileCard({
   const label = tag ?? fileTag(file, symbols);
   // Open by default; a very large change, or one already viewed, starts closed.
   const [open, setOpen] = useState(!viewed && adds + dels <= LARGE_FILE_LINES);
+  // The Review tab's file trees jump here (Sidebar.tsx): open the card on the way.
+  useEffect(() => {
+    if (!onViewed) return;
+    const show = (e: Event) => (e as CustomEvent<string>).detail === file.id && setOpen(true);
+    window.addEventListener('bowi:show-file', show);
+    return () => window.removeEventListener('bowi:show-file', show);
+  }, [file.id, onViewed]);
   const head = (
     <button class="file-head" aria-expanded={open} onClick={() => setOpen(!open)}>
       <Chevron open={open} />
@@ -81,7 +88,10 @@ export function FileCard({
     </button>
   );
   return (
-    <div class={viewed ? 'card file is-viewed' : 'card file'}>
+    <div
+      class={viewed ? 'card file is-viewed' : 'card file'}
+      {...(onViewed && { id: `review-file-${file.id}` })}
+    >
       {onViewed ? (
         <div class={open ? 'file-head-row' : 'file-head-row closed'}>
           {head}

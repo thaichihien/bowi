@@ -35,6 +35,10 @@
 - Reading order (§15 #77, from the owner's feedback on three pull requests): groups that do not use each other are read foundations first (data, helpers, services, API, UI), then larger first; steps that use each other only because one layer step held files on both sides of another (a router, a new module using it, and `server.js` calling that module) are split along the files' order. Barrel files are read in full: `export type *` no longer turns a file to text (§15 #11), and re-exported names count as uses, so a new export sits with what it exports. Resolving a monorepo's workspace packages by name was tried and dropped: it lowered the benchmark.
 - Grouping benchmark (229 cases, 28 repositories, 22 of them new for these frameworks): Bowi 0.45 mean ARI (0.44 before M14), by folder 0.37, by top folder 0.21; at least as good as by folder in 146 cases (144 before). By framework: Nuxt +0.12 and +0.07, Angular with NestJS +0.07, Vue +0.04 and +0.03, Hono with tRPC +0.03; React, Next.js, React Router, SolidJS, Express, Koa and the database libraries unchanged (their plugins mostly set layers, which order steps but do not change groups); Svelte −0.02 and −0.01, Astro −0.10 on one repository, where quote-style changes in `.astro` files are now rightly formatting and a new page joins the widgets it imports. The case picker now counts `.vue`, `.svelte` and `.astro` files as code.
 
+### Review tab: Steps and Files
+
+- The Review tab's left column has two tabs, remembered (UI-3, §15 #78). **Steps** is the list of groups and steps; the current step now shows where its files live ("▾ 2 files"), and its row shows or hides a folder tree of them, from which a file jumps to its card. **Files** is the whole pull request as a folder tree: the current step's files highlighted, the rest dimmed, each file with the number of its step, noise files tagged. Above it, the current step and a pill per step in the colour of its kind (filled for the current one, a check once reviewed); pills and files of other steps go to their step.
+
 ## 0.1.1 (2026-11-04)
 
 ### M9.1 — Windows

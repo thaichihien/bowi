@@ -221,7 +221,7 @@ function FileDiff(props: {
   );
 }
 
-interface Dir {
+export interface Dir {
   name: string;
   dirs: Dir[];
   files: FileChange[];
