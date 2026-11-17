@@ -1,16 +1,11 @@
-<p align="center">
-  <img src="docs/images/logo_bowi.png" alt="Bowi, a bowerbird mascot, presenting review.html: data models, then services, then API endpoints, checked off step by step" width="640">
-</p>
+![Bowi, a bowerbird mascot, presenting review.html: data models, then services, then API endpoints, checked off step by step](docs/images/logo_bowi.png)
 
-<h1 align="center">Bowi</h1>
+# Bowi
 
-<p align="center"><strong>Bowi</strong> (short for <em>bowerbird</em>) turns a pull request into a guided review: related changes grouped together,<br>foundations before the code that uses them, noise collapsed, and every group explained with evidence. The result is one self-contained <code>review.html</code>.</p>
+**Bowi** (short for _bowerbird_) turns a pull request into a guided review: related changes grouped together,  
+foundations before the code that uses them, noise collapsed, and every group explained with evidence.
 
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
-  <a href="https://www.npmjs.com/package/@bowi/cli"><img src="https://img.shields.io/npm/v/@bowi/cli?label=version&color=green" alt="npm version"></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D22.12-green" alt="Node 22.12 or newer"></a>
-</p>
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)![npm version](https://img.shields.io/npm/v/@bowi/cli?label=version&color=green)![Node 22.12 or newer](https://img.shields.io/badge/node-%3E%3D22.12-green)
 
 ![A Bowi report: the change grouped into steps on the left (data shape, services, controller, tests, docs); on the right the group "Verify email addresses after sign-up" with an AI summary, hints such as "New route: GET /auth/verify-email", and the current step's diff](docs/images/review.png)
 
@@ -43,9 +38,8 @@ Bowi only reads your code. It never builds, installs or runs anything from the r
 
 You need:
 
-- **Node 22.12 or newer** (`node --version`), which comes with npm. Get it from [nodejs.org](https://nodejs.org) or a version manager (nvm, fnm, Homebrew).
-- **git 2.31 or newer** (`git --version`).
-- **macOS, Linux or Windows**
+- **Node 22.12 or newer**
+- **git 2.31 or newer**
 
 Install the `bowi` command:
 
@@ -79,19 +73,20 @@ cd ~/bowi-demo && bowi --local
 
 ### Comments
 
-Hover a line in the Review or Changes tab and press **+** to write a comment; Shift-click another line for a range, or use the button in a file's header for a comment on the whole file. Comments are Markdown, with a toolbar like GitHub's. The Comments tab lists them all, holds the review summary, and copies everything as Markdown for pasting anywhere.
-
-A report opened as a file cannot write to disk, so comments written there stay in your browser. To save them into `review-plan.json`, serve the report:
+Comment on any line, range or file of the report, as on GitHub; serve the report so the comments are saved into `review-plan.json` (opened as a file, they stay in your browser).
 
 ```bash
-bowi serve .bowi/<repo>-<pr-or-branch>     # serves the report on this computer and opens it; Ctrl+C stops
-bowi --local --serve                       # write the report, then serve it
-bowi comments .bowi/<repo>-<pr-or-branch>  # list the comments (--markdown to paste them)
+bowi --local --serve                                     # write the report, then serve it: comments are saved from the start
+bowi https://github.com/<owner>/<repo>/pull/<n> --serve  # the same for a GitHub pull request
+bowi serve .bowi/<repo>-<pr-or-branch>                   # serve an existing report on this computer and open it; Ctrl+C stops
+bowi comments .bowi/<repo>-<pr-or-branch>                # list the comments
+bowi comments .bowi/<repo>-<pr-or-branch> --markdown     # print them as Markdown, to paste anywhere
 ```
 
 `bowi serve` listens on `127.0.0.1` only, with a random token in the link it prints, and writes nothing but the comments of that report. When you run Bowi again into the same folder, comments move with their lines; a comment whose lines changed is kept as outdated, with the code it was written on. `--no-comments` leaves them out of `review.html` (for sharing the page); the plan keeps them.
 
-### Sending comments to GitHub
+<details>
+<summary><strong>Sending comments to GitHub</strong></summary>
 
 When the report is of a pull request, **Post to GitHub** in the served page sends your comments to it, under your own login. A dialog first shows where they go and as whom, and you can leave any comment out. Nothing is ever sent without this step, and Bowi contacts GitHub only when you press the button.
 
@@ -111,6 +106,8 @@ Posting needs a GitHub login that can write to the pull request: `gh auth login`
 
 Bowi only sends. What you sent is read-only in the report, and you change it on GitHub; Bowi never changes or removes anything there, and it does not read comments back. So after you submit a pending review on GitHub, press **I submitted it** in the report to have its comments marked as posted.
 
+</details>
+
 ### AI enrichment (optional)
 
 With `--ai`, Bowi asks an AI model to name each group of code changes, explain in 1–3 sentences what it does, and write an overview of the whole change (shown in the Description tab). Everything the AI wrote is marked "AI" in the report, together with the model that wrote it. AI is off by default; without it, Bowi writes its own titles and descriptions.
@@ -124,7 +121,8 @@ The AI is reached through a provider, chosen with `ai.provider` in the config:
 | `claude-code` | Available | Your local [Claude Code](https://claude.com/claude-code) and its login (no API key for Bowi)     |
 | Others        | Planned   | More providers, such as AI provider APIs with your own key and local models, will be added later |
 
-#### Set up Claude Code
+<details>
+<summary><strong>Set up Claude Code</strong></summary>
 
 1. Install Claude Code: `curl -fsSL https://claude.ai/install.sh | bash` (or `npm install -g @anthropic-ai/claude-code`; see the [setup guide](https://docs.claude.com/en/docs/claude-code/setup)). On Windows, use the native installer in PowerShell, `irm https://claude.ai/install.ps1 | iex`: Bowi cannot run the npm package's `claude.cmd` there.
 2. Run `claude` once in a terminal and log in (a Claude subscription or an Anthropic Console account), then quit it. `claude --version` should work in the terminal you run Bowi from.
@@ -148,68 +146,13 @@ To pick the model and effort, or to turn AI on without `--ai`, put an `ai` secti
 
 Bowi runs Claude Code locked down: in an empty temporary folder, with no tools and no MCP servers, and without your CLAUDE.md, hooks or plugins. Your own Claude Code setup does not see Bowi's requests and cannot change the answers. Calls use your Claude Code login and count toward its usage limits.
 
+</details>
+
 ## What Bowi understands
 
 Best supported today: **TypeScript and JavaScript projects**, with framework support for NestJS, Express, Koa, Fastify, Hono, tRPC, React, Next.js, React Router, Angular, Vue, Nuxt, Svelte, SvelteKit, SolidJS and Astro, and for the TypeORM, Sequelize, Mongoose and Drizzle database libraries. Other TypeScript/JavaScript projects (libraries) get everything except framework-specific layers, links and hints. Files in other languages are still shown, grouped and never dropped, but as plain text.
 
-### Languages
-
-| Language                                              | Files                                                 | What Bowi does with it                                                                                                                                                                                                                            |
-| ----------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TypeScript, TSX, JavaScript, JSX                      | `.ts` `.mts` `.cts` `.tsx` `.js` `.mjs` `.cjs` `.jsx` | Full support: changes mapped to functions, methods, classes, interfaces, types, top-level constants and test blocks; links from calls, types, imports and tests; formatting-only changes and moved code detected; unchanged callers listed; hints |
-| Vue, Svelte, Astro components                         | `.vue` `.svelte` `.astro`                             | The script (Astro: the frontmatter) as TypeScript, with everything above; the markup as text, plus the components and names it uses (`<UserCard>`, `{count}`). A markup-only change is never taken for formatting                                 |
-| JSON                                                  | `.json`                                               | Keys two levels deep (e.g. `dependencies.nodemailer`); `package-lock.json` summarized (new, removed and major-version dependencies)                                                                                                               |
-| YAML                                                  | `.yaml` `.yml`                                        | Keys two levels deep (e.g. `jobs.build`)                                                                                                                                                                                                          |
-| Markdown                                              | `.md` `.markdown`                                     | Sections by heading (e.g. `Authentication.Email verification`); re-wrapped text counts as formatting; docs join the code they mention                                                                                                             |
-| Everything else (SQL, Python, Go, Java, Ruby, CSS, …) |                                                       | Text only: diffed and grouped by shared names and folders, with syntax highlighting when available; no symbols or move detection. SQL support is planned                                                                                          |
-
-Generated files are collapsed as noise, never removed: lockfiles (npm, Yarn, pnpm, Bun), `dist/`, `*.min.js`, `*.min.css`, `*.snap`, `*.gen.ts`, `*.generated.*`, files whose header says `@generated` or `DO NOT EDIT`, files marked `linguist-generated` in `.gitattributes`, and your `generated` globs. Only npm lockfiles get a dependency summary.
-
-### Frameworks
-
-| Framework                             | How it is detected                                     | What Bowi adds                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| NestJS                                | `@nestjs/core` or `@nestjs/common` in a `package.json` | Layers from decorators (table below); links from code that queues a job or emits an event to its handler (`queue.add('welcome')` → `@Process('welcome')`, `emit('user.created')` → `@OnEvent('user.created')`), from a class to a service it newly injects, and from a migration to the entity columns it adds; hints for new or changed routes (`New route: GET /auth/verify-email`) and for added `@UseGuards`, `@Roles`, `@Public` |
-| Express, Koa, Fastify, Hono           | `express`, `koa` / `@koa/router`, `fastify`, `hono`    | Route modules, middleware and handlers as API; a line mounting a router or plugin (`app.use('/users', userRoutes)`, `app.route(…)`, `fastify.register(…)`) linked to the file it comes from; hints for new or changed routes written as `router.post('/users', …)` (on any project)                                                                                                                                                   |
-| tRPC                                  | `@trpc/server`                                         | Routers and procedures as API; a client call (`trpc.user.byId.useQuery()`) linked to the changed router that defines the procedure; hints for new procedures                                                                                                                                                                                                                                                                          |
-| TypeORM, Sequelize, Mongoose, Drizzle | `typeorm`, `sequelize`, `mongoose`, `drizzle-orm`      | Entities and models as data shapes, Drizzle tables as schema, TypeORM migrations as schema and linked to the entity columns they name                                                                                                                                                                                                                                                                                                 |
-| React (and Preact)                    | `react`                                                | Hooks (`use*`) as helpers and stores (Redux Toolkit, Zustand, Jotai, …) and context modules as services, read before the components using them; a hint when an exported component's props change while other code renders it                                                                                                                                                                                                          |
-| Next.js                               | `next`                                                 | Route handlers, `pages/api`, middleware and server actions (`'use server'`) as API; a page read with its layout and its `loading`/`error` files; hints for new pages and API routes (`New API route: GET, POST /api/users`)                                                                                                                                                                                                           |
-| React Router (and Remix)              | `@react-router/dev`, `@remix-run/*`                    | Route modules with a `loader` or `action` as API, `*.server.ts` as services; hints for new routes from flat file names (`settings.billing.tsx` → `/settings/billing`)                                                                                                                                                                                                                                                                 |
-| Angular                               | `@angular/core`                                        | Layers from decorators (`@Component` UI, `@Injectable` services, guards and interceptors API, `@NgModule` and route arrays configuration); a component read with its template and styles; a template using `<app-user-card>` linked to that component; new injections; hints for new routes                                                                                                                                           |
-| Vue                                   | `vue`                                                  | Pinia stores as services, composables as helpers; a changed line using `<UserCard>` linked to the changed component                                                                                                                                                                                                                                                                                                                   |
-| Nuxt                                  | `nuxt`                                                 | As Vue, plus auto-imported components (`components/nav/Bar.vue` is `<NavBar>`) and composables found by name; server routes and middleware as API; hints for new pages and server routes                                                                                                                                                                                                                                              |
-| Svelte                                | `svelte`                                               | Stores and `*.svelte.ts` modules as services; a changed line using `<Row>` linked to the changed component                                                                                                                                                                                                                                                                                                                            |
-| SvelteKit                             | `@sveltejs/kit`                                        | `+server`, `+page.server`, `+page`, `+layout` loads and hooks as API; a page read with its load function and layout; hints for new pages and endpoints                                                                                                                                                                                                                                                                                |
-| SolidJS / SolidStart                  | `solid-js`                                             | Stores and shared signals as services, `use*` primitives as helpers, server functions and `src/routes/api` as API; hints for new routes                                                                                                                                                                                                                                                                                               |
-| Astro                                 | `astro`                                                | Endpoints and middleware as API, content collections as schema; a changed line using `<BaseLayout>` linked to the changed component; hints for new pages and endpoints                                                                                                                                                                                                                                                                |
-
-### Layers
-
-Each group is split into steps by layer, and steps are read in dependency order: code before the steps that call it. When two steps do not depend on each other, the order is data shape, helpers, domain, services, API, UI, other code, configuration, tests, docs. Groups are ordered the same way: a group comes after the groups it uses, and groups that do not use each other start with the one whose code is most foundational, then the larger one.
-
-If a folder misleads Bowi (e.g. a service under `common/` that is not a NestJS class), set its layer in `.bowi.json`.
-
-<details>
-<summary>How Bowi picks a file's layer</summary>
-
-A file's layer comes from your `.bowi.json` `layers` first, then from a framework plugin (NestJS decorators, Next.js route files, …), then from its path (the first matching row in the order test, docs, config, schema, data, domain, service, API, helpers, UI).
-
-| Step          | Layer     | Path rules                                                                                                                                                                                      | NestJS decorators                                                                                                      |
-| ------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Data shape    | `schema`  | `migrations/`, `schema/`, `schemas/`, `prisma/`; `.sql` `.prisma` `.graphql` `.gql` `.proto`                                                                                                    | Classes implementing `MigrationInterface` (TypeORM)                                                                    |
-| Data shape    | `data`    | `entities/`, `models/`, `repositories/`, `dto/`, `interfaces/`, `types/`; `*.entity.ts`, `*.model.ts`, `*.repository.ts`, `*.dto.ts`, `*.schema.ts`, `*.interface.ts`, `*.types.ts`, `types.ts` | `@Entity`, `@Schema`, `@ObjectType`, `@InputType`, `@ArgsType`; DTO classes with validation decorators (`@IsEmail`, …) |
-| Helpers       | `util`    | `helpers/`, `utils/`, `lib/`, `common/`, `shared/`; `helpers.ts`, `utils.ts`, `*.helper.ts`, `*.util.ts`                                                                                        |                                                                                                                        |
-| Domain        | `domain`  | `domain/`                                                                                                                                                                                       |                                                                                                                        |
-| Services      | `service` | `services/`, `jobs/`, `workers/`, `processors/`, `queues/`; `*.service.ts`, `*.processor.ts`, `*.worker.ts`, `*.job.ts`                                                                         | `@Injectable`, `@Processor`                                                                                            |
-| API           | `api`     | `controllers/`, `routes/`, `handlers/`, `resolvers/`, `api/`, `endpoints/`; `*.controller.ts`, `*.resolver.ts`, `*.route(s).ts`, `*.handler.ts`, `*.gateway.ts`                                 | `@Controller`, `@Resolver`, `@WebSocketGateway`, `@Catch`; `@Injectable` guards, interceptors, pipes and middleware    |
-| UI            | `ui`      | `components/`, `pages/`, `views/`, `app/`, `screens/`, `layouts/`; `.tsx` `.jsx` `.vue` `.svelte` `.css` `.scss` `.html`                                                                        |                                                                                                                        |
-| Other code    | `unknown` | Anything not matched                                                                                                                                                                            |                                                                                                                        |
-| Configuration | `config`  | `package.json`, `tsconfig*.json`, `*.config.*`, `.*rc` files, `.env*`, `Dockerfile`, `docker-compose*`, `Makefile`, `.github/`, `.yml` `.yaml` `.toml` `.ini`, lockfiles                        | `@Module`                                                                                                              |
-| Tests         | `test`    | `test/`, `tests/`, `__tests__/`, `spec/`, `e2e/`; `*.spec.ts`, `*.test.ts`, `*.e2e-spec.ts` (and `.js`)                                                                                         | Never: test files keep their path layer                                                                                |
-| Docs          | `docs`    | `docs/`; `.md` `.mdx` `.rst` `.adoc`; `README`, `CHANGELOG`, `CONTRIBUTING`, `LICENSE`                                                                                                          |                                                                                                                        |
-
-</details>
+For the details (languages, frameworks and layers) see [What Bowi understands](docs/what-bowi-understands.md).
 
 ## Configuration
 
@@ -244,35 +187,97 @@ Bowi reads `.bowi.json` from the repository root (for a pull request: the file a
 | `ai.concurrency`           | Calls to the AI at once (1–10, default 3)                                                                                                               |
 | `ai.timeoutSeconds`        | Time per call before that group keeps Bowi's own title (default 120)                                                                                    |
 
-## Questions and answers
+### Command-line options
 
-**Does Bowi review the code for me?**
+Options on the command line win over `.bowi.json`. `bowi <command> --help` prints the same list.
+
+`bowi <pull request URL>` or `bowi --local`: write the report.
+
+| Option              | What it does                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| `--local`           | Review the current repository: the merge base with `--base` against the working tree    |
+| `--base <branch>`   | Base branch for `--local` (default `origin/HEAD`, else `main`, else `master`)           |
+| `--no-untracked`    | With `--local`, leave out untracked files                                               |
+| `--out <dir>`       | Output folder (default `./.bowi/<repo>-<pr-or-branch>/`)                                |
+| `--json-only`       | Write only `review-plan.json`, not `review.html`                                        |
+| `--no-open`         | Do not open `review.html` in the browser                                                |
+| `--serve`           | After writing the report, serve it so comments are saved (Ctrl+C stops)                 |
+| `--no-comments`     | Leave the comments out of `review.html`, e.g. for sharing the page; the plan keeps them |
+| `--config <path>`   | Config file (default `.bowi.json` in the repository, if present)                        |
+| `--order <order>`   | Reading order the report opens with: `dependency` (default) or `tests-first`            |
+| `--ai`              | AI titles, intents and an overview through Claude Code (sends group diffs to Claude)    |
+| `--no-ai`           | No AI enrichment, even when the config file turns it on                                 |
+| `--cache-dir <dir>` | Cache folder (default: the system cache folder, e.g. `~/Library/Caches/bowi` on macOS)  |
+| `-q`, `--quiet`     | Print nothing but errors                                                                |
+| `-v`, `--verbose`   | Print more detail                                                                       |
+| `-V`, `--version`   | Print the version                                                                       |
+
+Other commands:
+
+| Command                    | Option              | What it does                                                           |
+| -------------------------- | ------------------- | ---------------------------------------------------------------------- |
+| `bowi serve <dir>`         |                     | Serve a report on this computer so comments written in it are saved    |
+|                            | `--no-open`         | Do not open the page in the browser                                    |
+|                            | `-q`, `--quiet`     | Print nothing but errors                                               |
+| `bowi comments <dir>`      |                     | List the comments written in a report                                  |
+|                            | `--markdown`        | Print them as Markdown, ready to paste                                 |
+| `bowi comments push <dir>` |                     | Send the comments to the report's pull request; asks first             |
+|                            | `--yes`             | Do not ask; stops if the pull request has new commits since the report |
+|                            | `--now`             | Post at once, public, instead of as a pending review                   |
+|                            | `--outdated`        | Also send outdated comments, on their files with the old lines quoted  |
+| `bowi cache clear`         |                     | Delete everything Bowi has cached                                      |
+|                            | `--cache-dir <dir>` | Cache folder to clear                                                  |
+
+## FAQ
+
+<details>
+<summary><strong>Does Bowi review the code for me?</strong></summary>
 
 No. Bowi does not hunt for bugs or write review comments. It answers a different question: in what order should a person read this change? Your judgment stays where it belongs, and you get a clear place to start and a path through the change.
 
-**How does Bowi decide what belongs together? Is it guessing?**
+</details>
+
+<details>
+<summary><strong>How does Bowi decide what belongs together? Is it guessing?</strong></summary>
 
 No guessing. Groups come from how the code actually connects (calls, types, imports, tests, commits), not from a model's impression. Every group shows the links that hold it together, every change appears in exactly one step, and the same input always gives the same report.
 
-**How do I know the grouping is any good?**
+</details>
+
+<details>
+<summary><strong>How do I know the grouping is any good?</strong></summary>
 
 It is measured. A benchmark squashes real runs of clean commits into synthetic pull requests and checks how well Bowi recovers the original commits, so every change to the engine is judged by numbers, not by feel.
 
-**Will I miss something because it was marked as noise?**
+</details>
+
+<details>
+<summary><strong>Will I miss something because it was marked as noise?</strong></summary>
 
 No. Noise is collapsed, never hidden. Moved code is recognized even when it was edited during the move, and the edited lines stay in the review. Formatting-only edits are found by comparing code structure, not text, and lockfiles get a short summary of what changed.
 
-**Do I need AI or an account?**
+</details>
+
+<details>
+<summary><strong>Do I need AI or an account?</strong></summary>
 
 No. Everything above runs locally, with no AI and no sign-up. AI is an opt-in extra that sees only the changed code that matters, never noise or whole files, and a pull request cannot turn it on. The report is one offline file you can keep, share or archive.
 
-**Does my code leave my machine?**
+</details>
+
+<details>
+<summary><strong>Does my code leave my machine?</strong></summary>
 
 Only when you ask for it: Bowi fetches a pull request from GitHub when you give it a URL, and sends changed code to the AI provider when you turn AI on. It never builds, installs or runs anything from the repository it reviews.
 
-**What does it cost?**
+</details>
+
+<details>
+<summary><strong>What does it cost?</strong></summary>
 
 Nothing. Bowi is open source under the MIT license, with no per-seat price and no service to sign up for.
+
+</details>
 
 ## Development
 
