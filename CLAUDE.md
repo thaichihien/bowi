@@ -60,6 +60,7 @@ Plugins are detected after parse (`detect`), before symbols.
 - **Determinism (GRP-12):** same input → identical plan except `generatedAt` and `meta.timingsMs` (`comparablePlanJson`). Sort with `compareStrings`/`sortBy` (code-unit order, never `localeCompare`); Louvain uses a seeded RNG.
 - **Partition (GRP-4):** every hunk is in exactly one step of one group; a violation throws `AnalysisError` (exit code 3).
 - **Noise is collapsed, never removed (NOISE-7);** lines changed during a move are never noise.
+- **Colours in the page are tokens (UI-29):** a colour in `styles.css` or a component is a `var(--…)` from the `:root` block at the top of `styles.css`, with its dark value in `:root.dark` beside it; never a literal. A colour used both as text and as a fill gets two tokens (e.g. `--accent-text` and `--accent`), because dark mode needs them apart. The theme switch is `ui/Theme.tsx` plus the script in `ui/index.html` that sets `dark` on `<html>` before the first paint.
 - **Escaping (UI-15):** the plan is embedded with `jsonForScript`; only `DiffLine.html` (escaped by our highlighter), `source.descriptionHtml` (sanitized by `src/markdown.ts`) and comment text (Markdown rendered in the page by `ui/markdown.ts`, raw HTML off, images as links) are rendered as markup.
 - **Exit codes (CLI-11):** 0 ok, 1 usage (`UsageError`), 2 source (`SourceError`), 3 analysis (`AnalysisError`). Errors carry a next-step hint.
 - Changing the plan contract means editing both `packages/core/src/types.ts` and §8 of the spec.

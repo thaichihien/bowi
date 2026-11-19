@@ -3,6 +3,9 @@
  * runs no highlighter. Whole file versions are tokenized (multi-line strings and comments stay
  * correct); each diff line takes the tokens of its line on its own side.
  *
+ * Each token carries both themes (M18): `color` is github-light and `--d` github-dark, which the
+ * page's dark mode switches to, so changing the theme needs no second highlighting.
+ *
  * Every token is HTML-escaped here; `html` is the only field the page renders as markup (UI-15).
  */
 
@@ -14,7 +17,7 @@ import {
 } from 'shiki';
 import type { DiffLine, FileChange, ReviewPlan } from '@bowi/core';
 
-export const THEME = 'github-light';
+export const THEMES = { light: 'github-light', dark: 'github-dark' } as const;
 /** Larger file versions are left unhighlighted (plain text). */
 const MAX_HIGHLIGHT_BYTES = 300_000;
 
@@ -43,14 +46,8 @@ export async function highlightPlan(plan: ReviewPlan, readFile: ReadFile): Promi
       );
       if (text === null || Buffer.byteLength(text) > MAX_HIGHLIGHT_BYTES) return null;
       return h
-        .codeToTokens(text, { lang, theme: THEME })
-        .tokens.map((tokens) =>
-          tokens
-            .map(
-              (t) => `<span style="color:${t.color ?? 'inherit'}">${escapeHtml(t.content)}</span>`,
-            )
-            .join(''),
-        );
+        .codeToTokens(text, { lang, themes: THEMES, defaultColor: false })
+        .tokens.map((tokens) => tokens.map((t) => tokenHtml(t.htmlStyle, t.content)).join(''));
     };
     const oldLines = file.status === 'added' ? null : await lineHtml('old');
     const newLines = file.status === 'deleted' ? null : await lineHtml('new');
@@ -64,6 +61,14 @@ export async function highlightPlan(plan: ReviewPlan, readFile: ReadFile): Promi
   return out;
 }
 
+/** `defaultColor: false` gives `--shiki-light` and `--shiki-dark`; a missing one inherits. */
+function tokenHtml(style: Record<string, string> | undefined, content: string): string {
+  const light = style?.['--shiki-light'];
+  const dark = style?.['--shiki-dark'];
+  const css = [light && `color:${light}`, dark && `--d:${dark}`].filter(Boolean).join(';');
+  return `<span${css ? ` style="${css}"` : ''}>${escapeHtml(content)}</span>`;
+}
+
 function pick(
   line: DiffLine,
   oldLines: string[] | null,
@@ -74,7 +79,7 @@ function pick(
 }
 
 async function getHighlighter(lang: BundledLanguage): Promise<Highlighter> {
-  highlighter ??= createHighlighter({ themes: [THEME], langs: [] });
+  highlighter ??= createHighlighter({ themes: Object.values(THEMES), langs: [] });
   const h = await highlighter;
   if (!h.getLoadedLanguages().includes(lang)) await h.loadLanguage(lang);
   return h;

@@ -307,11 +307,11 @@ function FilesView(props: Parameters<typeof Sidebar>[0]) {
                 {reviewed.has(f.step.id) && (
                   <span class="pck" aria-hidden="true">
                     <svg
-                      width="8"
-                      height="8"
+                      width="9"
+                      height="9"
                       viewBox="0 0 10 10"
                       fill="none"
-                      stroke="#fff"
+                      stroke="var(--on-fill)"
                       stroke-width="2.2"
                       stroke-linecap="round"
                       stroke-linejoin="round"

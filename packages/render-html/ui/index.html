@@ -6,6 +6,19 @@
     <!-- Read by bowi serve: this page can show and save comments (M10). -->
     <meta name="bowi-features" content="comments" />
     <title>__BOWI_TITLE__</title>
+    <script>
+      // Dark mode before the first paint (M18): the pick kept by Theme.tsx, else the system's.
+      try {
+        var pick = localStorage.getItem('bowi:theme');
+      } catch (e) {}
+      try {
+        if (
+          pick === 'dark' ||
+          (pick !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        )
+          document.documentElement.classList.add('dark');
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="app"></div>

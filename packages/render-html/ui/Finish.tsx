@@ -76,7 +76,7 @@ export function FinishDialog(props: {
                     <path
                       class="done-badge-tick"
                       d="M10 18.5l5.5 5.5L26 13"
-                      stroke="#fff"
+                      stroke="var(--on-fill)"
                       stroke-width="3.2"
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -184,7 +184,7 @@ function Stat({ n, label }: { n: number; label: string }) {
   );
 }
 
-const COLORS = ['#2e4fd8', '#2f9e57', '#e0a100', '#d24545', '#8a4fd8', '#13a3a3', '#f08a3c'];
+const COLORS = ['#5b44ec', '#2f9e57', '#e0a100', '#d24545', '#8a4fd8', '#13a3a3', '#f08a3c'];
 
 /** Where each burst starts (percent of the window), when, and which way it throws. */
 const BURSTS = [

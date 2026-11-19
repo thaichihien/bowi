@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### M18 — Dark mode
+
+- The report has a dark mode (UI-29). It follows the system's setting, and changes with it while the page is open, until the reviewer picks a theme with the sun / moon button at the right of the header (after "Post to GitHub"). The pick is remembered in this browser (`bowi:theme`) and then wins over the system. A small script in the page's head applies the theme before the first paint, so a dark page never flashes light; printing stays light. Design: the report redesign canvas (§15 #79).
+- Every colour of the page is now a token in `styles.css`: light values on `:root`, dark ones on `:root.dark`. Text and fills have their own tokens where dark needs them apart (the accent, green and red, each step kind's ink and fill), and the solid dark controls (selected switches, the toast) turn light in dark. Moving the colours into tokens changed nothing on its own: screenshots of every tab of two reports were identical before and after.
+- The accent is now violet (`#5b44ec`) in both themes, as on the canvas; the Services step keeps its blue.
+- Syntax highlighting carries both of shiki's GitHub themes: each token has `github-light` as its colour and `github-dark` in a CSS variable, so switching needs no second highlighting. The Changes and Description tabs use GitHub's dark colours. The parts the canvas did not draw in dark (comment threads, the editor, the Comments tab, the "Post to GitHub" dialog, file headers, banners) take the same tokens and were checked with screenshots.
+- Size: the page template grows by 9 KB. `review.html` of the email-verification fixture goes from 348 KB to 370 KB (+6%) and of sindresorhus/ky#874 from 1,035 KB to 1,148 KB (+11%), almost all of it the second colour of each highlighted token. `review-plan.json` does not change: highlighting exists only in the page's copy of the plan.
+- Text tokens meet 4.5:1 contrast in dark; the white ticks on the dark green fill are icons (3:1).
+
+### Review tab
+
+- The step pills above the Files tree are bigger: eight to a row instead of ten (about 31 px instead of 23 px in the sidebar), with larger numbers (owner's request).
+
 ## 0.2.0 (2026-11-17)
 
 ### M10 — Line comments in the report

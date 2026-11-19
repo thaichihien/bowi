@@ -91,7 +91,8 @@ describe('renderHtml', () => {
       u === 'https://github.com/settings/personal-access-tokens/new' ||
       u === 'https://github.com/settings/tokens/new?scopes=repo&description=Bowi';
     expect(urls.filter((u) => !allowed(u))).toEqual([]);
-    expect(html.match(/<\/script>/g)).toHaveLength(2);
+    // The theme before the first paint (M18), the plan and the page.
+    expect(html.match(/<\/script>/g)).toHaveLength(3);
   });
 
   it('embeds the plan with build-time highlighting (UI-14)', () => {
@@ -103,6 +104,8 @@ describe('renderHtml', () => {
     expect(anchor.html).toContain('&lt;a href=');
     expect(anchor.html).not.toContain('<a ');
     expect(lines.every((l) => typeof l.html === 'string')).toBe(true);
+    // Both themes on every token (M18): github-light as the color, github-dark in --d.
+    expect(anchor.html).toMatch(/^<span style="color:#[0-9A-F]{6};--d:#[0-9A-F]{6}">/);
     // The generated lockfile is not highlighted.
     const lock = page.files.find((f) => f.path === 'package-lock.json')!;
     expect(
@@ -113,6 +116,15 @@ describe('renderHtml', () => {
     ).toBe(false);
   });
 
+  it('picks the theme before the first paint, and prints light (M18)', () => {
+    const head = html.slice(0, html.indexOf('</head>'));
+    expect(head).toContain("localStorage.getItem('bowi:theme')");
+    expect(head).toContain("matchMedia('(prefers-color-scheme: dark)')");
+    // The script runs before the page's styles and code, so dark never flashes light.
+    expect(head.indexOf('bowi:theme')).toBeLessThan(head.indexOf('<style'));
+    expect(html).toMatch(/@media screen\s*\{\s*:root\.dark\s*\{/);
+  });
+
   it('keeps hostile and special text intact (UI-15)', async () => {
     const hostile: ReviewPlan = structuredClone(plan);
     hostile.source.title = '</title><script>alert(1)</script> $& $1';
@@ -121,7 +133,7 @@ describe('renderHtml', () => {
     expect(page).toContain(
       '<title>&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt; $&amp; $1 · Bowi review</title>',
     );
-    expect(page.match(/<\/script>/g)).toHaveLength(2);
+    expect(page.match(/<\/script>/g)).toHaveLength(3);
     expect(embedded(page).hunks[0]!.lines[0]!.text).toBe("</script><!-- $& $` $'");
   });
 
@@ -133,7 +145,7 @@ describe('renderHtml', () => {
     expect(embedded(page).source.descriptionHtml).toBe(
       '<p><strong>Hi</strong> &lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt;</p>',
     );
-    expect(page.match(/<\/script>/g)).toHaveLength(2);
+    expect(page.match(/<\/script>/g)).toHaveLength(3);
     expect(pr.source.descriptionHtml).toBeUndefined();
     expect(embedded(await renderHtml(plan)).source.descriptionHtml).toBeUndefined();
   });

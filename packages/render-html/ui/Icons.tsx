@@ -104,11 +104,11 @@ export function StepIconBadge({ kind }: { kind: StepIcon }) {
 export function ReviewedIcon({ done }: { done: boolean }) {
   return done ? (
     <svg width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="Reviewed" class="icon">
-      <circle cx="9" cy="9" r="8" fill="var(--green)" />
+      <circle cx="9" cy="9" r="8" fill="var(--green-fill)" />
       <path
         d="M5.5 9.2l2.3 2.3 4.6-5"
         fill="none"
-        stroke="#fff"
+        stroke="var(--on-fill)"
         stroke-width="1.7"
         stroke-linecap="round"
         stroke-linejoin="round"
@@ -123,7 +123,7 @@ export function ReviewedIcon({ done }: { done: boolean }) {
       aria-label="Not reviewed"
       class="icon"
     >
-      <circle cx="9" cy="9" r="7.4" fill="none" stroke="#b8b7b1" stroke-width="1.3" />
+      <circle cx="9" cy="9" r="7.4" fill="none" stroke="var(--ring)" stroke-width="1.3" />
     </svg>
   );
 }
@@ -155,6 +155,20 @@ export const EyeIcon = () => (
   <Svg>
     <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" />
     <circle cx="8" cy="8" r="2" />
+  </Svg>
+);
+
+/** Dark mode button (M18): the moon switches to dark, the sun back to light. */
+export const MoonIcon = () => (
+  <Svg size={17}>
+    <path d="M13.5 9.6A5.75 5.75 0 016.4 2.5a5.75 5.75 0 107.1 7.1z" />
+  </Svg>
+);
+
+export const SunIcon = () => (
+  <Svg size={17}>
+    <circle cx="8" cy="8" r="3" />
+    <path d="M8 1.25v1.5M8 13.25v1.5M1.25 8h1.5M13.25 8h1.5M3.2 3.2l1.06 1.06M11.74 11.74l1.06 1.06M3.2 12.8l1.06-1.06M11.74 4.26l1.06-1.06" />
   </Svg>
 );
 

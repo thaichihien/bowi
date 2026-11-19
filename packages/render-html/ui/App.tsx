@@ -29,6 +29,7 @@ import { loadProgress, progressKey, saveProgress, type Progress } from './progre
 import { Dock } from './Dock.tsx';
 import { ReviewTab, type Position } from './Review.tsx';
 import { PostControls } from './Post.tsx';
+import { ThemeButton } from './Theme.tsx';
 import { reportFolder, ReviewStore, serveCommand, serverOf, type Server } from './review-store.ts';
 
 export type Tab = 'review' | 'description' | 'commits' | 'changes' | 'comments';
@@ -119,6 +120,7 @@ export function App({
             <div class="header-actions">
               <SaveStatus store={store} />
               <PostControls plan={plan} store={store} />
+              <ThemeButton />
             </div>
           }
         />

@@ -154,7 +154,7 @@ function CheckMark() {
     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
       <path
         d="M2 5.2l2 2 4-4.4"
-        stroke="#fff"
+        stroke="var(--on-fill)"
         stroke-width="1.8"
         stroke-linecap="round"
         stroke-linejoin="round"

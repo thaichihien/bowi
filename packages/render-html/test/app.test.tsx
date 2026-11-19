@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ReviewPlan } from '@bowi/core';
 import { renderMarkdown } from '../src/markdown.ts';
 import { App } from '../ui/App.tsx';
@@ -617,5 +617,78 @@ describe('Changes tab', () => {
     expect(text()).not.toContain('Load diff');
     await click('Expand all');
     expect(root.querySelectorAll('[aria-label="package-lock.json"] .ln').length).toBeGreaterThan(0);
+  });
+});
+
+describe('Dark mode (M18)', () => {
+  /** A stand-in for the system's colour scheme, which the page follows until a pick. */
+  const fakeSystem = (dark: boolean) => {
+    const listeners = new Set<() => void>();
+    const query = {
+      matches: dark,
+      addEventListener: (_: string, f: () => void) => listeners.add(f),
+      removeEventListener: (_: string, f: () => void) => listeners.delete(f),
+    };
+    window.matchMedia = ((q: string) =>
+      q === '(prefers-color-scheme: dark)' ? query : { ...query, matches: false }) as never;
+    return {
+      set: (d: boolean) =>
+        act(() => {
+          query.matches = d;
+          for (const f of listeners) f();
+        }),
+    };
+  };
+  const real = window.matchMedia;
+  const isDark = () => document.documentElement.classList.contains('dark');
+  const themeButton = () => root.querySelector<HTMLButtonElement>('.theme-btn')!;
+  // The page renders outside act, so its effects (the class on <html>) run a frame later.
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 20)));
+
+  beforeEach(() => document.documentElement.classList.remove('dark'));
+  afterEach(() => {
+    window.matchMedia = real;
+    document.documentElement.classList.remove('dark');
+  });
+
+  it('follows the system until the reviewer picks, live', async () => {
+    const system = fakeSystem(false);
+    show(local);
+    await settle();
+    expect(isDark()).toBe(false);
+    expect(themeButton().getAttribute('aria-label')).toBe('Switch to dark mode');
+    await system.set(true);
+    expect(isDark()).toBe(true);
+    expect(themeButton().getAttribute('aria-label')).toBe('Switch to light mode');
+    expect(localStorage.getItem('bowi:theme')).toBeNull();
+  });
+
+  it('remembers a pick, which then wins over the system', async () => {
+    const system = fakeSystem(true);
+    show(local);
+    await settle();
+    expect(isDark()).toBe(true);
+    await press(themeButton());
+    expect(isDark()).toBe(false);
+    expect(localStorage.getItem('bowi:theme')).toBe('light');
+    await system.set(true);
+    expect(isDark()).toBe(false);
+    // A new page load keeps the pick.
+    show(local, '', { keepStorage: true });
+    await settle();
+    expect(isDark()).toBe(false);
+    await press(themeButton());
+    expect(localStorage.getItem('bowi:theme')).toBe('dark');
+    await system.set(false);
+    expect(isDark()).toBe(true);
+  });
+
+  it('sits in the header of every tab, after Post to GitHub', async () => {
+    fakeSystem(false);
+    show(pr, '#commits');
+    const actions = [...root.querySelectorAll('.header-actions > *')].map(
+      (e) => e.getAttribute('aria-label') ?? e.textContent?.trim(),
+    );
+    expect(actions.slice(-2)).toEqual(['Post to GitHub', 'Switch to dark mode']);
   });
 });
