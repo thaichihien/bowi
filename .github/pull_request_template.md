@@ -1,6 +1,6 @@
 ## 📝 Summary
 
-<!-- What this pull request changes and why, in a few sentences. Name the milestone in docs/plan.md if it belongs to one (e.g. M11). -->
+<!-- What this pull request changes and why, in a few sentences. Name the milestone if it belongs to one (e.g. M11). -->
 
 ## 🏷️ Type of changes
 

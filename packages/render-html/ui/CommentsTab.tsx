@@ -3,7 +3,7 @@
  * lines it is about, outdated comments last; filters (all, not on GitHub, not saved, outdated),
  * folding, "Copy all as Markdown" and "Clear all comments" (asks first, inline). Opened as a file,
  * it says how to save. What went to GitHub is read-only (UI-28). The designs are the M10 and M11
- * canvases linked in docs/plan.md.
+ * canvases.
  */
 
 import { anchorLabel, reviewMarkdown, sortComments } from '@bowi/core/review';

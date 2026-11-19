@@ -254,7 +254,7 @@ Done in M8 with the `claude-code` provider only (§15 #6, #49–#55). The other 
 
 ### 7.12 HTML report
 
-The interactive prototype was the reference design up to M4. Since M5.5 the reference is the redesign canvas linked in `docs/plan.md`: a header, then four tabs: **Review** (groups sidebar, step view, moved-code view, noise summaries), **Description**, **Commits** and **Changes**. Requirements:
+The interactive prototype was the reference design up to M4. Since M5.5 the reference is the redesign canvas: a header, then four tabs: **Review** (groups sidebar, step view, moved-code view, noise summaries), **Description**, **Commits** and **Changes**. Requirements:
 
 | ID | Pri | Requirement |
 |---|---|---|
@@ -654,8 +654,8 @@ Each milestone ends with passing tests and a short note in `CHANGELOG.md`.
 | M6 | P1 items: outside references, commit and co-change edges, NestJS plugin, hints, config file, reviewed-state persistence, keyboard shortcuts | Corresponding tests pass |
 | M7 | Benchmark harness (§12.3) | Report printed for at least 2 TypeScript repos |
 | M8 | Optional AI enrichment (P2) | `--ai` improves titles/intents; partition invariant still enforced |
-| M9 | Release 0.1.0 on npm: one bundled package, `@bowi/cli`, CI, release workflow (`docs/plan.md`; later milestones are planned there) | The packed package, installed with npm into an empty folder, produces the same plan as the sources on Node 22.12 and 24, macOS and Linux |
-| M10 | Line comments in the report: select lines, write Markdown comments, a Comments tab, `bowi serve` to save them into `review-plan.json`, carried over on re-runs (`docs/plan.md`) | Comments written in the served page appear in the plan and survive a re-run on the same and on a changed diff; the page works opened as a file |
+| M9 | Release 0.1.0 on npm: one bundled package, `@bowi/cli`, CI, release workflow | The packed package, installed with npm into an empty folder, produces the same plan as the sources on Node 22.12 and 24, macOS and Linux |
+| M10 | Line comments in the report: select lines, write Markdown comments, a Comments tab, `bowi serve` to save them into `review-plan.json`, carried over on re-runs | Comments written in the served page appear in the plan and survive a re-run on the same and on a changed diff; the page works opened as a file |
 
 Rules for implementation:
 

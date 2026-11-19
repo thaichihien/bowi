@@ -10,7 +10,7 @@
  *   with one pill per step. Pills, and files of other steps, go to their step.
  *
  * Step colours follow the step icons (data teal, services blue, API purple, …). The design is
- * the report redesign canvas linked in docs/plan.md.
+ * the report redesign canvas.
  */
 
 import type { FileChange, Group, Step } from '@bowi/core/types';

@@ -2,7 +2,7 @@
  * The review page (requirement.md §7.12): a header with the pull request's facts, then the tabs
  * Review (groups and steps in reading order), Description (PRs, and any report with an AI
  * overview), Commits, Changes (every file in GitHub's order) and Comments (M10). The reference
- * designs are the M5.5 and M10 canvases linked in docs/plan.md.
+ * designs are the M5.5 and M10 canvases.
  */
 
 import type { ReviewPlan } from '@bowi/core/types';

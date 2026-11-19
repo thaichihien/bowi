@@ -3,7 +3,7 @@
  * goes where and as whom, and the way back to a pending review. This is the only way the page
  * sends anything to GitHub, and it does so through `bowi serve`: the token stays there. The two
  * ways of sending never look alike: "Sent as pending" (a draft only the reviewer sees) against
- * "Posted" (public). The design is the M11 canvas linked in docs/plan.md.
+ * "Posted" (public). The design is the M11 canvas.
  */
 
 import {

@@ -5,9 +5,8 @@ Bowi (short for _bowerbird_) turns a pull request into a guided review: related 
 ## Read first
 
 - `docs/requirement.md` — the spec. Requirement IDs (CLI-1, NOISE-2, GRP-4, …) are used in code comments. **§15 Open questions** records every decision, assumption and deviation from the spec; when something is unclear, add it there instead of guessing silently.
-- `docs/plan.md` — milestone plan M0–M8 and decisions taken. Do not start a later milestone's features early.
-- `CHANGELOG.md` — what each milestone delivered. M0–M11 and M14 are done (M5.5 = report redesign, M6 = P1 items, M7 = grouping benchmark, M8 = AI via `claude -p`, M9 = npm release 0.1.0, M9.1 = Windows, 0.1.1, M10 = line comments, M11 = posting them to GitHub, M14 = front-end frameworks); M12, M13 and M15–M17 are planned in `docs/plan.md` ("Roadmap after M8"). Each milestone after M9 ends with a minor release, except that 0.2.0 ships M10, M11 and M14 together (M14 moved up before M12).
-- Report design: the M5.5 redesign canvas linked in `docs/plan.md` (header, tabs Review / Description / Commits / Changes). `docs/prototype.html` is the older M4 reference (a bundled file; the page inside is a JSON string).
+- `CHANGELOG.md` — what each milestone delivered: M0–M11 and M14 (M5.5 = report redesign, M6 = P1 items, M7 = grouping benchmark, M8 = AI via `claude -p`, M9 = npm release 0.1.0, M9.1 = Windows, 0.1.1, M10 = line comments, M11 = posting them to GitHub, M14 = front-end frameworks). Since M9 each milestone ends with a minor release; 0.2.0 shipped M10, M11 and M14 together.
+- Report design: the M5.5 redesign canvas (header, tabs Review / Description / Commits / Changes). `docs/prototype.html` is the older M4 reference (a bundled file; the page inside is a JSON string).
 - `development-logs.md` (git-ignored, may not exist) — the owner's log of feedback on Bowi's code: logic and UI behavior, and decisions about them. If it exists, add an entry when the owner gives such feedback or decides such a question (or when you raise one), with date and time, and keep its "Waiting for you" list current. Do not log process topics (milestone go-aheads, pushing, cleanup, commit style, general questions).
 
 ## Architecture
