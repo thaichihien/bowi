@@ -6,9 +6,31 @@ import {
   diffBlocks,
   formatTimestamp,
   initials,
+  midSplit,
   relativeTime,
   splitRows,
 } from '../ui/model.ts';
+
+describe('middle cut of long names (M20)', () => {
+  it('keeps the start and the extension of a name', () => {
+    expect(midSplit('1730_add_email_verified.ts')).toEqual({
+      a: '1730_add_email_ve',
+      b: 'rified.ts',
+    });
+    // Short names are all "end": nothing to cut.
+    expect(midSplit('README.md')).toEqual({ a: '', b: 'README.md' });
+    expect(midSplit('Makefile')).toEqual({ a: '', b: 'Makefile' });
+    // A long extension keeps a few characters before it.
+    expect(midSplit('app.component.stories.tsx').b).toBe('tories.tsx');
+  });
+
+  it('keeps a short file name whole at the end of a path', () => {
+    expect(midSplit('src/migrations/1730_add_email.ts')).toEqual({
+      a: 'src/migrations/',
+      b: '1730_add_email.ts',
+    });
+  });
+});
 
 describe('GitHub file order', () => {
   it('puts subfolders before files at every level, then sorts by name', () => {

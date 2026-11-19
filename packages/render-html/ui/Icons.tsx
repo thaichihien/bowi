@@ -172,6 +172,14 @@ export const SunIcon = () => (
   </Svg>
 );
 
+/** The focus tour (M20): a frame around a point. */
+export const FocusIcon = () => (
+  <Svg>
+    <path d="M2 5.5V3a1 1 0 011-1h2.5M10.5 2H13a1 1 0 011 1v2.5M14 10.5V13a1 1 0 01-1 1h-2.5M5.5 14H3a1 1 0 01-1-1v-2.5" />
+    <circle cx="8" cy="8" r="2.25" />
+  </Svg>
+);
+
 export const CommitIcon = () => (
   <Svg>
     <circle cx="8" cy="8" r="2.75" />

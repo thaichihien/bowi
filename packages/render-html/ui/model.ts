@@ -190,6 +190,117 @@ export function baseName(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1);
 }
 
+/**
+ * A long name cut in the middle, so its start and its extension stay visible: `a` shrinks with
+ * an ellipsis and `b` (the end) is always shown. A path keeps its whole file name when that is
+ * short; a bare name keeps its last characters ("1730_add_e…rified.ts").
+ */
+export function midSplit(text: string): { a: string; b: string } {
+  const slash = text.lastIndexOf('/');
+  const name = text.slice(slash + 1);
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 ? name.length - dot : 0;
+  const keep = Math.min(
+    text.length,
+    slash >= 0 && name.length <= 24 ? name.length : Math.max(8, ext + 6),
+  );
+  return { a: text.slice(0, text.length - keep), b: text.slice(text.length - keep) };
+}
+
+/** One stop of the focus tour (M20): a file, at the first step that has it. */
+export interface TourStop {
+  file: FileChange;
+  /** None for a file without a diff (a rename, a binary file), which is in no step. */
+  step?: FlatStep;
+  /** The step's place in the reading order. */
+  position: number;
+}
+
+/**
+ * Every file once, in reading order: step by step, each file at the first step it belongs to.
+ * Files without a diff are in no step; they come last, in GitHub's order, so the tour covers the
+ * whole pull request.
+ */
+export function tourStops(model: Model, flat: FlatStep[]): TourStop[] {
+  const seen = new Set<string>();
+  const stops: TourStop[] = [];
+  flat.forEach((step, position) => {
+    for (const { file } of model.fileBlocks(step.step)) {
+      if (seen.has(file.id)) continue;
+      seen.add(file.id);
+      stops.push({ file, step, position });
+    }
+  });
+  for (const file of githubOrder(model.plan.files)) {
+    if (!seen.has(file.id)) stops.push({ file, position: flat.length });
+  }
+  return stops;
+}
+
+/**
+ * The steps the tour finishes at each stop: a step is gone through once the tour has passed its
+ * last file, so going on from that stop marks it reviewed.
+ */
+export function tourFinishes(model: Model, flat: FlatStep[], stops: TourStop[]): FlatStep[][] {
+  const at = new Map(stops.map((s, i) => [s.file.id, i]));
+  const finishes: FlatStep[][] = stops.map(() => []);
+  for (const f of flat) {
+    const last = Math.max(...model.fileBlocks(f.step).map((b) => at.get(b.file.id) ?? -1));
+    if (last >= 0) finishes[last]!.push(f);
+  }
+  return finishes;
+}
+
+/** A step or group title without its code marks, for labels. */
+export const plainTitle = (title: string) => title.replace(/`/g, '');
+
+/** Rule-based description of a group when there is no AI intent (the Review tab's group card). */
+export function describeGroup(model: Model, group: Group): string {
+  if (group.kind === 'noise') {
+    return 'Changes you usually do not need to read line by line. They are collapsed here, never removed: every step can show its raw diff.';
+  }
+  if (group.kind === 'move') {
+    return 'Code moved between places. Lines that changed during the move are highlighted; everything else is identical.';
+  }
+  const named = model.groupSymbols(group).filter((s) => s.kind !== 'file');
+  const count = (c: string) => named.filter((s) => s.change === c).length;
+  const parts = [
+    [count('added'), 'new'],
+    [count('signature') + count('renamed'), 'with a changed signature or name'],
+    [count('body'), 'changed inside'],
+    [count('deleted'), 'removed'],
+  ]
+    .filter(([n]) => (n as number) > 0)
+    .map(([n, label]) => `${n} ${label}`);
+  const files = model.groupFiles(group).size;
+  return parts.length
+    ? `Symbols: ${parts.join(', ')}; across ${files} file${files === 1 ? '' : 's'}.`
+    : `Changes across ${files} file${files === 1 ? '' : 's'} without parsed symbols.`;
+}
+
+/**
+ * The focus tour's sentence about a group: the group card's for code, what moved where for moved
+ * code, and a short one for noise.
+ */
+export function tourNote(model: Model, group: Group): string {
+  if (group.intent) return group.intent;
+  if (group.kind === 'noise') return 'Changes you usually do not need to read line by line.';
+  if (group.kind !== 'move') return describeGroup(model, group);
+  const moves = group.steps.flatMap((step) => {
+    const to = model.hunksOf(step).find((h) => h.move && h.newLines > 0);
+    if (!to?.move) return [];
+    const from = baseName(model.files.get(to.move.fromFileId)?.path ?? '');
+    const here = baseName(model.files.get(to.fileId)!.path);
+    const changed = to.move.changedLineIndexes.length;
+    const where = from === here ? `within ${here}` : `from ${from} to ${here}`;
+    const how = changed
+      ? `, with ${changed} line${changed === 1 ? '' : 's'} changed on the way`
+      : ', unchanged';
+    return [`${model.stepSubtitle(step)} moves ${where}${how}`];
+  });
+  return moves.length ? `${moves.join('; ')}.` : describeGroup(model, group);
+}
+
 const CHANGE_LABELS: Record<ChangedSymbol['change'], string> = {
   added: 'new',
   deleted: 'removed',

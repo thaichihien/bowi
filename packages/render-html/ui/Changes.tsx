@@ -15,6 +15,7 @@ import {
 } from './Comments.tsx';
 import { CopyButton } from './Copy.tsx';
 import { DiffBlocks, HunkBarText, SplitLines, UnifiedLines } from './Diff.tsx';
+import { MidName, PathName } from './Names.tsx';
 import { Chevron, FileStatusIcon, FolderIcon } from './Icons.tsx';
 import {
   baseName,
@@ -123,7 +124,7 @@ export function ChangesTab({ model }: { model: Model }) {
 }
 
 /** Why a file starts closed, as GitHub words it; undefined when it starts open. */
-function closedReason(model: Model, file: FileChange): string | undefined {
+export function closedReason(model: Model, file: FileChange): string | undefined {
   if (file.generated) return 'Generated files are not rendered by default.';
   if (file.status === 'deleted') return 'This file was deleted.';
   if (changedLines(model.hunksOfFile(file.id)) > LARGE_FILE_LINES)
@@ -132,7 +133,7 @@ function closedReason(model: Model, file: FileChange): string | undefined {
 }
 
 /** For files without a text diff. */
-function noDiffNote(file: FileChange): string {
+export function noDiffNote(file: FileChange): string {
   if (file.status === 'binary') return 'Binary file not shown.';
   if (file.status === 'renamed') return 'File renamed without changes.';
   if (file.status === 'copied') return 'File copied without changes.';
@@ -172,11 +173,11 @@ function FileDiff(props: {
         >
           <Chevron open={open} />
         </button>
-        <span class="mono gh-path">
-          {file.oldPath && file.oldPath !== file.path
-            ? `${file.oldPath} → ${file.path}`
-            : file.path}
-        </span>
+        {file.oldPath && file.oldPath !== file.path ? (
+          <span class="mono gh-path">{`${file.oldPath} → ${file.path}`}</span>
+        ) : (
+          <PathName path={file.path} class="gh-path" />
+        )}
         <CopyButton text={file.path} label="Copy file path" />
         {badge && <span class={`badge badge-${file.status}`}>{badge}</span>}
         <FileCommentCount path={file.path} />
@@ -278,7 +279,7 @@ function TreeView({ dir, depth }: { dir: Dir; depth: number }) {
           }
         >
           <FileStatusIcon status={f.status} />
-          <span>{baseName(f.path)}</span>
+          <MidName text={baseName(f.path)} />
         </button>
       ))}
     </>

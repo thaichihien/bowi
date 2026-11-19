@@ -16,6 +16,7 @@ import {
   type Variant,
 } from './Comments.tsx';
 import { Chevron } from './Icons.tsx';
+import { PathName } from './Names.tsx';
 import {
   changeLabel,
   diffBlocks,
@@ -79,7 +80,7 @@ export function FileCard({
           onClick={() => setOpen(!open)}
         >
           <Chevron open={open} />
-          <FilePath path={file.path} />
+          <PathName path={file.path} />
         </button>
         <div class="file-side">
           <span class="mono delta">
@@ -138,17 +139,6 @@ export function FileCard({
   );
 }
 
-/** The path on one line: the folder muted and cut first when space runs out, the file name whole. */
-function FilePath({ path }: { path: string }) {
-  const slash = path.lastIndexOf('/') + 1;
-  return (
-    <span class="mono path">
-      {slash > 0 && <span class="path-dir">{path.slice(0, slash)}</span>}
-      <span class="path-name">{path.slice(slash)}</span>
-    </span>
-  );
-}
-
 function CheckMark() {
   return (
     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
@@ -163,7 +153,7 @@ function CheckMark() {
   );
 }
 
-function HunkView({
+export function HunkView({
   model,
   hunk,
   path,
@@ -370,7 +360,7 @@ export function MovedView({ model, to, from }: { model: Model; to: Hunk; from: H
       <div class="card file">
         <div class="file-head-row moved">
           <div class="file-head" title={toFile.path}>
-            <FilePath path={toFile.path} />
+            <PathName path={toFile.path} />
           </div>
           <div class="file-side">
             <span class="mono delta">

@@ -19,10 +19,12 @@ import { useEffect, useState } from 'preact/hooks';
 import { buildTree, type Dir } from './Changes.tsx';
 import { Chevron, FileStatusIcon, FolderIcon, ReviewedIcon, StepIconBadge } from './Icons.tsx';
 import { Inline } from './Inline.tsx';
+import { MidName } from './Names.tsx';
 import {
   baseName,
   githubOrder,
   KIND_LABELS,
+  plainTitle,
   type FlatStep,
   type Model,
   type ReadingMode,
@@ -65,8 +67,6 @@ export function showFile(fileId: string): void {
 /** Steps tinted alike share a colour: moved code, noise, config and other code are grey. */
 const kindClass = (icon: StepIcon) =>
   `kd-${['config', 'file', 'move', 'generated', 'format'].includes(icon) ? 'grey' : icon}`;
-
-const plainTitle = (title: string) => title.replace(/`/g, '');
 
 export function Sidebar(props: {
   model: Model;
@@ -375,7 +375,7 @@ interface Row {
  * A folder tree as in the Changes tab, with guide lines and folders that fold. Single-child
  * folder chains are one row (`src/auth`). Fold state lasts until the tree is remounted.
  */
-function FileTree(props: {
+export function FileTree(props: {
   id?: string;
   label: string;
   files: FileChange[];
@@ -418,7 +418,7 @@ function FileTree(props: {
           {guides(depth)}
           <span class="fsp" aria-hidden="true" />
           <FileStatusIcon status={f.status} />
-          <span class="tname">{baseName(f.path)}</span>
+          <MidName text={baseName(f.path)} class="tname" />
           {r.noise && <span class="ntag">noise</span>}
           <span class="grow" />
           {r.chips?.map((c) => (

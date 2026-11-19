@@ -36,9 +36,19 @@ interface LineSelection {
   b: RowPick;
 }
 
+/**
+ * Where diffs are shown: the page, or the focus tour over it (M20). The same file can be on both,
+ * so a comment box belongs to the surface it was opened on and shows only there.
+ */
+export type Surface = 'page' | 'tour';
+
 export interface CommentsApi {
   store: ReviewStore;
   now: number;
+  surface: Surface;
+  /** The same comments, seen from another surface. */
+  on(surface: Surface): CommentsApi;
+  /** The lines picked on this surface. */
   selection: LineSelection | undefined;
   pick(path: string, hunk: Hunk, row: RowPick, extend: boolean): void;
   dragOver(path: string, hunk: Hunk, row: RowPick): void;
@@ -46,6 +56,7 @@ export interface CommentsApi {
   add(body: string): void;
   draft: string;
   setDraft(text: string): void;
+  /** The file whose comment box is open on this surface. */
   fileComposer: string | undefined;
   openFile(path: string): void;
   closeFile(): void;
@@ -71,9 +82,9 @@ const TOAST_MS = 8000;
 
 /** The comment state of the page; App provides it to both tabs through CommentsContext. */
 export function useCommentsApi(store: ReviewStore, headSha: string, now: number): CommentsApi {
-  const [selection, setSelection] = useState<LineSelection>();
+  const [picked, setSelection] = useState<LineSelection & { surface: Surface }>();
   const [draft, setDraft] = useState('');
-  const [fileComposer, setFileComposer] = useState<string>();
+  const [openFile, setFileComposer] = useState<{ path: string; surface: Surface }>();
   const [fileDraft, setFileDraft] = useState('');
   const [hideAll, setHideAll] = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -92,97 +103,103 @@ export function useCommentsApi(store: ReviewStore, headSha: string, now: number)
   }, [toast]);
 
   const stamp = () => new Date().toISOString();
-  return {
-    store,
-    now,
-    selection,
-    pick(path, hunk, row, extend) {
-      dragging.current = true;
-      if (extend && selection && selection.path === path && selection.hunk.id === hunk.id) {
-        setSelection({ ...selection, b: row });
-      } else {
-        setSelection({ path, hunk, a: row, b: row });
-      }
-    },
-    dragOver(path, hunk, row) {
-      if (!dragging.current || !selection) return;
-      if (selection.path !== path || selection.hunk.id !== hunk.id) return;
-      if (selection.b.index !== row.index) setSelection({ ...selection, b: row });
-    },
-    cancel() {
-      setSelection(undefined);
-      setDraft('');
-    },
-    add(body) {
-      if (!selection || !body.trim()) return;
-      const { path, hunk, a, b } = selection;
-      const [first, last] = a.index <= b.index ? [a, b] : [b, a];
-      const at = stamp();
-      store.add({
-        id: newCommentId(),
-        body: body.trim(),
-        anchor: anchorFor(path, headSha, hunk, first, last),
-        snippet: snippetOf(hunk, first.index, last.index),
-        createdAt: at,
-        updatedAt: at,
-        status: 'active',
-      });
-      // What was just written is always shown.
-      setHideAll(false);
-      setSelection(undefined);
-      setDraft('');
-    },
-    draft,
-    setDraft,
-    fileComposer,
-    openFile(path) {
-      setFileComposer(path);
-      setFileDraft('');
-    },
-    closeFile() {
-      setFileComposer(undefined);
-      setFileDraft('');
-    },
-    addFile(path, body) {
-      if (!body.trim()) return;
-      const at = stamp();
-      store.add({
-        id: newCommentId(),
-        body: body.trim(),
-        anchor: { path, headSha },
-        snippet: [],
-        createdAt: at,
-        updatedAt: at,
-        status: 'active',
-      });
-      setHideAll(false);
-      setFileComposer(undefined);
-      setFileDraft('');
-    },
-    fileDraft,
-    setFileDraft,
-    hideAll,
-    setHideAll(on) {
-      setHideAll(on);
-      // Showing all comments also brings back the ones hidden one by one.
-      if (!on) setHidden(new Set());
-    },
-    isHidden: (id) => hideAll || hidden.has(id),
-    hide: (id) => setHidden(new Set([...hidden, id])),
-    show(ids) {
-      const next = new Set(hidden);
-      for (const id of ids) next.delete(id);
-      setHidden(next);
-      setHideAll(false);
-    },
-    remove(id) {
-      const undo = store.remove(id);
-      setToast({ text: 'Comment deleted', undo, id: Date.now() });
-    },
-    notify: (text, undo) => setToast({ text, undo, id: Date.now() }),
-    toast,
-    dismissToast: () => setToast(undefined),
+  const on = (surface: Surface): CommentsApi => {
+    const selection = picked?.surface === surface ? picked : undefined;
+    return {
+      store,
+      now,
+      surface,
+      on,
+      selection,
+      pick(path, hunk, row, extend) {
+        dragging.current = true;
+        if (extend && selection && selection.path === path && selection.hunk.id === hunk.id) {
+          setSelection({ ...selection, b: row });
+        } else {
+          setSelection({ path, hunk, a: row, b: row, surface });
+        }
+      },
+      dragOver(path, hunk, row) {
+        if (!dragging.current || !selection) return;
+        if (selection.path !== path || selection.hunk.id !== hunk.id) return;
+        if (selection.b.index !== row.index) setSelection({ ...selection, b: row });
+      },
+      cancel() {
+        setSelection(undefined);
+        setDraft('');
+      },
+      add(body) {
+        if (!picked || !body.trim()) return;
+        const { path, hunk, a, b } = picked;
+        const [first, last] = a.index <= b.index ? [a, b] : [b, a];
+        const at = stamp();
+        store.add({
+          id: newCommentId(),
+          body: body.trim(),
+          anchor: anchorFor(path, headSha, hunk, first, last),
+          snippet: snippetOf(hunk, first.index, last.index),
+          createdAt: at,
+          updatedAt: at,
+          status: 'active',
+        });
+        // What was just written is always shown.
+        setHideAll(false);
+        setSelection(undefined);
+        setDraft('');
+      },
+      draft,
+      setDraft,
+      fileComposer: openFile?.surface === surface ? openFile.path : undefined,
+      openFile(path) {
+        setFileComposer({ path, surface });
+        setFileDraft('');
+      },
+      closeFile() {
+        setFileComposer(undefined);
+        setFileDraft('');
+      },
+      addFile(path, body) {
+        if (!body.trim()) return;
+        const at = stamp();
+        store.add({
+          id: newCommentId(),
+          body: body.trim(),
+          anchor: { path, headSha },
+          snippet: [],
+          createdAt: at,
+          updatedAt: at,
+          status: 'active',
+        });
+        setHideAll(false);
+        setFileComposer(undefined);
+        setFileDraft('');
+      },
+      fileDraft,
+      setFileDraft,
+      hideAll,
+      setHideAll(on) {
+        setHideAll(on);
+        // Showing all comments also brings back the ones hidden one by one.
+        if (!on) setHidden(new Set());
+      },
+      isHidden: (id) => hideAll || hidden.has(id),
+      hide: (id) => setHidden(new Set([...hidden, id])),
+      show(ids) {
+        const next = new Set(hidden);
+        for (const id of ids) next.delete(id);
+        setHidden(next);
+        setHideAll(false);
+      },
+      remove(id) {
+        const undo = store.remove(id);
+        setToast({ text: 'Comment deleted', undo, id: Date.now() });
+      },
+      notify: (text, undo) => setToast({ text, undo, id: Date.now() }),
+      toast,
+      dismissToast: () => setToast(undefined),
+    };
   };
+  return on('page');
 }
 
 /** Active comments on lines of `path` whose last line is this row (in this column, for split). */

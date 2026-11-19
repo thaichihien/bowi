@@ -1,21 +1,31 @@
 /**
  * Review tab: the reading-order switch and progress (UI-10, UI-11), groups and steps in the
  * sidebar with a quick "reviewed" mark per step (UI-3), the current group's card (UI-4), the
- * current step with Viewed files (UI-5..8, UI-23), the floating step actions (UI-11) and the
- * keyboard: `j` / `k` next and previous step, `r` toggles reviewed (UI-13).
+ * current step with Viewed files (UI-5..8, UI-23), the floating step actions (UI-11), the focus
+ * tour (M20, Tour.tsx) and the keyboard: `j` / `k` next and previous step, `r` toggles reviewed
+ * (UI-13).
  */
 
 import type { Group } from '@bowi/core/types';
 import { useEffect, useState } from 'preact/hooks';
 import { HideCommentsToggle } from './Comments.tsx';
 import { Dock } from './Dock.tsx';
-import { ArrowIcon, CheckIcon, Chevron, StepIconBadge } from './Icons.tsx';
+import { ArrowIcon, CheckIcon, Chevron, FocusIcon, StepIconBadge } from './Icons.tsx';
 import { FinishDialog, type FinishResult } from './Finish.tsx';
 import { Inline } from './Inline.tsx';
-import { KIND_LABELS, writtenBy, type FlatStep, type Model, type ReadingMode } from './model.ts';
+import {
+  describeGroup,
+  KIND_LABELS,
+  plainTitle,
+  writtenBy,
+  type FlatStep,
+  type Model,
+  type ReadingMode,
+} from './model.ts';
 import { emptyProgress, markStep, toggleViewed, viewedKey, type Progress } from './progress.ts';
 import { Sidebar } from './Sidebar.tsx';
 import { StepBody } from './StepView.tsx';
+import { FocusTour } from './Tour.tsx';
 
 export interface Position {
   groupIndex: number;
@@ -45,16 +55,24 @@ export function ReviewTab(props: {
   const [rawOpen, setRawOpen] = useState<Set<string>>(new Set());
   const [finish, setFinish] = useState<FinishResult>();
   const [confirmReset, setConfirmReset] = useState(false);
+  const [touring, setTouring] = useState(false);
   const group = model.plan.groups[current.groupIndex];
   const position = flat.findIndex((f) => f.step.id === current.stepId);
   const currentStep = position >= 0 ? flat[position] : undefined;
   const done = flat.filter((f) => reviewed.has(f.step.id)).length;
   const pct = flat.length ? Math.round((done / flat.length) * 100) : 0;
   const mark = (stepId: string, on: boolean) => updateProgress((p) => markStep(p, stepId, on));
+  // Finish marks the last steps, then celebrates or lists what is left (UI-24). The step bar
+  // finishes the current step, the focus tour the steps its last file ends.
+  const finishWith = (stepIds: string[]) => {
+    const next = stepIds.reduce((p, id) => markStep(p, id, true), progress);
+    updateProgress((p) => stepIds.reduce((q, id) => markStep(q, id, true), p));
+    setFinish(flat.every((f) => next.reviewed.has(f.step.id)) ? 'complete' : 'incomplete');
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (finish || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (finish || touring || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       if (e.key === 'j' || e.key === 'k') {
@@ -70,7 +88,7 @@ export function ReviewTab(props: {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [finish, flat, position, currentStep, go, updateProgress]);
+  }, [finish, touring, flat, position, currentStep, go, updateProgress]);
 
   return (
     <div class="wrap tab-page review-page">
@@ -94,6 +112,16 @@ export function ReviewTab(props: {
             </button>
           </div>
           <HideCommentsToggle />
+          {flat.length > 0 && (
+            <button
+              class="btn small tour-btn"
+              title="Go through the changes one file at a time"
+              onClick={() => setTouring(true)}
+            >
+              <FocusIcon />
+              Focus tour
+            </button>
+          )}
         </div>
         <div class="toolbar-group progress">
           {flat.length > 0 && done === flat.length ? (
@@ -181,18 +209,22 @@ export function ReviewTab(props: {
               rawOpen={rawOpen.has(currentStep.step.id)}
               toggleRaw={() => setRawOpen(toggle(rawOpen, currentStep.step.id))}
               go={go}
-              finish={() => {
-                // Finish marks the last step, then celebrates or lists what is left (UI-24).
-                const next = markStep(progress, currentStep.step.id, true);
-                updateProgress((p) => markStep(p, currentStep.step.id, true));
-                setFinish(
-                  flat.every((f) => next.reviewed.has(f.step.id)) ? 'complete' : 'incomplete',
-                );
-              }}
+              finish={() => finishWith([currentStep.step.id])}
             />
           )}
         </main>
       </div>
+      {touring && (
+        <FocusTour
+          model={model}
+          flat={flat}
+          stepId={currentStep?.step.id}
+          reviewed={reviewed}
+          mark={mark}
+          finish={finishWith}
+          close={() => setTouring(false)}
+        />
+      )}
       {finish && (
         <FinishDialog
           model={model}
@@ -315,8 +347,6 @@ function CurrentStep(props: {
   );
 }
 
-const plainTitle = (title: string) => title.replace(/`/g, '');
-
 function GroupHeader({ model, group, index }: { model: Model; group: Group; index: number }) {
   // Closed by default: the reasons are evidence to check when the grouping looks surprising.
   const [whyOpen, setWhyOpen] = useState(false);
@@ -345,7 +375,7 @@ function GroupHeader({ model, group, index }: { model: Model; group: Group; inde
         {group.titleSource === 'ai' && <span class="chip k-ai">AI</span>}
       </h2>
       <p class="intent">
-        <Inline text={group.intent ?? describe(model, group)} />
+        <Inline text={group.intent ?? describeGroup(model, group)} />
       </p>
       {group.moveSuggestions && group.moveSuggestions.length > 0 && (
         <MoveSuggestions model={model} group={group} />
@@ -439,28 +469,4 @@ function MoveSuggestions({ model, group }: { model: Model; group: Group }) {
       )}
     </div>
   );
-}
-
-/** Rule-based description when there is no AI intent. */
-function describe(model: Model, group: Group): string {
-  if (group.kind === 'noise') {
-    return 'Changes you usually do not need to read line by line. They are collapsed here, never removed: every step can show its raw diff.';
-  }
-  if (group.kind === 'move') {
-    return 'Code moved between places. Lines that changed during the move are highlighted; everything else is identical.';
-  }
-  const named = model.groupSymbols(group).filter((s) => s.kind !== 'file');
-  const count = (c: string) => named.filter((s) => s.change === c).length;
-  const parts = [
-    [count('added'), 'new'],
-    [count('signature') + count('renamed'), 'with a changed signature or name'],
-    [count('body'), 'changed inside'],
-    [count('deleted'), 'removed'],
-  ]
-    .filter(([n]) => (n as number) > 0)
-    .map(([n, label]) => `${n} ${label}`);
-  const files = model.groupFiles(group).size;
-  return parts.length
-    ? `Symbols: ${parts.join(', ')}; across ${files} file${files === 1 ? '' : 's'}.`
-    : `Changes across ${files} file${files === 1 ? '' : 's'} without parsed symbols.`;
 }

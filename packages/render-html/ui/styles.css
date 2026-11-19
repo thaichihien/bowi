@@ -157,6 +157,8 @@
   --shadow-dialog: 0 24px 60px rgba(28, 28, 26, 0.25);
   --shadow-thread: 0 1px 2px rgba(28, 28, 26, 0.05);
   --backdrop: rgba(28, 28, 26, 0.32);
+  --tour-backdrop: rgba(28, 28, 26, 0.42);
+  --shadow-tour: 0 24px 64px rgba(28, 28, 26, 0.3);
   --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --gh-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
@@ -309,6 +311,8 @@
     --shadow-dialog: 0 0 0 1px #383835, 0 24px 64px rgba(0, 0, 0, 0.6);
     --shadow-thread: 0 1px 2px rgba(0, 0, 0, 0.3);
     --backdrop: rgba(0, 0, 0, 0.62);
+    --tour-backdrop: rgba(0, 0, 0, 0.62);
+    --shadow-tour: 0 0 0 1px #383835, 0 24px 64px rgba(0, 0, 0, 0.6);
   }
   /* Syntax colours: each token has github-light as its color and github-dark in --d. */
   :root.dark .code span[style] {
@@ -1078,15 +1082,32 @@ button.file-head:hover {
   font-size: 13px;
 }
 .path-dir {
-  flex: 0 1 auto;
+  /* The folder gives way long before the file name does. */
+  flex: 0 1000 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--muted);
 }
 .path-name {
-  flex: none;
+  flex: 0 1 auto;
   font-weight: 600;
+}
+/* A name cut in the middle (Names.tsx): the start shrinks with an ellipsis, the end stays. */
+.mid {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.mid > .ma {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mid > .mb {
+  flex: none;
 }
 .file-sub .sym {
   min-width: 0;
@@ -2140,6 +2161,13 @@ button.tr:hover {
   font-weight: 600;
   color: var(--gh-text);
   overflow-wrap: anywhere;
+}
+.path.gh-path {
+  flex: 0 1 auto;
+}
+/* GitHub's look: one colour for the whole path; only the cut is Bowi's (folder first). */
+.gh-path .path-dir {
+  color: inherit;
 }
 .badge {
   font-size: 11.5px;
@@ -3859,4 +3887,248 @@ button.frow.hit:hover {
 .frow > .fstat,
 .frow > svg {
   flex: none;
+}
+
+/* Focus tour (M20): one file at a time in a dialog over the Review tab. Design: the canvas. */
+.btn.small.tour-btn {
+  background: var(--accent-soft);
+  border-color: var(--avatar-bg);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.btn.small.tour-btn:hover {
+  background: var(--avatar-bg);
+}
+.tour-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px;
+  background: var(--tour-backdrop);
+}
+.tour {
+  width: 100%;
+  max-width: 1280px;
+  height: min(calc(100vh - 48px), 900px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  border-radius: 16px;
+  box-shadow: var(--shadow-tour);
+  outline: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tour {
+    animation: tour-in 0.18s ease-out both;
+  }
+}
+@keyframes tour-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.tour-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 16px 18px 28px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.tour-head-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tour-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.tour-title {
+  margin: 8px 0 4px;
+  font-size: 19px;
+  line-height: 26px;
+  font-weight: 650;
+  color: var(--text);
+}
+.tour-note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--text-2);
+}
+.tour-x {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.tour-x:hover {
+  background: var(--hover-soft);
+  color: var(--text);
+}
+.tour-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+.tour-tree {
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 10px 8px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+.tour-tree .frow.tour-on {
+  background: var(--avatar-bg);
+  color: var(--accent-ink);
+  font-weight: 650;
+  box-shadow: inset 0 0 0 1px var(--info-line);
+}
+/* The diff fills its pane, edge to edge; the file header stays pinned while it scrolls. */
+.tour-file {
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+}
+.tour-card {
+  min-height: 100%;
+  padding-bottom: 24px;
+}
+.tour-fh {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 4px;
+  padding: 14px 24px 12px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.tour-fh .tfh-path {
+  font-size: 14px;
+  line-height: 22px;
+}
+.tour-fh .tfh-path .path-name {
+  font-size: 15px;
+  font-weight: 650;
+}
+.tfh-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.file-sub.tfh-sub {
+  padding-left: 0;
+  font-size: 12.5px;
+}
+.tfh-hint {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.tour-msg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 20px 24px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.tour-file .thread,
+.tour-file .composer {
+  max-width: 900px;
+}
+.tour-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.tour-foot .btn {
+  max-width: 40%;
+}
+.tour-lbl {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tour-pos {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+.tour-keys kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--control);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 17px;
+  color: var(--text-2);
+  text-align: center;
+}
+.tour-x:focus-visible,
+.btn.small.tour-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+@media (max-width: 800px) {
+  .tour-scrim {
+    padding: 0;
+  }
+  .tour {
+    height: 100vh;
+    border-radius: 0;
+  }
+  .tour-head {
+    padding-left: 16px;
+  }
+  .tour-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .tour-tree {
+    max-height: 150px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .tfh-hint,
+  .tour-keys,
+  .tour-lbl {
+    display: none;
+  }
 }

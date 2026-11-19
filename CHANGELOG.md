@@ -11,6 +11,15 @@
 - Size: the page template grows by 9 KB. `review.html` of the email-verification fixture goes from 348 KB to 370 KB (+6%) and of sindresorhus/ky#874 from 1,035 KB to 1,148 KB (+11%), almost all of it the second colour of each highlighted token. `review-plan.json` does not change: highlighting exists only in the page's copy of the plan.
 - Text tokens meet 4.5:1 contrast in dark; the white ticks on the dark green fill are icons (3:1).
 
+### M20 — Focus tour
+
+- A second way through the Review tab (UI-30): "Focus tour" in the toolbar opens a dialog that shows the pull request one file at a time, full width, in reading order: step by step, each file at the first step it belongs to, with all its hunks. Files without a diff (renames without changes, binary files) come last, so the tour covers every file. It starts at the first file of the current step. Design: the report redesign canvas (§15 #80).
+- On top, the group's kind, "Step 2 of 8 · Services", the group title and one sentence: the group card's for code, what moved where for moved code ("`slugify()` moves from helpers.ts to string.ts, with 1 line changed on the way"), a short line for noise. On the left, the whole pull request's folder tree, folded except the folders on the current file's path, the current file outlined, the others muted; it refolds as the tour moves, and a click on a file goes there. On the right, the file's two-line header pinned above its diff; generated, deleted and large files wait behind "Load diff", as in the Changes tab.
+- Comments work as in the step view and are the same comments: + on a line, Shift-click for a range, the same editor, a comment on the whole file. A comment box shows only where it was opened, never in the tour and the step view at once; closing the tour closes a box left open in it.
+- Going through a step's files marks it reviewed (owner's request): on a step's last file the button says so ("Mark Tests reviewed · Next: README.md"), and Next or → marks the step on the way. Going back never unmarks, and jumping from the tree marks nothing. The top line shows "Reviewed" on a reviewed step. The last file has "Finish review", as the step bar does: it closes the tour and opens the same dialog, "Review complete" or the steps still to review (UI-24).
+- ← and → move between files and Esc closes, only while focus is in the tour and never while typing in a comment; the page's own keys (j, k, r) wait while it is open. A 49-file pull request (honojs/hono#5466) moves from file to file in about 35 ms.
+- Long file names are cut in the middle, so the start and the extension stay visible ("1730_add_e…rified.ts"), with the full name on hover: in the Review tab's trees and file headers, the tour, and the Changes tab's tree and headers. In a path the folder is cut first.
+
 ### Review tab
 
 - The step pills above the Files tree are bigger: eight to a row instead of ten (about 31 px instead of 23 px in the sidebar), with larger numbers (owner's request).
