@@ -337,6 +337,25 @@ describe('fingerprints', () => {
     ]);
   });
 
+  it('see changes inside Markdown code blocks and HTML blocks', async () => {
+    // The grammar keeps only punctuation as tokens there: the text itself must count.
+    const doc = (code: string, html: string) =>
+      `# A\n\n\`\`\`js\nky(url, {\n\tstatusCodes: ${code},\n\tlimit: 10\n});\n\`\`\`\n\n    indented ${code}\n\n<div>\n${html}\n</div>\n`;
+    const base = await parse(doc('[413]', 'Hello'), 'markdown');
+    const number = await parse(doc('[500]', 'Hello'), 'markdown');
+    const html = await parse(doc('[413]', 'Bye'), 'markdown');
+    const spacing = await parse(
+      doc('[413]', 'Hello').replace('limit: 10', 'limit:   10'),
+      'markdown',
+    );
+    expect(number.fingerprint).not.toBe(base.fingerprint);
+    expect(number.coverFingerprint(4, 7)).not.toBe(base.coverFingerprint(4, 7));
+    expect(html.fingerprint).not.toBe(base.fingerprint);
+    expect(spacing.fingerprint).toBe(base.fingerprint);
+    // A code line without punctuation is still a line with content.
+    expect(base.isContentLine(6)).toBe(true);
+  });
+
   it('know which lines hold code, not only comments', async () => {
     const src = await parse(
       '/**\n\tDoc text without a star.\n*/\nconst a = 1; // trailing\n// alone\nconst b = `x\ny`;\n',

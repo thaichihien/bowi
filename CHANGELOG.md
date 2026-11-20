@@ -36,6 +36,10 @@ From the owner's look at sindresorhus/ky#874 (§15 #82). Names and labels only: 
 - A group of tests, with or without the docs about them, is named after its test files ("Tests in `test/retry.ts`") and is a "test" group, instead of being named after a helper or a local name in the tests (`formatAsctimeDate()`, `fetch()`).
 - Markdown section names: headings listed without text between them (`ky.get(…)` … `ky.query(…)`) no longer give their name to the sections after them (`API.options.retry`, was `API.ky.query(input, options?).options.retry`), and a sub-heading that repeats its parent's name is not named twice (`options.hooks.beforeRetry`, was `options.hooks.hooks.beforeRetry`).
 
+### Fix: edits inside Markdown code examples
+
+- A changed word or number inside a Markdown code block or HTML block was taken for formatting: the grammar keeps only punctuation there as tokens, so `statusCodes: [413]` and `statusCodes: [500]` in a readme example looked the same, and a code line without punctuation counted as blank (found by the owner on sindresorhus/ky#874). These blocks are now compared by their text, whitespace runs collapsed and list indentation ignored, like paragraphs (§15 #83). Grouping benchmark: 4 of 229 cases changed, Bowi 0.449 → 0.452 mean ARI, at least as good as by folder in 147 cases (146 before).
+
 ### Review tab
 
 - The step pills above the Files tree are bigger: eight to a row instead of ten (about 31 px instead of 23 px in the sidebar), with larger numbers (owner's request).
