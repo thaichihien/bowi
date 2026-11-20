@@ -10,6 +10,7 @@
  *   dist/bin.js       Node version check, then loads dist/bowi.js
  *   dist/bowi.js      the CLI and every @bowi/* package
  *   grammars/ queries/ template/
+ *   skills/bowi/SKILL.md   the skill for Claude Code and Codex (M19), copied by the user
  *
  * Code that finds those folders, and package.json for the version, goes one folder up from its
  * own module: that holds in the sources (packages/<name>/src/) and in dist/ alike.
@@ -124,6 +125,7 @@ export async function buildPackage(): Promise<string> {
   });
   mkdirSync(join(PACKAGE_DIR, 'template'));
   cpSync(template, join(PACKAGE_DIR, 'template', 'index.html'));
+  cpSync(join(ROOT, 'skills'), join(PACKAGE_DIR, 'skills'), { recursive: true });
   for (const file of ['README.md', 'LICENSE', 'CHANGELOG.md']) {
     cpSync(join(ROOT, file), join(PACKAGE_DIR, file));
   }
@@ -141,7 +143,7 @@ export async function buildPackage(): Promise<string> {
     bugs: { url: 'https://github.com/thaichihien/bowi/issues' },
     type: 'module',
     bin: { bowi: 'dist/bin.js' },
-    files: ['dist', 'grammars', 'queries', 'template'],
+    files: ['dist', 'grammars', 'queries', 'skills', 'template'],
     engines: { node: '>=22.12.0' },
     // Windows since 0.1.1 (§15 #63); npm refuses other systems instead of installing.
     os: ['darwin', 'linux', 'win32'],

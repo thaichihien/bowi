@@ -84,6 +84,7 @@ bun run bench explain <case>                             # one case: groups, com
 bun run bench:select <owner/repo …>                      # pick cases (local only; ask the owner which repositories)
 ```
 
+- `skills/bowi/SKILL.md` is the skill for Claude Code and Codex, shipped in the package. Its `node -e` snippets read `review-plan.json`; `packages/cli/test/skill.test.ts` runs them on the fixture, so a change to the plan contract must keep them working.
 - Tests are vitest under Node, in `packages/*/test`, `fixtures/test` and `bench/test`. Integration tests build real git repos from fixtures; GitHub tests use `packages/sources/test/fake-github.ts` (a file:// "server" + fake API), never the network. Tests must delete their temp folders.
 - `packages/render-html/test/app.test.tsx` renders the UI in happy-dom; it has its own tsconfig. Code that resolves files next to a module must use `join(dirname(fileURLToPath(import.meta.url)), …)`, not `new URL(…, import.meta.url)` (happy-dom replaces the `URL` global).
 - To look at the report, screenshot it with headless Chrome: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --screenshot=<png> --window-size=1440,1100 "file://…/review.html#g1:service"` (the URL hash selects a tab or step: `#<step id>`, `#<group id>`, `#description`, `#commits`, `#changes`). On Windows the browser is `"C:\Program Files\Google\Chrome\Application\chrome.exe"` and the URL `file:///C:/…/review.html`.

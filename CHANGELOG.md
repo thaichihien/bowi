@@ -20,6 +20,13 @@
 - ← and → move between files and Esc closes, only while focus is in the tour and never while typing in a comment; the page's own keys (j, k, r) wait while it is open. A 49-file pull request (honojs/hono#5466) moves from file to file in about 35 ms.
 - Long file names are cut in the middle, so the start and the extension stay visible ("1730_add_e…rified.ts"), with the full name on hover: in the Review tab's trees and file headers, the tour, and the Changes tab's tree and headers. In a path the folder is cut first.
 
+### M19 — A skill for Claude Code and Codex
+
+- Bowi ships one skill, `skills/bowi/SKILL.md` in the Agent Skills format (§15 #81), so that Claude Code and Codex use Bowi when asked to review a pull request ("review #42", a PR URL) or to say what a branch changes, without the user naming Bowi. The README says where to copy it: `~/.claude/skills/` for Claude Code, `~/.agents/skills/` for Codex (or the same folders inside one repository).
+- The skill runs `bowi` (else `npx --yes @bowi/cli`) with `--no-open` and never `--ai`, then reads `review-plan.json` in parts with two `node` snippets: an overview (groups, why, hints, steps with their files; 5 KB for a 49-file pull request) and one step (its diff, moved code with the lines changed on the way, noise left out, the unchanged code that uses what changed). It walks the user through the change one group at a time in Bowi's order, offers to open the report and `bowi serve` for comments, and never posts: `bowi comments push` and `--yes` stay the user's.
+- A test runs both snippets on the fixture's plan, so a change to the plan contract cannot break them unnoticed. The package contains the skill; the smoke test now also checks for files that must be in it.
+- Tried with Claude Code 2.1.325: in a fresh session with only the skill installed, "review https://github.com/sindresorhus/ky/pull/874" made it pick the skill, run Bowi, read the plan in parts and review it group by group in Bowi's order (15 turns, $0.69), posting nothing. A first try regrouped the change by topic; the skill now says to keep one section per group. Not tried with Codex yet (not installed on this machine).
+
 ### Review tab
 
 - The step pills above the Files tree are bigger: eight to a row instead of ten (about 31 px instead of 23 px in the sidebar), with larger numbers (owner's request).

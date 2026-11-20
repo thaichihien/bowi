@@ -30,7 +30,10 @@ const ALLOWED = [
   /^grammars\/(tree-sitter-[a-z]+\.wasm|LICENSE-tree-sitter-[a-z]+|VERSIONS)$/,
   /^queries\/[a-z]+\.scm$/,
   /^template\/index\.html$/,
+  /^skills\/bowi\/SKILL\.md$/,
 ];
+/** Files the package must have. */
+const REQUIRED = ['dist/bin.js', 'template/index.html', 'skills/bowi/SKILL.md'];
 
 interface PackResult {
   filename: string;
@@ -84,6 +87,8 @@ try {
   if (!pack) fail('npm pack printed nothing.');
   const unexpected = pack.files.map((f) => f.path).filter((p) => !ALLOWED.some((re) => re.test(p)));
   if (unexpected.length) fail(`unexpected files in the package:\n  ${unexpected.join('\n  ')}`);
+  const missing = REQUIRED.filter((p) => !pack.files.some((f) => f.path === p));
+  if (missing.length) fail(`missing from the package:\n  ${missing.join('\n  ')}`);
   const kb = (n: number) => `${Math.round(n / 1024)} KB`;
   console.log(
     `✓ packed ${pack.filename}: ${pack.files.length} files, ${kb(pack.size)} (${kb(pack.unpackedSize)} unpacked)`,

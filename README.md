@@ -113,6 +113,20 @@ Bowi only sends. What you sent is read-only in the report, and you change it on 
 
 </details>
 
+### Reviewing with Claude Code or Codex
+
+Bowi ships a skill that teaches Claude Code and Codex to use it: ask your agent "review https://github.com/owner/repo/pull/42" or "what does this branch change?" and it runs Bowi, reads the plan step by step and walks you through the change in Bowi's order, with its hints and the unchanged code that uses what changed. It offers to open the report; it never posts anything to the pull request.
+
+Copy the skill from the installed package once:
+
+```bash
+SKILL="$(npm root -g)/@bowi/cli/skills/bowi"
+cp -R "$SKILL" ~/.claude/skills/      # Claude Code (or .claude/skills/ in one repository)
+cp -R "$SKILL" ~/.agents/skills/      # Codex (or .agents/skills/ in one repository)
+```
+
+Create the folder first if it does not exist (`mkdir -p ~/.claude/skills ~/.agents/skills`). The agent runs `bowi` if it is installed, else `npx --yes @bowi/cli`.
+
 ### AI enrichment (optional)
 
 With `--ai`, Bowi asks an AI model to name each group of code changes, explain in 1–3 sentences what it does, and write an overview of the whole change (shown in the Description tab). Everything the AI wrote is marked "AI" in the report, together with the model that wrote it. AI is off by default; without it, Bowi writes its own titles and descriptions.
