@@ -28,7 +28,10 @@ export interface GroupFacts {
   /** Edges with both ends in the group. */
   edges: ChangeEdge[];
   threshold: number;
+  /** Layers of the group's files; a file that only has comment edits here counts as docs. */
   fileLayers: Set<string>;
+  /** Logic hunks that change only comment text. */
+  commentOnly?: Set<string>;
 }
 
 /** The strongest edges as sentences: the best edge of each type first, then by weight. */
@@ -120,6 +123,8 @@ export function kindFor(f: GroupFacts): Group['kind'] {
     const [only] = layers;
     if (only === 'test' || only === 'docs' || only === 'config') return only;
   }
+  // Tests with the docs that describe them are still tests.
+  if (layers.size === 2 && layers.has('test') && layers.has('docs')) return 'test';
   const named = f.symbols.filter((s) => s.kind !== 'file');
   if (named.length === 0) return 'mixed';
   const count = (...changes: ChangedSymbol['change'][]) =>
@@ -150,26 +155,45 @@ export function kindFor(f: GroupFacts): Group['kind'] {
 }
 
 /**
- * Title from the most connected new or changed public symbol, e.g.
- * "New `AuthService.verifyEmail()` and 9 related changes".
+ * Title from the new or changed code symbol that best names the group, e.g.
+ * "New `AuthService.verifyEmail()` and 9 related changes": code over doc-comment edits, then a
+ * symbol used from another file of the group (what the rest calls, not a private helper), then
+ * the most connected. A group of tests (and the docs about them) is named after its test files,
+ * since a test's name or a helper in it says little about what is tested.
  */
 export function ruleTitle(f: GroupFacts, fileOf: (fileId: string) => string): string {
   if (f.cluster.origin === 'other' && f.symbols.length > 1) return 'Other changes';
+  const named = f.symbols.filter((s) => s.kind !== 'file');
   // Code names the change best: not tests, and not the docs sections describing it.
-  const candidates = f.symbols.filter(
-    (s) => s.kind !== 'file' && s.kind !== 'section' && s.layer !== 'test' && s.layer !== 'docs',
+  const candidates = named.filter(
+    (s) => s.kind !== 'section' && s.layer !== 'test' && s.layer !== 'docs',
   );
-  const pool = candidates.length ? candidates : f.symbols.filter((s) => s.kind !== 'file');
+  const tests = f.symbols.filter((s) => s.layer === 'test');
+  if (candidates.length === 0 && tests.length > 0) {
+    const paths = [...new Set(tests.map((s) => fileOf(s.fileId)))].sort(compareStrings);
+    const others = named.filter((s) => s.layer !== 'test').length;
+    const what = paths.length === 1 ? `Tests in \`${paths[0]}\`` : `Tests in ${paths.length} files`;
+    return `${what}${others ? ` and ${others} related change${others === 1 ? '' : 's'}` : ''}`;
+  }
+  const pool = candidates.length ? candidates : named;
   if (pool.length === 0) {
     const paths = [...new Set(f.symbols.map((s) => fileOf(s.fileId)))];
     return paths.length === 1 ? `Changes in \`${paths[0]}\`` : `Changes in ${paths.length} files`;
   }
+  const byId = new Map(f.symbols.map((s) => [s.id, s]));
   const degree = new Map<string, number>();
+  const usedElsewhere = new Set<string>();
   for (const e of f.edges) {
     if (!STRUCTURAL.has(e.type)) continue;
     degree.set(e.from, (degree.get(e.from) ?? 0) + e.weight);
     degree.set(e.to, (degree.get(e.to) ?? 0) + e.weight);
+    const from = byId.get(e.from);
+    const to = byId.get(e.to);
+    if (from && to && from.fileId !== to.fileId && from.layer !== 'test') usedElsewhere.add(to.id);
   }
+  const commentOnly = f.commentOnly ?? new Set<string>();
+  const docsOnly = (s: ChangedSymbol) =>
+    s.hunkIds.length > 0 && s.hunkIds.every((id) => commentOnly.has(id));
   const preference: Record<ChangedSymbol['change'], number> = {
     added: 0,
     signature: 1,
@@ -180,6 +204,8 @@ export function ruleTitle(f: GroupFacts, fileOf: (fileId: string) => string): st
   };
   const main = [...pool].sort(
     (a, b) =>
+      Number(docsOnly(a)) - Number(docsOnly(b)) ||
+      Number(usedElsewhere.has(b.id)) - Number(usedElsewhere.has(a.id)) ||
       (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) ||
       preference[a.change] - preference[b.change],
   )[0]!;
@@ -192,7 +218,8 @@ export function ruleTitle(f: GroupFacts, fileOf: (fileId: string) => string): st
     deleted: 'Removed',
   };
   const others = f.symbols.filter((s) => s.kind !== 'file' && s.id !== main.id).length;
-  return `${verb[main.change]} ${show(main)}${others ? ` and ${others} related change${others === 1 ? '' : 's'}` : ''}`;
+  const how = docsOnly(main) && main.change === 'body' ? 'Docs of' : verb[main.change];
+  return `${how} ${show(main)}${others ? ` and ${others} related change${others === 1 ? '' : 's'}` : ''}`;
 }
 
 /** PR title for a lone logic group, or the commit subject when the PR has one commit. */

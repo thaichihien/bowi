@@ -27,6 +27,15 @@
 - A test runs both snippets on the fixture's plan, so a change to the plan contract cannot break them unnoticed. The package contains the skill; the smoke test now also checks for files that must be in it.
 - Tried with Claude Code 2.1.325: in a fresh session with only the skill installed, "review https://github.com/sindresorhus/ky/pull/874" made it pick the skill, run Bowi, read the plan in parts and review it group by group in Bowi's order (15 turns, $0.69), posting nothing. A first try regrouped the change by topic; the skill now says to keep one section per group. Not tried with Codex yet (not installed on this machine).
 
+### Group names and labels
+
+From the owner's look at sindresorhus/ky#874 (§15 #82). Names and labels only: which hunks go together is unchanged, and the grouping benchmark gives the same score in all 229 cases (Bowi 0.45, by folder 0.37).
+
+- Edits to doc comments only are documentation: a file whose hunks in a group change only comment text is read as Docs there (its step, the group's place in the order), a group of nothing else is "docs", and its title says "Docs of `Hooks`" rather than "Changes to". The edits stay real changes, not noise (§15 #10). The parser now tells code lines from comment lines.
+- Titles name what the rest of the change uses: a symbol called or used from another file of the group comes before a busier private helper (ky#874: "New `calculateRetryTimingDelay()`", was "New `parseDate()`"), and code comes before symbols whose edits are only to their doc comment.
+- A group of tests, with or without the docs about them, is named after its test files ("Tests in `test/retry.ts`") and is a "test" group, instead of being named after a helper or a local name in the tests (`formatAsctimeDate()`, `fetch()`).
+- Markdown section names: headings listed without text between them (`ky.get(…)` … `ky.query(…)`) no longer give their name to the sections after them (`API.options.retry`, was `API.ky.query(input, options?).options.retry`), and a sub-heading that repeats its parent's name is not named twice (`options.hooks.beforeRetry`, was `options.hooks.hooks.beforeRetry`).
+
 ### Review tab
 
 - The step pills above the Files tree are bigger: eight to a row instead of ten (about 31 px instead of 23 px in the sidebar), with larger numbers (owner's request).

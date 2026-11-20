@@ -164,6 +164,7 @@ export async function analyze(
             edges,
             generatedReasons: parsed.generatedReasons,
             generatedNotes: parsed.generatedNotes,
+            commentOnly: noise.commentOnly,
           },
           stageCtx,
         ),

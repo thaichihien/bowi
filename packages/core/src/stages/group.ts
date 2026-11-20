@@ -41,6 +41,8 @@ export interface GroupStageInput {
   edges: ChangeEdge[];
   generatedReasons: Map<string, string>;
   generatedNotes: Map<string, string[]>;
+  /** Logic hunks that change only comment text (noise stage). */
+  commentOnly?: Set<string>;
 }
 
 export interface GroupStageOutput {
@@ -56,6 +58,18 @@ export const groupStage: Stage<GroupStageInput, GroupStageOutput> = async (input
   const symbolById = new Map(symbols.map((s) => [s.id, s]));
   const fileOf = (id: string) => fileById.get(id)!.path;
   const threshold = ctx.config.grouping.edgeThreshold;
+  const commentOnly = input.commentOnly ?? new Set<string>();
+  // A file whose hunks in a group only edit comments is documentation there: a Docs step, and
+  // it does not make the group a foundation. Its layer in the plan stays the file's own.
+  const filesIn = (groupHunks: Hunk[]): Map<string, FileChange> => {
+    const view = new Map(fileById);
+    for (const id of new Set(groupHunks.map((h) => h.fileId))) {
+      const own = groupHunks.filter((h) => h.fileId === id);
+      if (own.every((h) => commentOnly.has(h.id)))
+        view.set(id, { ...fileById.get(id)!, layer: 'docs' });
+    }
+    return view;
+  };
 
   // Logic groups.
   const logicHunks = hunks.filter((h) => h.kind === 'logic');
@@ -86,13 +100,15 @@ export const groupStage: Stage<GroupStageInput, GroupStageOutput> = async (input
   const drafts: Draft[] = clusters.map((cluster, i) => {
     const groupHunks = hunksOfCluster[i]!;
     const ids = new Set(cluster.symbolIds);
+    const view = filesIn(groupHunks);
     const facts: GroupFacts = {
       cluster,
       symbols: cluster.symbolIds.map((id) => symbolById.get(id)!),
       hunks: groupHunks,
       edges: edges.filter((e) => ids.has(e.from) && ids.has(e.to)),
       threshold,
-      fileLayers: new Set(groupHunks.map((h) => fileById.get(h.fileId)!.layer)),
+      fileLayers: new Set(groupHunks.map((h) => view.get(h.fileId)!.layer)),
+      commentOnly,
     };
     return {
       group: {
@@ -111,7 +127,8 @@ export const groupStage: Stage<GroupStageInput, GroupStageOutput> = async (input
 
   /** The earliest layer of a group's code; tests and docs count only in groups of nothing else. */
   const foundation = (groupHunks: Hunk[]) => {
-    const ranks = groupHunks.map((h) => LAYER_ORDER.indexOf(fileById.get(h.fileId)!.layer));
+    const view = filesIn(groupHunks);
+    const ranks = groupHunks.map((h) => LAYER_ORDER.indexOf(view.get(h.fileId)!.layer));
     const code = ranks.filter((r) => r < LAYER_ORDER.indexOf('test'));
     return Math.min(...(code.length > 0 ? code : ranks));
   };
@@ -150,7 +167,7 @@ export const groupStage: Stage<GroupStageInput, GroupStageOutput> = async (input
   for (const i of logicOrder) {
     const d = drafts[i]!;
     const id = idOfDraft.get(i)!;
-    const { steps, testsFirstStepOrder } = buildSteps(id, d.hunks, fileById, edges);
+    const { steps, testsFirstStepOrder } = buildSteps(id, d.hunks, filesIn(d.hunks), edges);
     groups.push({
       id,
       ...d.group,

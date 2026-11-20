@@ -12,6 +12,10 @@
  * - move: a symbol whose lines are all deleted matches a symbol whose lines are all added,
  *   exactly (fingerprint) or with line similarity ≥ grouping.moveSimilarity. Lines that differ
  *   are listed in `changedLineIndexes` and are never treated as noise.
+ *
+ * Also reported, without changing the kind: logic hunks whose changed lines hold only comment
+ * text (an edited doc comment). They stay real changes (§15 #10); the group stage reads them as
+ * documentation (Docs steps, "docs" groups, titles).
  */
 
 import type { ParsedSource, SourceSymbol } from '@bowi/lang';
@@ -38,6 +42,8 @@ export interface NoiseStageOutput {
   hunks: Hunk[];
   /** Moves whose two halves both became `move` hunks. */
   moves: MovePair[];
+  /** Ids of logic hunks that change only comment text. */
+  commentOnly: Set<string>;
 }
 
 /** Fuzzy (non-exact) move matches need at least this many non-blank lines on each side. */
@@ -57,8 +63,29 @@ export const noiseStage: Stage<NoiseStageInput, NoiseStageOutput> = async (
   }
 
   const moves = detectMoves(out, files, sources, ctx.config.grouping.moveSimilarity);
-  return { hunks: out, moves };
+  const commentOnly = new Set(
+    out
+      .filter((h) => h.kind === 'logic' && isCommentOnly(h, sources.get(h.fileId)))
+      .map((h) => h.id),
+  );
+  return { hunks: out, moves, commentOnly };
 };
+
+/**
+ * Every changed line is a comment or blank, and at least one is a comment. Lines are read in
+ * their own version; a file without a parse (text only) never counts.
+ */
+function isCommentOnly(h: Hunk, src: FileSources | undefined): boolean {
+  let comments = 0;
+  for (const l of h.lines) {
+    if (l.kind === 'context' || l.text.trim() === '') continue;
+    const parsed = l.kind === 'del' ? src?.old : src?.new;
+    const n = l.kind === 'del' ? l.oldNo! : l.newNo!;
+    if (!parsed || parsed.isCodeLine(n) || !parsed.isContentLine(n)) return false;
+    comments++;
+  }
+  return comments > 0;
+}
 
 function isFormatOnly(h: Hunk, file: FileChange, src: FileSources | undefined): boolean {
   const dels = h.lines.filter((l) => l.kind === 'del');

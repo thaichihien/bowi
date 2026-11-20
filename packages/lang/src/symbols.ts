@@ -122,16 +122,26 @@ export function extractSymbols(
   );
 
   const symbols: SourceSymbol[] = [];
+  // What a symbol's children are qualified with: its own qualified name, except for Markdown
+  // sections that end a run of headings without text between them (below).
+  const prefixes: (string | null)[] = [];
   const stack: number[] = [];
   for (const c of candidates) {
     while (stack.length > 0 && candidates[stack.at(-1)!]!.node.endIndex <= c.node.startIndex)
       stack.pop();
     const parent = stack.length > 0 ? stack.at(-1)! : null;
+    const prefix = parent === null ? null : prefixes[parent]!;
+    let own = c.name;
+    // `###### hooks.beforeRetry` under `##### hooks`: `hooks.beforeRetry`, not `hooks.hooks.…`.
+    if (c.kind === 'section' && parent !== null && own.startsWith(`${symbols[parent]!.name}.`))
+      own = own.slice(symbols[parent]!.name.length + 1);
+    const qualifiedName = prefix === null ? own : `${prefix}.${own}`;
+    prefixes.push(c.kind === 'section' && endsHeadingRun(c.node) ? prefix : qualifiedName);
     const first = c.range[0]!;
     const last = c.range.at(-1)!;
     symbols.push({
       name: c.name,
-      qualifiedName: parent === null ? c.name : `${symbols[parent]!.qualifiedName}.${c.name}`,
+      qualifiedName,
       kind: c.kind,
       startLine: first.startPosition.row + 1,
       // A node that ends at the start of a line (a Markdown section before the next heading)
@@ -213,6 +223,20 @@ function yamlKey(key: Node): string {
   const text = key.text.trim();
   if (/^(['"]).*\1$/s.test(text)) return text.slice(1, -1);
   return /[\n[\]{}]/.test(text) ? '' : text;
+}
+
+/**
+ * A section right after sibling sections that hold only their heading: a list of headings such
+ * as `### ky.get(input, options?)` … `### ky.query(input, options?)` that share what follows.
+ * Its subsections belong to the whole list, so they are not named after its last heading.
+ */
+function endsHeadingRun(section: Node): boolean {
+  const prev = section.previousNamedSibling;
+  return (
+    prev?.type === 'section' &&
+    prev.namedChildren.length === 1 &&
+    prev.namedChildren[0]?.type === 'atx_heading'
+  );
 }
 
 /** A section's heading line as written, e.g. `## Email verification`. */

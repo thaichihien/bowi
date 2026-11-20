@@ -127,6 +127,25 @@ describe('symbols', () => {
     ]);
   });
 
+  it('names Markdown sections after what they belong to', async () => {
+    // Headings listed without text between them share what follows; a sub-heading that
+    // repeats its parent's name is not named twice.
+    const src = await parse(
+      '## API\n\n### ky.get(input)\n### ky.query(input)\n\nSets method.\n\n#### options\n\n##### hooks\n\n###### hooks.beforeRetry\n\nB.\n\n### ky.extend(defaults)\n\n#### options\n\nE.\n',
+      'markdown',
+    );
+    expect(src.symbols.map((s) => s.qualifiedName)).toEqual([
+      'API',
+      'API.ky.get(input)',
+      'API.ky.query(input)',
+      'API.options',
+      'API.options.hooks',
+      'API.options.hooks.beforeRetry',
+      'API.ky.extend(defaults)',
+      'API.ky.extend(defaults).options',
+    ]);
+  });
+
   it('parses JavaScript and TSX', async () => {
     expect(
       (await parse('class A { m() {} }\nconst f = () => <div/>;', 'javascript')).symbols.map(
@@ -313,6 +332,21 @@ describe('fingerprints', () => {
       true,
       true,
       true,
+      true,
+      true,
+    ]);
+  });
+
+  it('know which lines hold code, not only comments', async () => {
+    const src = await parse(
+      '/**\n\tDoc text without a star.\n*/\nconst a = 1; // trailing\n// alone\nconst b = `x\ny`;\n',
+    );
+    expect([1, 2, 3, 4, 5, 6, 7].map((n) => src.isCodeLine(n))).toEqual([
+      false,
+      false,
+      false,
+      true,
+      false,
       true,
       true,
     ]);

@@ -6,7 +6,7 @@
  */
 
 import type { Tree } from 'web-tree-sitter';
-import { contentLines, coverFingerprint, fingerprint } from './fingerprint.ts';
+import { codeLines, contentLines, coverFingerprint, fingerprint } from './fingerprint.ts';
 import { parseComponent } from './component.ts';
 import { COMPONENT_LANGUAGES, type LanguageId } from './languages.ts';
 import { loadLanguage } from './loader.ts';
@@ -22,6 +22,8 @@ export interface ParsedSource extends NameIndex {
   fingerprint: string;
   /** Whether a 1-based line holds code or comment text (is not blank). */
   isContentLine(line: number): boolean;
+  /** Whether a 1-based line holds code: a token that is not a comment. */
+  isCodeLine(line: number): boolean;
   /** Formatting-insensitive fingerprint of the code on 1-based lines `start..end`. */
   coverFingerprint(startLine: number, endLine: number): string;
   dispose(): void;
@@ -36,6 +38,7 @@ export async function parseSource(language: LanguageId, text: string): Promise<P
   if (!tree) throw new Error(`tree-sitter returned no tree for ${language}`);
   const root = tree.rootNode;
   const lines = contentLines(root);
+  const code = codeLines(root);
   return {
     language,
     hasError: root.hasError,
@@ -43,6 +46,7 @@ export async function parseSource(language: LanguageId, text: string): Promise<P
     ...indexNames(root),
     fingerprint: fingerprint(root),
     isContentLine: (line) => lines.has(line),
+    isCodeLine: (line) => code.has(line),
     coverFingerprint: (startLine, endLine) => coverFingerprint(root, startLine - 1, endLine - 1),
     dispose: () => tree.delete(),
   };

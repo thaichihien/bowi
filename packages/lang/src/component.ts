@@ -103,6 +103,7 @@ export async function parseComponent(
     references: [...script.references, ...markupReferences(markup)],
     fingerprint: hash(`${script.fingerprint}\n${markupText(1, lines.length)}`),
     isContentLine: (n) => markup.has(n) || script.isContentLine(n),
+    isCodeLine: (n) => markup.has(n) || script.isCodeLine(n),
     coverFingerprint: (from, to) =>
       hash(`${script.coverFingerprint(from, to)}\n${markupText(from, to)}`),
   };

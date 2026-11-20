@@ -124,9 +124,22 @@ export function coverFingerprint(root: Node, startRow: number, endRow: number): 
 
 /** 1-based line numbers that hold code or comment text (not blank). */
 export function contentLines(root: Node): Set<number> {
+  return linesOf(root, true);
+}
+
+/**
+ * 1-based line numbers that hold code: a token that is not a comment. A line with code and a
+ * trailing comment holds code.
+ */
+export function codeLines(root: Node): Set<number> {
+  return linesOf(root, false);
+}
+
+function linesOf(root: Node, comments: boolean): Set<number> {
   const lines = new Set<number>();
   const visit = (node: Node) => {
     if (LAYOUT_NODES.has(node.type)) return;
+    if (!comments && isComment(node)) return;
     if (node.childCount === 0 || isComment(node) || TEXT_RUNS.has(node.type)) {
       if (node.startIndex === node.endIndex) return; // zero-width (missing) token
       for (let row = node.startPosition.row; row <= node.endPosition.row; row++) lines.add(row + 1);
