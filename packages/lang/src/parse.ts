@@ -5,13 +5,16 @@
  * call dispose() when done (trees live in WebAssembly memory).
  */
 
-import type { Tree } from 'web-tree-sitter';
+import type { Node, Tree } from 'web-tree-sitter';
 import { codeLines, contentLines, coverFingerprint, fingerprint } from './fingerprint.ts';
 import { parseComponent } from './component.ts';
 import { COMPONENT_LANGUAGES, type LanguageId } from './languages.ts';
 import { loadLanguage } from './loader.ts';
 import { indexNames, type NameIndex } from './references.ts';
+import { indexCSharp } from './references-csharp.ts';
 import { indexGo } from './references-go.ts';
+import { indexJava } from './references-java.ts';
+import { indexKotlin } from './references-kotlin.ts';
 import { indexPython } from './references-python.ts';
 import { extractSymbols, type SourceSymbol } from './symbols.ts';
 
@@ -45,11 +48,7 @@ export async function parseSource(language: LanguageId, text: string): Promise<P
     language,
     hasError: root.hasError,
     symbols: extractSymbols(root, query, language, text),
-    ...(language === 'python'
-      ? indexPython(root)
-      : language === 'go'
-        ? indexGo(root)
-        : indexNames(root)),
+    ...(INDEXES[language] ?? indexNames)(root),
     fingerprint: fingerprint(root),
     isContentLine: (line) => lines.has(line),
     isCodeLine: (line) => code.has(line),
@@ -57,6 +56,15 @@ export async function parseSource(language: LanguageId, text: string): Promise<P
     dispose: () => tree.delete(),
   };
 }
+
+/** The name index of languages with one of their own; the others use TypeScript's. */
+const INDEXES: Partial<Record<LanguageId, (root: Node) => NameIndex>> = {
+  python: indexPython,
+  go: indexGo,
+  java: indexJava,
+  kotlin: indexKotlin,
+  csharp: indexCSharp,
+};
 
 /**
  * `export type * from './a'` (TS 5.0) with `type` blanked: the grammar (0.23.2, the latest on

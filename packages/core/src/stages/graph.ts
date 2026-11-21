@@ -129,34 +129,58 @@ export const graphStage: Stage<GraphStageInput, GraphStageOutput> = async (input
     if (c) code.set(s.id, c);
   }
 
-  // Which changed files each file imports (old and new versions). In a language with packages
-  // (Go), an import brings in every changed file of the package, and files of one package see
-  // each other.
-  const resolve = createImportResolver(files);
-  const packageOf = (f: FileChange) => familyOf(f.language)?.packageOf?.(f.path);
+  // Which changed files each file imports (old and new versions). In a language with packages,
+  // files of one package see each other. Go's package is its directory, and an import brings in
+  // every changed file of the package; Java, Kotlin and C# declare theirs (M16), and an import
+  // brings in a whole package only when it says so (`org.acme.*`, `using Acme.Core`).
+  const declared = new Map<string, string>();
+  for (const f of files) {
+    const src = sources.get(f.id);
+    const p = src?.new?.packageName ?? src?.old?.packageName;
+    if (p !== undefined && familyOf(f.language)?.declaresPackage) declared.set(f.id, p);
+  }
+  const resolve = createImportResolver(files, declared);
+  const packageOf = (f: FileChange) =>
+    familyOf(f.language)?.packageOf?.(f.path) ?? declared.get(f.id);
+  // By family too, so that a Go directory and a Java package of the same name stay apart.
   const filesOfPackage = new Map<string, string[]>();
+  const packageKey = (f: FileChange, p: string) => `${familyOf(f.language)!.id}:${p}`;
   for (const f of files) {
     const p = packageOf(f);
-    if (p !== undefined) filesOfPackage.set(p, [...(filesOfPackage.get(p) ?? []), f.id]);
+    if (p === undefined) continue;
+    const key = packageKey(f, p);
+    filesOfPackage.set(key, [...(filesOfPackage.get(key) ?? []), f.id]);
   }
   const imported = new Map<string, Set<string>>();
   for (const f of files) {
     const src = sources.get(f.id);
+    const family = familyOf(f.language);
     const set = new Set<string>();
     for (const v of [src?.old, src?.new]) {
       for (const imp of v?.imports ?? []) {
+        const whole = family?.packageImport?.(imp.source);
+        if (whole !== undefined)
+          for (const other of filesOfPackage.get(`${family!.id}:${whole}`) ?? []) set.add(other);
         const id = resolve(v === src?.old ? (f.oldPath ?? f.path) : f.path, imp.source);
         if (!id) continue;
         set.add(id);
-        const p = packageOf(fileById.get(id)!);
-        for (const other of p !== undefined ? (filesOfPackage.get(p) ?? []) : []) set.add(other);
+        const to = fileById.get(id)!;
+        const p = familyOf(to.language)?.packageOf?.(to.path);
+        for (const other of p !== undefined ? (filesOfPackage.get(packageKey(to, p)) ?? []) : [])
+          set.add(other);
       }
     }
     imported.set(f.id, set);
   }
   const samePackage = (a: string, b: string) => {
-    const p = packageOf(fileById.get(a)!);
-    return p !== undefined && p === packageOf(fileById.get(b)!);
+    const from = fileById.get(a)!;
+    const to = fileById.get(b)!;
+    const p = packageOf(from);
+    const q = packageOf(to);
+    if (p === undefined || q === undefined) return false;
+    const family = familyOf(from.language)!;
+    if (family !== familyOf(to.language)) return false;
+    return p === q || (family.seesPackage?.(p, q) ?? false);
   };
   const visible = (from: ChangedSymbol, to: ChangedSymbol) =>
     from.fileId === to.fileId ||
@@ -172,6 +196,37 @@ export const graphStage: Stage<GraphStageInput, GraphStageOutput> = async (input
     targets.set(s.name, [...(targets.get(s.name) ?? []), s]);
   }
   const fieldOwners = changedFields(logic, code, hunkById);
+
+  // Java (M16): a whole package is visible, so a call by name (`list`, `save`) would reach every
+  // changed method of that name there. A member of another file's class is reached only from a
+  // Java file that names the class or one of its supertypes, as Java code writes its types out.
+  // Kotlin and C# infer them (`val x = …`, `var x = …`), so their files often do not.
+  const namesIn = new Map<string, Set<string>>();
+  const fileNames = (fileId: string) => {
+    let names = namesIn.get(fileId);
+    if (!names) {
+      const src = sources.get(fileId);
+      names = new Set(
+        [...(src?.old?.references ?? []), ...(src?.new?.references ?? [])].map((r) => r.name),
+      );
+      namesIn.set(fileId, names);
+    }
+    return names;
+  };
+  const reachesClass = (from: ChangedSymbol, to: ChangedSymbol, className?: string) => {
+    if (from.fileId === to.fileId || fileById.get(from.fileId)!.language !== 'java') return true;
+    const owner =
+      className ??
+      to.qualifiedName
+        .replace(/\(.*\)$/, '')
+        .split('.')
+        .at(-2);
+    if (owner === undefined) return true;
+    const src = sources.get(to.fileId);
+    const decl = (src?.new ?? src?.old)?.classes.find((c) => c.name === owner);
+    const names = fileNames(from.fileId);
+    return [owner, ...(decl?.extends ?? []), ...(decl?.implements ?? [])].some((n) => names.has(n));
+  };
 
   for (const s of logic) {
     const c = code.get(s.id);
@@ -190,6 +245,7 @@ export const graphStage: Stage<GraphStageInput, GraphStageOutput> = async (input
       for (const t of targets.get(ref.name) ?? []) {
         if (t.id === s.id || !visible(s, t) || isAncestor(t, s)) continue;
         if (t.layer === 'test' && !isTest) continue;
+        if (!reachesClass(s, t)) continue;
         const type = isTest && t.layer !== 'test' ? 'tests' : edgeTypeFor(ref, t);
         if (type)
           edges.add(s, t, type, evidence(type, s, t, ref), { fileId: s.fileId, line: ref.line });
@@ -200,6 +256,7 @@ export const graphStage: Stage<GraphStageInput, GraphStageOutput> = async (input
         for (const owner of fieldOwners.get(ref.name) ?? []) {
           if (owner.id === s.id || !visible(s, owner) || isAncestor(owner, s)) continue;
           if (owner.layer === 'test' && !isTest) continue;
+          if (!reachesClass(s, owner, owner.name)) continue;
           const type = isTest && owner.layer !== 'test' ? 'tests' : 'uses-type';
           edges.add(s, owner, type, `${show(s)} uses \`${owner.qualifiedName}.${ref.name}\``, {
             fileId: s.fileId,
@@ -211,6 +268,7 @@ export const graphStage: Stage<GraphStageInput, GraphStageOutput> = async (input
   }
 
   testsByFileName(logic, fileById, edges);
+  overrideEdges(logic, sources, fileById, visible, edges);
   sameHunk(hunks, symbols, edges);
   literalEdges(logic, hunks, fileById, lineSymbols, symbols, edges);
   if (input.history) {
@@ -347,6 +405,54 @@ function evidence(
       return `${show(from)} tests ${show(to)}`;
     default:
       return `${show(from)} is related to ${show(to)}`;
+  }
+}
+
+/**
+ * Java, Kotlin and C# (M16): a changed method overrides the changed method of the same name in a
+ * class or interface its class extends or implements (`InfinispanClusterProvider.notify` →
+ * `ClusterProvider.notify`), a dependency that no call shows.
+ */
+function overrideEdges(
+  logic: ChangedSymbol[],
+  sources: Map<string, FileSources>,
+  fileById: Map<string, FileChange>,
+  visible: (from: ChangedSymbol, to: ChangedSymbol) => boolean,
+  edges: EdgeSet,
+) {
+  const ownerOf = (s: ChangedSymbol) =>
+    s.qualifiedName
+      .replace(/\(.*\)$/, '')
+      .split('.')
+      .at(-2);
+  const methods = logic.filter(
+    (s) =>
+      s.kind === 'method' &&
+      ownerOf(s) !== undefined &&
+      familyOf(fileById.get(s.fileId)!.language)?.overloads,
+  );
+  const byMember = new Map<string, ChangedSymbol[]>();
+  for (const s of methods) {
+    const key = `${ownerOf(s)!}.${s.name}`;
+    byMember.set(key, [...(byMember.get(key) ?? []), s]);
+  }
+  for (const s of methods) {
+    const owner = ownerOf(s)!;
+    const src = sources.get(s.fileId);
+    const version = s.change === 'deleted' ? src?.old : (src?.new ?? src?.old);
+    const decl = version?.classes.find((c) => c.name === owner);
+    if (!decl) continue;
+    const line = version!.symbols.find((x) => x.qualifiedName === s.qualifiedName)?.startLine;
+    for (const base of new Set([...decl.extends, ...decl.implements])) {
+      for (const t of byMember.get(`${base}.${s.name}`) ?? []) {
+        if (t.id === s.id || !visible(s, t)) continue;
+        if (t.layer === 'test' && s.layer !== 'test') continue;
+        edges.add(s, t, 'uses-type', `${show(s)} overrides ${show(t)}`, {
+          fileId: s.fileId,
+          line: line ?? decl.line,
+        });
+      }
+    }
   }
 }
 

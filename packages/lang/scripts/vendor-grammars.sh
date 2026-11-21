@@ -9,7 +9,7 @@ set -eu
 
 # npm packages that ship their .wasm (schema helper grammars such as tree-sitter-yaml's
 # core_schema are skipped).
-NPM_GRAMMARS="tree-sitter-typescript@0.23.2 tree-sitter-javascript@0.25.0 tree-sitter-json@0.24.8 @tree-sitter-grammars/tree-sitter-yaml@0.7.1 tree-sitter-python@0.25.0 tree-sitter-go@0.25.0"
+NPM_GRAMMARS="tree-sitter-typescript@0.23.2 tree-sitter-javascript@0.25.0 tree-sitter-json@0.24.8 @tree-sitter-grammars/tree-sitter-yaml@0.7.1 tree-sitter-python@0.25.0 tree-sitter-go@0.25.0 tree-sitter-java@0.23.5 tree-sitter-c-sharp@0.23.5 @tree-sitter-grammars/tree-sitter-kotlin@1.1.0"
 # Grammars whose npm package has no .wasm: <github repo>@<tag>:<release asset>. The license
 # comes from the same tag.
 RELEASE_GRAMMARS="tree-sitter-grammars/tree-sitter-markdown@v0.5.3:tree-sitter-markdown.wasm"

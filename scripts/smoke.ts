@@ -27,7 +27,7 @@ const ALLOWED = [
   /^(README|CHANGELOG)\.md$/,
   /^LICENSE$/,
   /^dist\/(bin|bowi)\.js$/,
-  /^grammars\/(tree-sitter-[a-z]+\.wasm|LICENSE-tree-sitter-[a-z]+|VERSIONS)$/,
+  /^grammars\/(tree-sitter-[a-z_]+\.wasm|LICENSE-tree-sitter-[a-z-]+|VERSIONS)$/,
   /^queries\/[a-z]+\.scm$/,
   /^template\/index\.html$/,
   /^skills\/bowi\/SKILL\.md$/,

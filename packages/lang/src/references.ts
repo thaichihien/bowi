@@ -95,6 +95,11 @@ export interface NameIndex {
   classes: ClassDeclaration[];
   /** Directive prologue of the file: `use client`, `use server`. */
   directives: string[];
+  /**
+   * The package the file declares (M16): Java's and Kotlin's `package a.b`, C#'s first
+   * namespace. Files of one package see each other without imports.
+   */
+  packageName?: string;
 }
 
 export function indexNames(root: Node): NameIndex {

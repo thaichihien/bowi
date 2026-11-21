@@ -13,7 +13,10 @@ export type LanguageId =
   | 'svelte'
   | 'astro'
   | 'python'
-  | 'go';
+  | 'go'
+  | 'java'
+  | 'kotlin'
+  | 'csharp';
 
 interface LanguageSpec {
   grammar: string;
@@ -52,6 +55,14 @@ export const LANGUAGES: Record<LanguageId, LanguageSpec> = {
   // M15.
   python: { grammar: 'tree-sitter-python.wasm', query: 'python.scm', extensions: ['.py', '.pyi'] },
   go: { grammar: 'tree-sitter-go.wasm', query: 'go.scm', extensions: ['.go'] },
+  // M16.
+  java: { grammar: 'tree-sitter-java.wasm', query: 'java.scm', extensions: ['.java'] },
+  kotlin: {
+    grammar: 'tree-sitter-kotlin.wasm',
+    query: 'kotlin.scm',
+    extensions: ['.kt', '.kts'],
+  },
+  csharp: { grammar: 'tree-sitter-c_sharp.wasm', query: 'csharp.scm', extensions: ['.cs'] },
   // Block structure only (sections, paragraphs, lists); inline markup stays text.
   markdown: {
     grammar: 'tree-sitter-markdown.wasm',

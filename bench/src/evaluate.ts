@@ -108,6 +108,15 @@ function languageOf(plan: ReviewPlan): string {
   ).length;
   if (count('python') > scriptFiles && count('python') >= count('go')) return 'Python';
   if (count('go') > scriptFiles) return 'Go';
+  // Java, Kotlin and C# (M16) likewise; Java and Kotlin by whichever has more files.
+  const [top] = (
+    [
+      ['Java', count('java')],
+      ['Kotlin', count('kotlin')],
+      ['C#', count('csharp')],
+    ] as [string, number][]
+  ).sort((a, b) => b[1] - a[1]);
+  if (top![1] > scriptFiles) return top![0];
   const languages = new Set(plan.files.map((f) => f.language));
   // Vue, Svelte and Astro components: their scripts are parsed as TypeScript (M14).
   const scripts = ['typescript', 'tsx', 'vue', 'svelte', 'astro'];

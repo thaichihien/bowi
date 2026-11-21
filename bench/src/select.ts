@@ -27,7 +27,7 @@ export interface BenchCase {
 
 const SKIP_SUBJECT =
   /^(merge\b|revert\b|release\b|bump\b|v?\d+\.\d+\.\d+|(chore|build|fix|ci)\((deps|deps-dev|release)\)|chore: release|ci[:(]|update dependency|\[skip ci\])/i;
-const CODE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|vue|svelte|astro|py|go)$/;
+const CODE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|vue|svelte|astro|py|go|java|kt|kts|cs)$/;
 const NOT_APP_CODE = /(^|\/)(docs?|examples?|\.github|benchmarks?)\//;
 const MAX_FILES = 20;
 const SIZES = [3, 4, 5, 6];

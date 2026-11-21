@@ -4,4 +4,7 @@ tree-sitter-json@0.24.8
 @tree-sitter-grammars/tree-sitter-yaml@0.7.1
 tree-sitter-python@0.25.0
 tree-sitter-go@0.25.0
+tree-sitter-java@0.23.5
+tree-sitter-c-sharp@0.23.5
+@tree-sitter-grammars/tree-sitter-kotlin@1.1.0
 tree-sitter-markdown@v0.5.3 (github.com/tree-sitter-grammars/tree-sitter-markdown release)

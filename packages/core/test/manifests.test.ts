@@ -99,3 +99,107 @@ describe('dependencies added in Python and Go manifests (M15)', () => {
     ]);
   });
 });
+
+describe('dependencies added in Maven, Gradle and NuGet manifests (M16)', () => {
+  it('reads pom.xml dependencies, not plugins or exclusions; test scope is dev', () => {
+    const text = [
+      '<project>',
+      '  <artifactId>app</artifactId>',
+      '  <dependencies>',
+      '    <dependency>',
+      '      <groupId>org.postgresql</groupId>',
+      '      <artifactId>postgresql</artifactId>',
+      '      <exclusions><exclusion>',
+      '        <artifactId>checker-qual</artifactId>',
+      '      </exclusion></exclusions>',
+      '    </dependency>',
+      '    <dependency>',
+      '      <artifactId>junit-jupiter</artifactId>',
+      '      <scope>test</scope>',
+      '    </dependency>',
+      '  </dependencies>',
+      '  <build><plugins><plugin><artifactId>maven-surefire-plugin</artifactId></plugin></plugins></build>',
+      '</project>',
+    ].join('\n');
+    const added = text
+      .split('\n')
+      .map((l) => `+${l}`)
+      .join('\n');
+    expect(deps('pom.xml', text, added)).toEqual([
+      { name: 'postgresql', dev: false },
+      { name: 'junit-jupiter', dev: true },
+    ]);
+  });
+
+  it('reads Gradle coordinates and catalog references; a version bump is not new', () => {
+    const text = [
+      'plugins {',
+      '  alias(libs.plugins.kotlin.jvm)',
+      '}',
+      'dependencies {',
+      '  implementation("com.acme:bytes:3.9.0")',
+      '  api(platform("org.jetbrains.kotlin:kotlin-bom:2.0.0"))',
+      '  testImplementation(libs.assertk)',
+      "  kapt 'com.google.dagger:dagger-compiler:2.51'",
+      '  implementation(libs.androidx.core.ktx)',
+      '}',
+    ].join('\n');
+    expect(
+      deps(
+        'netlib/build.gradle.kts',
+        text,
+        [
+          '+  alias(libs.plugins.kotlin.jvm)',
+          '+  implementation("com.acme:bytes:3.9.0")',
+          '-  implementation("com.acme:bytes:3.8.0")',
+          '+  api(platform("org.jetbrains.kotlin:kotlin-bom:2.0.0"))',
+          '+  testImplementation(libs.assertk)',
+          "+  kapt 'com.google.dagger:dagger-compiler:2.51'",
+          '+  implementation(libs.androidx.core.ktx)',
+        ].join('\n'),
+      ),
+    ).toEqual([
+      { name: 'org.jetbrains.kotlin:kotlin-bom', dev: false },
+      { name: 'assertk', dev: true },
+      { name: 'com.google.dagger:dagger-compiler', dev: false },
+      { name: 'androidx-core-ktx', dev: false },
+    ]);
+  });
+
+  it('reads a version catalog’s libraries', () => {
+    const text = [
+      '[versions]',
+      'bytes = "3.9.0"',
+      '[libraries]',
+      'bytes = { module = "com.acme:bytes", version.ref = "bytes" }',
+      'hilt = { group = "com.google.dagger", name = "hilt-android" }',
+      'junit = "junit:junit:4.13.2"',
+    ].join('\n');
+    const added = text
+      .split('\n')
+      .map((l) => `+${l}`)
+      .join('\n');
+    expect(deps('gradle/libs.versions.toml', text, added)).toEqual([
+      { name: 'com.acme:bytes', dev: false },
+      { name: 'com.google.dagger:hilt-android', dev: false },
+      { name: 'junit:junit', dev: false },
+    ]);
+  });
+
+  it('reads NuGet package references; a test project’s are dev', () => {
+    const text =
+      '<Project>\n  <ItemGroup>\n    <PackageReference Include="Dapper" Version="2.1.35" />\n  </ItemGroup>\n</Project>\n';
+    const line = '+    <PackageReference Include="Dapper" Version="2.1.35" />';
+    expect(deps('src/Core/Core.csproj', text, line)).toEqual([{ name: 'Dapper', dev: false }]);
+    expect(deps('test/Core.Test/Core.Test.csproj', text, line)).toEqual([
+      { name: 'Dapper', dev: true },
+    ]);
+    expect(
+      deps(
+        'Directory.Packages.props',
+        '<PackageVersion Include="xunit" Version="2.9.0" />\n',
+        '+<PackageVersion Include="xunit" Version="2.9.0" />',
+      ),
+    ).toEqual([{ name: 'xunit', dev: false }]);
+  });
+});

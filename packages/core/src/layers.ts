@@ -13,7 +13,7 @@ type Rule = [Layer, RegExp];
 const RULES: Rule[] = [
   [
     'test',
-    /(^|\/)(test|tests|__tests__|spec|e2e)\/|\.(spec|test|e2e-spec)\.[cm]?[jt]sx?$|(^|\/)(test_[^/]*|conftest)\.py$|_test\.(py|go)$/,
+    /(^|\/)(test|tests|__tests__|spec|e2e)\/|\.(spec|test|e2e-spec)\.[cm]?[jt]sx?$|(^|\/)(test_[^/]*|conftest)\.py$|_test\.(py|go)$|(^|\/)src\/([a-z][A-Za-z]*Test|testFixtures)\/|(^|\/)[^/]*\.(Unit|Integration)?Tests?\/|(Tests?|IT|IntegrationTests?)\.(java|kt|cs)$/,
   ],
   [
     'docs',
@@ -21,33 +21,41 @@ const RULES: Rule[] = [
   ],
   [
     'config',
-    /(^|\/)(package\.json|tsconfig[^/]*\.json|\.[^/]*rc(\.[a-z]+)?|[^/]*\.config\.[a-z]+|Dockerfile|docker-compose[^/]*|\.env[^/]*|\.gitignore|\.gitattributes|\.editorconfig|Makefile)$|(^|\/)\.github\/|\.(ya?ml|toml|ini)$|(^|\/)[^/]*(lock|\.lock|-lock\.json|\.lockb)$|(^|\/)(requirements[^/]*\.txt|setup\.(py|cfg)|Pipfile|go\.(mod|sum|work))$/,
+    /(^|\/)(package\.json|tsconfig[^/]*\.json|\.[^/]*rc(\.[a-z]+)?|[^/]*\.config\.[a-z]+|Dockerfile|docker-compose[^/]*|\.env[^/]*|\.gitignore|\.gitattributes|\.editorconfig|Makefile)$|(^|\/)\.github\/|\.(ya?ml|toml|ini)$|(^|\/)[^/]*(lock|\.lock|-lock\.json|\.lockb)$|(^|\/)(requirements[^/]*\.txt|setup\.(py|cfg)|Pipfile|go\.(mod|sum|work))$|(^|\/)(pom\.xml|(build|settings)\.gradle(\.kts)?|gradle\.properties|gradlew(\.bat)?|AndroidManifest\.xml|nuget\.config|appsettings[^/]*\.json|application[^/]*\.properties)$|\.(csproj|sln|props|targets)$/,
   ],
-  ['schema', /(^|\/)(migrations?|schema|schemas|prisma)\/|\.(sql|prisma|graphql|gql|proto)$/],
+  [
+    'schema',
+    /(^|\/)(migrations?|schema|schemas|prisma)\/|\.(sql|prisma|graphql|gql|proto)$|(^|\/)Migrations\//,
+  ],
   // Data shapes, including type-only code: `interfaces/`, `types/`, `*.interface.ts`, `types.ts`.
   [
     'data',
-    /(^|\/)(entities|entity|models?|repositories|repository|dto|dtos|interfaces?|types)\/|\.(entity|model|repository|dto|schema|interfaces?|types?)\.[cm]?[jt]s$|(^|\/)(interfaces?|types)\.[cm]?[jt]s$|(^|\/)(models?|schemas?|entities|types)\.(py|go)$/,
+    /(^|\/)(entities|entity|models?|repositories|repository|dto|dtos|interfaces?|types)\/|\.(entity|model|repository|dto|schema|interfaces?|types?)\.[cm]?[jt]s$|(^|\/)(interfaces?|types)\.[cm]?[jt]s$|(^|\/)(models?|schemas?|entities|types)\.(py|go)$|(Entity|Repository|Dto|DTO|Model)\.(java|kt|cs)$|(^|\/)(Entities|Models?|Repositories|Dtos?|DTOs?)\/[^/]*\.cs$/,
   ],
   ['domain', /(^|\/)domain\//],
   [
     'service',
-    /(^|\/)(services?|jobs|workers|processors?|queues?)\/|\.(service|processor|worker|job)\.[cm]?[jt]s$|(^|\/)(services?|tasks)\.(py|go)$/,
+    /(^|\/)(services?|jobs|workers|processors?|queues?)\/|\.(service|processor|worker|job)\.[cm]?[jt]s$|(^|\/)(services?|tasks)\.(py|go)$|(Service|ServiceImpl)\.(java|kt|cs)$|(^|\/)Services\/[^/]*\.cs$/,
   ],
   [
     'api',
-    /(^|\/)(controllers?|routes?|handlers?|resolvers?|api|endpoints?)\/|\.(controller|resolver|route|routes|handler|gateway)\.[cm]?[jt]s$|(^|\/)(views|urls|routes|routers?|api|handlers?|endpoints)\.(py|go)$|(^|\/)(views|routers)\/[^/]*\.py$/,
+    /(^|\/)(controllers?|routes?|handlers?|resolvers?|api|endpoints?)\/|\.(controller|resolver|route|routes|handler|gateway)\.[cm]?[jt]s$|(^|\/)(views|urls|routes|routers?|api|handlers?|endpoints)\.(py|go)$|(^|\/)(views|routers)\/[^/]*\.py$|(Controller|Endpoints?)\.(java|kt|cs)$|(^|\/)Controllers\/[^/]*\.cs$/,
   ],
   // Shared helpers, read before the services that use them. After the layers above, so that
   // `common/dto/` stays data and `shared/services/` stays a service; before `ui`, whose `app/`
   // folder would otherwise claim `app/utils/`.
   [
     'util',
-    /(^|\/)(helpers?|utils?|lib|common|shared)\/|(^|\/)(helpers?|utils?)\.[cm]?[jt]sx?$|\.(helpers?|utils?)\.[cm]?[jt]sx?$|(^|\/)(helpers?|utils?)\.(py|go)$/,
+    /(^|\/)(helpers?|utils?|lib|common|shared)\/|(^|\/)(helpers?|utils?)\.[cm]?[jt]sx?$|\.(helpers?|utils?)\.[cm]?[jt]sx?$|(^|\/)(helpers?|utils?)\.(py|go)$|(Utils?|Helpers?|Extensions)\.(java|kt|cs)$|(^|\/)(Utilities|Helpers|Extensions)\/[^/]*\.cs$/,
   ],
-  // Python and Go code that matched nothing above: not UI because of an `app/` or `views/`
-  // folder (FastAPI's `app/` package, Django's views).
-  ['unknown', /\.(py|pyi|go)$/],
+  // Android screens and resources, Razor pages (M16).
+  [
+    'ui',
+    /(Activity|Fragment|Screen)\.(kt|java)$|(^|\/)src\/\w+\/res\/(layout|drawable|values|menu)[^/]*\/|\.(cshtml|razor)$/,
+  ],
+  // Python, Go, Java, Kotlin and C# code that matched nothing above: not UI because of an `app/`
+  // or `views/` folder (FastAPI's `app/` package, Django's views, an Android `app/` module).
+  ['unknown', /\.(py|pyi|go|java|kt|kts|cs)$/],
   [
     'ui',
     /(^|\/)(components?|pages|views|app|screens|layouts)\/|\.(tsx|jsx|vue|svelte|astro|css|scss|html)$/,

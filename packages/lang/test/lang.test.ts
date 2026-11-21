@@ -371,3 +371,223 @@ describe('fingerprints', () => {
     ]);
   });
 });
+
+describe('Java, Kotlin and C# (M16)', () => {
+  const symbolsOf = async (code: string, lang: Parameters<typeof parseSource>[0]) => {
+    const src = await parse(code, lang);
+    expect(src.hasError).toBe(false);
+    return src.symbols.map((s) => `${s.kind} ${s.qualifiedName}${s.exported ? '' : ' (private)'}`);
+  };
+
+  it('maps .java, .kt, .kts and .cs', () => {
+    expect(['A.java', 'B.kt', 'build.gradle.kts', 'C.cs'].map(languageForPath)).toEqual([
+      'java',
+      'kotlin',
+      'kotlin',
+      'csharp',
+    ]);
+  });
+
+  it('Java: classes, members, overloads by parameter types, visibility', async () => {
+    const code = [
+      'package org.acme;',
+      'public class UserService {',
+      '  private final Repo repo;',
+      '  public UserService(Repo repo) { this.repo = repo; }',
+      '  public void save(java.util.List<User> users) {}',
+      '  void save(User... users) {}',
+      '  private void log() {}',
+      '  enum State { ON }',
+      '  record Point(int x) {}',
+      '}',
+      'interface Repo { User find(long id); }',
+    ].join('\n');
+    expect(await symbolsOf(code, 'java')).toEqual([
+      'class UserService',
+      'method UserService.UserService',
+      'method UserService.save(List)',
+      'method UserService.save(User[])',
+      'method UserService.log (private)',
+      'class UserService.State',
+      'class UserService.Point',
+      'interface Repo',
+      'method Repo.find',
+    ]);
+    const src = await parse(code, 'java');
+    expect(src.symbols.find((s) => s.qualifiedName === 'UserService.save(List)')!.name).toBe(
+      'save',
+    );
+    expect(src.packageName).toBe('org.acme');
+    expect(src.fields.map((f) => f.name)).toEqual(['repo', 'ON', 'x']);
+    expect(src.classes[0]!.constructorParams).toEqual([{ name: 'repo', types: ['Repo'], line: 4 }]);
+  });
+
+  it('Java: imports, annotations and how names are used', async () => {
+    const src = await parse(
+      [
+        'package a;',
+        'import java.util.List;',
+        'import static org.acme.Util.check;',
+        'import org.acme.mail.*;',
+        '@RestController',
+        '@RequestMapping(value = "/users", produces = MediaType.JSON)',
+        'class C extends Base implements Api {',
+        '  @GetMapping("/{id}") User get(@PathVariable long id) { return repo.find(new Key(id)).user; }',
+        '}',
+      ].join('\n'),
+      'java',
+    );
+    expect(src.imports.map((i) => [i.source, i.names])).toEqual([
+      ['java.util.List', ['List']],
+      ['org.acme.Util.check', ['check']],
+      ['org.acme.mail.*', []],
+    ]);
+    expect(src.decorators.map((d) => [d.name, d.args, d.refs, d.target])).toEqual([
+      ['RestController', [], [], { kind: 'class', name: 'C' }],
+      ['RequestMapping', ['/users'], ['MediaType', 'JSON'], { kind: 'class', name: 'C' }],
+      ['GetMapping', ['/{id}'], [], { kind: 'method', name: 'get', className: 'C' }],
+      ['PathVariable', [], [], { kind: 'parameter', name: 'id', className: 'C' }],
+    ]);
+    expect(src.classes[0]).toMatchObject({ extends: ['Base'], implements: ['Api'] });
+    const kind = (name: string) => src.references.find((r) => r.name === name)?.kind;
+    expect([kind('find'), kind('Key'), kind('user'), kind('User'), kind('List')]).toEqual([
+      'call',
+      'new',
+      'member',
+      'type',
+      undefined, // names in imports are not uses
+    ]);
+  });
+
+  it('Kotlin: interfaces, objects, companion members, extensions, top-level names', async () => {
+    const code = [
+      'package netlib',
+      '',
+      'interface Dns {',
+      '  fun lookup(host: String): List<String>',
+      '}',
+      '',
+      'class HttpCall(private val client: HttpClient, timeout: Int) : Call, Base() {',
+      '  fun execute(): Response = client.run()',
+      '  fun execute(timeout: Long) {',
+      '  }',
+      '  private fun log() {',
+      '  }',
+      '  companion object {',
+      '    fun create(c: HttpClient): HttpCall = HttpCall(c, 0)',
+      '  }',
+      '}',
+      '',
+      'object Util {',
+      '  fun x() {',
+      '  }',
+      '}',
+      '',
+      'fun Socket.closeQuietly() {',
+      '}',
+      '',
+      'fun Closeable.closeQuietly() {',
+      '}',
+      '',
+      'const val MAX = 10',
+    ].join('\n');
+    expect(await symbolsOf(code, 'kotlin')).toEqual([
+      'interface Dns',
+      'method Dns.lookup',
+      'class HttpCall',
+      'method HttpCall.execute()',
+      'method HttpCall.execute(Long)',
+      'method HttpCall.log (private)',
+      'method HttpCall.create',
+      'class Util',
+      'method Util.x',
+      'function closeQuietly(this Socket)',
+      'function closeQuietly(this Closeable)',
+      'variable MAX',
+    ]);
+    const src = await parse(code, 'kotlin');
+    expect(src.packageName).toBe('netlib');
+    // `val` and `var` constructor parameters are properties; a plain one is not.
+    expect(src.fields.map((f) => f.name)).toEqual(['client']);
+    expect(src.classes.find((c) => c.name === 'HttpCall')).toMatchObject({
+      extends: ['Base'],
+      implements: ['Call'],
+    });
+    const uses = (name: string) =>
+      src.references.filter((r) => r.name === name && r.kind !== 'declaration').map((r) => r.kind);
+    expect([uses('run'), uses('HttpCall'), uses('Response')]).toEqual([
+      ['call'],
+      ['type', 'new'],
+      ['type'],
+    ]);
+  });
+
+  it('C#: types, properties as members, default visibility, usings, namespace', async () => {
+    const code = [
+      'using Acme.Core.Entities;',
+      'using static Acme.Core.Utilities.CoreHelpers;',
+      'using Alias = Acme.Core.Models.Data;',
+      'namespace Acme.Core.Services',
+      '{',
+      '    [Authorize(Policy = "Admin")]',
+      '    public class UserService(IUserRepository repo) : BaseService, IUserService',
+      '    {',
+      '        private readonly IMailService _mail;',
+      '        public string Name { get; set; }',
+      '        public Task SaveAsync(User user) => repo.SaveAsync(new User { Email = user.Email });',
+      '        Task SaveAsync(Guid id) => null;',
+      '    }',
+      '    interface IUserService { Task SaveAsync(User user); }',
+      '    enum Kind { A }',
+      '}',
+    ].join('\n');
+    expect(await symbolsOf(code, 'csharp')).toEqual([
+      'class UserService',
+      'method UserService.Name',
+      'method UserService.SaveAsync(User)',
+      'method UserService.SaveAsync(Guid) (private)',
+      'interface IUserService',
+      'method IUserService.SaveAsync',
+      'type Kind',
+    ]);
+    const src = await parse(code, 'csharp');
+    expect(src.packageName).toBe('Acme.Core.Services');
+    expect(src.imports.map((i) => [i.source, i.names])).toEqual([
+      ['Acme.Core.Entities', []],
+      ['Acme.Core.Utilities.CoreHelpers', []],
+      ['Acme.Core.Models.Data', ['Alias']],
+    ]);
+    expect(src.classes[0]).toMatchObject({
+      extends: ['BaseService'],
+      implements: ['IUserService'],
+      constructorParams: [{ name: 'repo', types: ['IUserRepository'] }],
+    });
+    expect(src.decorators.map((d) => [d.name, d.args, d.refs])).toEqual([
+      ['Authorize', ['Admin'], []],
+    ]);
+    const kinds = (name: string) => [
+      ...new Set(src.references.filter((r) => r.name === name).map((r) => r.kind)),
+    ];
+    expect(kinds('Email')).toEqual(['member']);
+    expect(kinds('User')).toEqual(['type', 'new']);
+    expect(kinds('SaveAsync')).toEqual(['declaration', 'call']);
+    expect(kinds('IUserRepository')).toEqual(['type']);
+  });
+
+  it('formatting: a reformat keeps the fingerprint, a changed comment does not', async () => {
+    const fp = async (code: string, lang: Parameters<typeof parseSource>[0]) =>
+      (await parse(code, lang)).fingerprint;
+    expect(await fp('class A { void f() { g(1,2); } }', 'java')).toBe(
+      await fp('class A {\n  void f() {\n    g(1, 2);\n  }\n}\n', 'java'),
+    );
+    expect(await fp('class A {\n  // one\n}\n', 'java')).not.toBe(
+      await fp('class A {\n  // two\n}\n', 'java'),
+    );
+    expect(await fp('fun f(a: Int, b: Int) {\n}\n', 'kotlin')).toBe(
+      await fp('fun f(\n  a: Int,\n  b: Int,\n) {\n}\n', 'kotlin'),
+    );
+    expect(await fp('class A { void F() { G(); } }', 'csharp')).toBe(
+      await fp('class A\n{\n    void F()\n    {\n        G();\n    }\n}\n', 'csharp'),
+    );
+  });
+});

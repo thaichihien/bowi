@@ -65,6 +65,8 @@ interface Target {
   path: string;
   /** Its file's language family: what is searched and how code is read. */
   family: LanguageFamily;
+  /** The package its file declares (Java, Kotlin, C#). */
+  package?: string;
 }
 
 export const refsStage: Stage<RefsStageInput, RefsStageOutput> = async (input, ctx) => {
@@ -175,7 +177,9 @@ export const refsStage: Stage<RefsStageInput, RefsStageOutput> = async (input, c
         if (!sameFile && !f.words.has(t.owner)) continue;
       } else if (
         !sameFile &&
-        !(t.family.canUse ? t.family.canUse(f, m.path, t.path, t.name) : f.imported.has(t.name))
+        !(t.family.canUse
+          ? t.family.canUse(f, m.path, t.path, t.name, t.package)
+          : f.imported.has(t.name))
       )
         continue;
       kept.push({ m, rank: sameFile ? 1 : 0 });
@@ -234,11 +238,19 @@ function targetOf(
   // Top-level symbols and methods of top-level classes; test blocks and deeper nesting are not
   // called by name from elsewhere.
   if (parts.length > 2 || (parts.length === 2 && s.kind !== 'method')) return undefined;
-  const name = parts.at(-1)!;
-  if (name.length < MIN_NAME_LENGTH || name === family.constructorName || !family.isName(name))
+  // `save(User)`: an overload's parameter types are not part of the name callers write.
+  const name = family.overloads ? parts.at(-1)!.replace(/\(.*$/, '') : parts.at(-1)!;
+  if (
+    name.length < MIN_NAME_LENGTH ||
+    name === family.constructorName ||
+    family.isConstructor?.(name, qualified) ||
+    !family.isName(name)
+  )
     return undefined;
   const target: Target = { symbol: s, name, path, family };
   if (parts.length === 2) target.owner = parts[0]!;
+  const pkg = src?.new?.packageName ?? src?.old?.packageName;
+  if (pkg !== undefined) target.package = pkg;
   return target;
 }
 

@@ -9,6 +9,9 @@
  * family (languages/) and some other unit's changed lines in the same file use one of the
  * introduced names. Clustering then merges it into the unit that uses those names most
  * (cluster.ts). Files of no family are clustered as usual.
+ *
+ * C#'s `using Acme.Core.Services;` names a namespace, not what the file uses from it (M16): such a
+ * hunk serves the unit that changes the most lines of its file.
  */
 
 import { familyOf } from '../languages/index.ts';
@@ -34,14 +37,20 @@ export function glueUnits(
   units.forEach((unit, i) => {
     const unitHunks = hunksOfUnit[i]!.map((id) => hunkById.get(id)!);
     const names = new Set<string>();
+    // An import of names it does not write (C#): any changed line of the file may use them.
+    let unnamed = false;
     for (const h of unitHunks) {
       const introduced = introducedNames(h, unit, symbolById, fileById);
       if (!introduced) return;
+      if (introduced.length === 0 && familyOf(fileById.get(h.fileId)!.language)?.importsUnnamed)
+        unnamed = true;
       introduced.forEach((n) => names.add(n));
     }
-    if (names.size === 0) return;
+    if (names.size === 0 && !unnamed) return;
     const files = new Set(unitHunks.map((h) => h.fileId));
-    const word = new RegExp(`(?<![\\w$])(${[...names].map(escape).join('|')})(?![\\w$])`);
+    const word = unnamed
+      ? /\S/
+      : new RegExp(`(?<![\\w$])(${[...names].map(escape).join('|')})(?![\\w$])`);
     const uses = units.map((_, j) =>
       j === i
         ? 0
@@ -87,7 +96,11 @@ function introducedNames(
       return undefined;
     return changed.flatMap((l) => family.importedNames(l.text));
   }
-  if (family.injectedParameter && symbol.name === family.constructorName) {
+  if (
+    family.injectedParameter &&
+    (symbol.name === family.constructorName ||
+      family.isConstructor?.(symbol.name, symbol.qualifiedName))
+  ) {
     const names: string[] = [];
     for (const l of changed) {
       const m = family.injectedParameter.exec(l.text);

@@ -112,6 +112,9 @@ export function extractSymbols(
       // Go: a struct is a class, an interface an interface, anything else a type.
       const of = node.childForFieldName('type')?.type;
       kind = of === 'struct_type' ? 'class' : of === 'interface_type' ? 'interface' : 'type';
+    } else if (language === 'kotlin' && node.type === 'class_declaration') {
+      // Kotlin: `interface Dns` is a class declaration with the `interface` keyword.
+      if (node.children.some((ch) => ch?.type === 'interface')) kind = 'interface';
     }
 
     seen.add(node.id);
@@ -127,7 +130,9 @@ export function extractSymbols(
           ? /^[A-Z]/.test(name)
           : language === 'python'
             ? !name.startsWith('_') || /^__\w+__$/.test(name)
-            : isExported(node),
+            : MEMBER_LANGUAGES.has(language)
+              ? isVisible(node, language)
+              : isExported(node),
       ...(receiver && { receiver }),
     });
   }
@@ -136,25 +141,32 @@ export function extractSymbols(
     (a, b) => a.range[0]!.startIndex - b.range[0]!.startIndex || b.node.endIndex - a.node.endIndex,
   );
 
+  const overloaded = MEMBER_LANGUAGES.has(language) ? overloads(candidates) : new Set<number>();
+
   const symbols: SourceSymbol[] = [];
   // What a symbol's children are qualified with: its own qualified name, except for Markdown
   // sections that end a run of headings without text between them (below).
   const prefixes: (string | null)[] = [];
   const stack: number[] = [];
-  for (const c of candidates) {
+  for (const [i, c] of candidates.entries()) {
     while (stack.length > 0 && candidates[stack.at(-1)!]!.node.endIndex <= c.node.startIndex)
       stack.pop();
     const parent = stack.length > 0 ? stack.at(-1)! : null;
     const prefix = c.receiver ?? (parent === null ? null : prefixes[parent]!);
     let own = c.name;
-    // Python: a function defined directly in a class is a method.
+    // Python and Kotlin: a function defined directly in a class (Kotlin: also an object, an
+    // interface or a class's companion object) is a method.
     if (
-      language === 'python' &&
+      (language === 'python' || language === 'kotlin') &&
       c.kind === 'function' &&
       parent !== null &&
-      symbols[parent]!.kind === 'class'
+      (symbols[parent]!.kind === 'class' ||
+        (language === 'kotlin' && symbols[parent]!.kind === 'interface'))
     )
       c.kind = 'method';
+    // Java, Kotlin, C#: overloads stay apart by their parameter types, `save(User)`; the name
+    // stays `save`, which is what calls use.
+    if (overloaded.has(i)) own = `${own}(${parameterTypes(c.node, language).join(', ')})`;
     // `###### hooks.beforeRetry` under `##### hooks`: `hooks.beforeRetry`, not `hooks.hooks.…`.
     if (c.kind === 'section' && parent !== null && own.startsWith(`${symbols[parent]!.name}.`))
       own = own.slice(symbols[parent]!.name.length + 1);
@@ -215,6 +227,87 @@ function rangeNodes(node: Node): Node[] {
   return nodes;
 }
 
+/** Languages whose functions live in classes and can be overloaded (M16). */
+const MEMBER_LANGUAGES: ReadonlySet<LanguageId> = new Set(['java', 'kotlin', 'csharp']);
+
+/** Candidates (by index) that share their name with a sibling function or method. */
+function overloads(candidates: Candidate[]): Set<number> {
+  const byKey = new Map<string, number[]>();
+  const stack: number[] = [];
+  candidates.forEach((c, i) => {
+    while (stack.length > 0 && candidates[stack.at(-1)!]!.node.endIndex <= c.node.startIndex)
+      stack.pop();
+    const parent = stack.length > 0 ? stack.at(-1)! : -1;
+    stack.push(i);
+    if (c.kind !== 'method' && c.kind !== 'function') return;
+    const key = `${parent}:${c.name}`;
+    byKey.set(key, [...(byKey.get(key) ?? []), i]);
+  });
+  return new Set([...byKey.values()].filter((ids) => ids.length > 1).flat());
+}
+
+/**
+ * A function's parameter types, without packages, namespaces or type arguments, so that a
+ * qualified name stays one dotted path: `List<a.b.User>` → `List`, `String...` → `String[]`.
+ * A Kotlin extension function's receiver comes first, as `this Socket`.
+ */
+function parameterTypes(fn: Node, language: LanguageId): string[] {
+  const out: string[] = [];
+  if (language === 'kotlin') {
+    const name = fn.childForFieldName('name');
+    const receiver = fn.namedChildren.find(
+      (ch) => ch && name && ch.endIndex <= name.startIndex && KOTLIN_TYPES.has(ch.type),
+    );
+    if (receiver) out.push(`this ${simpleType(receiver.text)}`);
+    const params = fn.namedChildren.find((ch) => ch?.type === 'function_value_parameters');
+    for (const p of params?.namedChildren ?? []) {
+      if (p?.type !== 'parameter') continue;
+      const type = p.namedChildren.find((ch) => ch && KOTLIN_TYPES.has(ch.type));
+      if (type) out.push(simpleType(type.text));
+    }
+    return out;
+  }
+  const params = fn.childForFieldName('parameters');
+  for (const p of params?.namedChildren ?? []) {
+    if (!p) continue;
+    if (p.type === 'spread_parameter') {
+      const type = p.namedChildren.find((ch) => ch && ch.type !== 'modifiers');
+      if (type) out.push(`${simpleType(type.text)}[]`);
+      continue;
+    }
+    const type = p.childForFieldName('type');
+    if (type) out.push(simpleType(type.text));
+  }
+  return out;
+}
+
+const KOTLIN_TYPES = new Set(['user_type', 'nullable_type', 'function_type', 'parenthesized_type']);
+
+function simpleType(text: string): string {
+  let t = text.replace(/\s+/g, '');
+  // Type arguments, innermost first.
+  for (let prev = ''; prev !== t;) [prev, t] = [t, t.replace(/<[^<>]*>/g, '')];
+  return t.replace(/\.\.\.$/, '[]').replace(/^(?:[\w]+\.)+/, '');
+}
+
+/**
+ * Java, Kotlin, C#: whether code in another file can use the symbol. Java's package-private and
+ * Kotlin's default are; `private` is not. C# members are private by default, types internal.
+ */
+function isVisible(node: Node, language: LanguageId): boolean {
+  const modifiers =
+    language === 'csharp'
+      ? node.children.filter((ch) => ch?.type === 'modifier').map((ch) => ch!.text)
+      : (node.children.find((ch) => ch?.type === 'modifiers')?.text.split(/\s+/) ?? []);
+  if (modifiers.includes('private')) return false;
+  if (language !== 'csharp') return true;
+  if (modifiers.some((m) => m === 'public' || m === 'protected' || m === 'internal')) return true;
+  // No access modifier: a member of a class, struct or record is private; a type outside any
+  // type is internal, and an interface member public.
+  const holder = node.parent?.type === 'declaration_list' ? node.parent.parent : null;
+  return !holder || holder.type.includes('namespace') || holder.type === 'interface_declaration';
+}
+
 /** Go: the type a method is declared on, without `*` or type arguments: `Server`. */
 function receiverType(method: Node): string | undefined {
   const param = method
@@ -232,7 +325,12 @@ function isExported(node: Node): boolean {
 
 function signatureOf(node: Node, range: Node[], source: string): string {
   const start = range[0]!.startIndex;
-  const body = node.childForFieldName('body') ?? node.childForFieldName('value');
+  const body =
+    node.childForFieldName('body') ??
+    node.childForFieldName('value') ??
+    // C# properties; Kotlin bodies have no field name.
+    node.childForFieldName('accessors') ??
+    node.namedChildren.find((ch) => ch !== null && KOTLIN_BODIES.has(ch.type));
   let text: string;
   if (body && body.startIndex > start) {
     text = source.slice(start, body.startIndex);
@@ -245,6 +343,8 @@ function signatureOf(node: Node, range: Node[], source: string): string {
     .replace(/\s*[={:]$/, '');
   return text.length > 300 ? `${text.slice(0, 299)}…` : text;
 }
+
+const KOTLIN_BODIES = new Set(['class_body', 'enum_class_body', 'function_body']);
 
 function keyDepth(pair: Node): number {
   let depth = 0;

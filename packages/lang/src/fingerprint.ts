@@ -25,8 +25,11 @@ const TEXT_RUNS = new Set(['inline', 'code_fence_content', 'indented_code_block'
 /** Markdown continuation markers: layout only, like whitespace. */
 const LAYOUT_NODES = new Set(['block_continuation']);
 
+// Java and Kotlin name their comments `line_comment` and `block_comment` (M16).
+const COMMENT_TYPES = new Set(['comment', 'html_comment', 'line_comment', 'block_comment']);
+
 export function isComment(node: Node): boolean {
-  return node.type === 'comment' || node.type === 'html_comment';
+  return COMMENT_TYPES.has(node.type);
 }
 
 /** Dropped separator tokens: invisible to fingerprints. */
