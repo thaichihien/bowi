@@ -100,6 +100,14 @@ function score(
 }
 
 function languageOf(plan: ReviewPlan): string {
+  // Python and Go (M15) when most changed code files are theirs: a Django app may touch some
+  // JavaScript, a TypeScript project a script.
+  const count = (l: string) => plan.files.filter((f) => f.language === l).length;
+  const scriptFiles = plan.files.filter((f) =>
+    ['typescript', 'tsx', 'javascript', 'vue', 'svelte', 'astro'].includes(f.language ?? ''),
+  ).length;
+  if (count('python') > scriptFiles && count('python') >= count('go')) return 'Python';
+  if (count('go') > scriptFiles) return 'Go';
   const languages = new Set(plan.files.map((f) => f.language));
   // Vue, Svelte and Astro components: their scripts are parsed as TypeScript (M14).
   const scripts = ['typescript', 'tsx', 'vue', 'svelte', 'astro'];

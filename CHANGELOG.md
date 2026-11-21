@@ -20,6 +20,15 @@
 - ← and → move between files and Esc closes, only while focus is in the tour and never while typing in a comment; the page's own keys (j, k, r) wait while it is open. A 49-file pull request (honojs/hono#5466) moves from file to file in about 35 ms.
 - Long file names are cut in the middle, so the start and the extension stay visible ("1730_add_e…rified.ts"), with the full name on hover: in the Review tab's trees and file headers, the tour, and the Changes tab's tree and headers. In a path the folder is cut first.
 
+### M15 — Python and Go
+
+- A language interface first: what the engine knows about a language beyond its grammar (which files can use each other, imports, test files, glue, the outside-reference search) is now a language family, and TypeScript/JavaScript became the first one without any change in output: the whole plan of every benchmark case is identical before and after (`bun run bench plans`, a new benchmark command that hashes each case's plan and compares two runs). Details: §15 #84.
+- Python (`.py`, `.pyi`): functions, methods, classes and module-level names, with their decorators; links from calls, types and imports (relative and absolute module paths); `test_*.py` and `*_test.py` linked to the module they test; Black and Ruff reformatting is formatting; unchanged callers listed.
+- Go (`.go`): functions, methods named after their receiver (`Server.Start`), structs, interfaces, types and package-level names; files of one package linked without imports, an import linking the whole package; `*_test.go` linked to the file it tests; `gofmt` changes are formatting; unchanged callers listed.
+- Layers by path for Python and Go file names (`models.py`, `views.py`, `services.py`, `handlers.go`, …); a Python or Go file matching nothing is other code, never UI. Poetry, uv, Pipenv and PDM lockfiles, `go.sum` and protobuf output are generated. New dependencies are reported from `requirements*.txt`, `pyproject.toml`, `Pipfile` and `go.mod`.
+- Grammars `tree-sitter-python` and `tree-sitter-go` 0.25.0 are vendored.
+- Grouping benchmark, new cases from six open-source projects chosen by the owner (the case picker now counts `.py` and `.go` files as code): Python 21 cases from three projects, Bowi 0.42 mean ARI against 0.19 by folder, at least as good in 18; Go 29 cases from three projects, 0.44 against 0.25, at least as good in 23. Both count as supported (+0.10 over folder and two thirds of the cases). The 229 TypeScript cases score exactly as before.
+
 ### M19 — A skill for Claude Code and Codex
 
 - Bowi ships one skill, `skills/bowi/SKILL.md` in the Agent Skills format (§15 #81), so that Claude Code and Codex use Bowi when asked to review a pull request ("review #42", a PR URL) or to say what a branch changes, without the user naming Bowi. The README says where to copy it: `~/.claude/skills/` for Claude Code, `~/.agents/skills/` for Codex (or the same folders inside one repository).

@@ -18,6 +18,8 @@ import { createHash } from 'node:crypto';
 import type { Node } from 'web-tree-sitter';
 
 const DROPPED_TOKENS = new Set([';', ',', "'", '"']);
+/** Python's string delimiters, prefix included: compared without their quote characters. */
+const QUOTE_TOKENS = new Set(['string_start', 'string_end']);
 /** Markdown text runs: compared by their text, whitespace collapsed, never by their tokens. */
 const TEXT_RUNS = new Set(['inline', 'code_fence_content', 'indented_code_block', 'html_block']);
 /** Markdown continuation markers: layout only, like whitespace. */
@@ -61,6 +63,12 @@ export function serialize(node: Node, out: string[], skip?: Node): void {
   if (node.childCount === 0) {
     if (!node.isNamed) {
       if (!DROPPED_TOKENS.has(node.type)) out.push(node.type);
+      return;
+    }
+    // Python keeps a string's quotes in named tokens: `'a'` and `"a"` are the same string; a
+    // prefix (`f`, `r`, `b`) still counts.
+    if (QUOTE_TOKENS.has(node.type)) {
+      out.push(`${node.type}:${node.text.replace(/['"]/g, '')}`);
       return;
     }
     out.push(`${node.type}:${node.text}`);

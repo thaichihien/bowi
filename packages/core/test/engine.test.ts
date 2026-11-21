@@ -59,15 +59,15 @@ describe('formatting-only detection', () => {
 
   it('only counts blank-line changes as formatting in files without a grammar', async () => {
     const p = await plan(
-      { 'a.rb': 'x = 1\n\n\ny = 2\n', 'b.py': 'def f():\n    return 1\n' },
-      { 'a.rb': 'x = 1\ny = 2\n', 'b.py': 'def f():\n  return 1\n' },
+      { 'a.rb': 'x = 1\n\n\ny = 2\n', 'b.rs': 'fn f() -> i32 {\n    1\n}\n' },
+      { 'a.rb': 'x = 1\ny = 2\n', 'b.rs': 'fn f() -> i32 {\n  1\n}\n' },
     );
     expect(p.files.map((f) => [f.path, f.parseStatus])).toEqual([
       ['a.rb', 'unsupported'],
-      ['b.py', 'unsupported'],
+      ['b.rs', 'unsupported'],
     ]);
     expect(Object.values(kinds(p))).toEqual(['format', 'logic']);
-    expect(symbolsOf(p)).toEqual(['body file b.py']);
+    expect(symbolsOf(p)).toEqual(['body file b.rs']);
   });
 });
 

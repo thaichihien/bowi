@@ -23,6 +23,7 @@ import type { ParsedSource, Reference } from '@bowi/lang';
 import { compareStrings } from '../determinism.ts';
 import { createImportResolver } from '../graph/imports.ts';
 import { literalsIn } from '../graph/literals.ts';
+import { DEFAULT_FAMILY, familyOf } from '../languages/index.ts';
 import type { FrameworkPlugin } from '../plugin.ts';
 import type { Stage } from '../stage.ts';
 import type { ChangedSymbol, ChangeEdge, Commit, FileChange, Hunk } from '../types.ts';
@@ -128,8 +129,16 @@ export const graphStage: Stage<GraphStageInput, GraphStageOutput> = async (input
     if (c) code.set(s.id, c);
   }
 
-  // Which changed files each file imports (old and new versions).
+  // Which changed files each file imports (old and new versions). In a language with packages
+  // (Go), an import brings in every changed file of the package, and files of one package see
+  // each other.
   const resolve = createImportResolver(files);
+  const packageOf = (f: FileChange) => familyOf(f.language)?.packageOf?.(f.path);
+  const filesOfPackage = new Map<string, string[]>();
+  for (const f of files) {
+    const p = packageOf(f);
+    if (p !== undefined) filesOfPackage.set(p, [...(filesOfPackage.get(p) ?? []), f.id]);
+  }
   const imported = new Map<string, Set<string>>();
   for (const f of files) {
     const src = sources.get(f.id);
@@ -137,13 +146,22 @@ export const graphStage: Stage<GraphStageInput, GraphStageOutput> = async (input
     for (const v of [src?.old, src?.new]) {
       for (const imp of v?.imports ?? []) {
         const id = resolve(v === src?.old ? (f.oldPath ?? f.path) : f.path, imp.source);
-        if (id) set.add(id);
+        if (!id) continue;
+        set.add(id);
+        const p = packageOf(fileById.get(id)!);
+        for (const other of p !== undefined ? (filesOfPackage.get(p) ?? []) : []) set.add(other);
       }
     }
     imported.set(f.id, set);
   }
+  const samePackage = (a: string, b: string) => {
+    const p = packageOf(fileById.get(a)!);
+    return p !== undefined && p === packageOf(fileById.get(b)!);
+  };
   const visible = (from: ChangedSymbol, to: ChangedSymbol) =>
-    from.fileId === to.fileId || (imported.get(from.fileId)?.has(to.fileId) ?? false);
+    from.fileId === to.fileId ||
+    (imported.get(from.fileId)?.has(to.fileId) ?? false) ||
+    samePackage(from.fileId, to.fileId);
 
   // Call and type targets by name, and changed fields by name.
   // Test helpers, fixtures and test entities are targets too, for test code only: a new test
@@ -332,7 +350,10 @@ function evidence(
   }
 }
 
-/** `x.spec.ts` / `x.test.ts` tests `x.ts`, even without a call we can resolve. */
+/**
+ * `x.spec.ts` / `x.test.ts` tests `x.ts`, even without a call we can resolve. How a test file is
+ * named is the test file's language family's rule.
+ */
 function testsByFileName(
   logic: ChangedSymbol[],
   fileById: Map<string, FileChange>,
@@ -348,7 +369,8 @@ function testsByFileName(
   for (const s of logic) {
     if (s.layer !== 'test' || edges.hasFrom(s.id, 'tests')) continue;
     const path = fileById.get(s.fileId)!.path;
-    const subject = stem(path).replace(/\.(spec|test|e2e-spec)$/, '');
+    const family = familyOf(fileById.get(s.fileId)!.language) ?? DEFAULT_FAMILY;
+    const subject = family.testSubject(stem(path));
     if (subject === stem(path)) continue;
     const t = firstByStem.get(subject);
     if (!t) continue;
@@ -405,13 +427,14 @@ function literalEdges(
   for (const h of hunks) {
     if (h.kind !== 'logic') continue;
     const owners = lineSymbols.get(h.id) ?? [];
+    const { importLine } = familyOf(fileById.get(h.fileId)!.language) ?? DEFAULT_FAMILY;
     h.lines.forEach((l, i) => {
       if (l.kind === 'context') return;
       const owner = byId.get(owners[i] ?? h.symbolIds[0] ?? '');
       if (!owner || !logicIds.has(owner.id)) return;
       const line = (l.kind === 'add' ? l.newNo : l.oldNo)!;
       if (owner.layer === 'docs' && l.kind === 'add') docsLines.push({ owner, text: l.text, line });
-      for (const lit of literalsIn(l.text)) {
+      for (const lit of literalsIn(l.text, importLine)) {
         const m = occurrences.get(lit) ?? new Map();
         if (!m.has(owner.id)) m.set(owner.id, { fileId: h.fileId, line });
         occurrences.set(lit, m);

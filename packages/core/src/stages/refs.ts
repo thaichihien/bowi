@@ -15,6 +15,7 @@
 
 import type { ParsedSource } from '@bowi/lang';
 import { compareStrings } from '../determinism.ts';
+import { familyOf, FAMILIES, type FileFacts, type LanguageFamily } from '../languages/index.ts';
 import { createGeneratedMatcher } from '../noise/generated.ts';
 import type { GrepMatch, Snapshot } from '../snapshot.ts';
 import type { Stage } from '../stage.ts';
@@ -35,21 +36,6 @@ export interface RefsStageOutput {
   counts: Map<string, number>;
 }
 
-/** Languages whose files can call each other: TypeScript imports JavaScript and back. */
-const CODE_LANGUAGES = new Set(['typescript', 'tsx', 'javascript', 'vue', 'svelte', 'astro']);
-export const CODE_EXTENSIONS = [
-  '.ts',
-  '.tsx',
-  '.mts',
-  '.cts',
-  '.js',
-  '.jsx',
-  '.mjs',
-  '.cjs',
-  '.vue',
-  '.svelte',
-  '.astro',
-];
 const SEARCHED_KINDS = new Set<ChangedSymbol['kind']>([
   'function',
   'method',
@@ -77,6 +63,8 @@ interface Target {
   /** For methods: the class name callers must mention. */
   owner?: string;
   path: string;
+  /** Its file's language family: what is searched and how code is read. */
+  family: LanguageFamily;
 }
 
 export const refsStage: Stage<RefsStageInput, RefsStageOutput> = async (input, ctx) => {
@@ -93,12 +81,17 @@ export const refsStage: Stage<RefsStageInput, RefsStageOutput> = async (input, c
   });
   if (targets.length === 0) return empty;
 
-  let matches: GrepMatch[];
+  // One search per language family, in its own files.
+  const matchesOf = new Map<LanguageFamily, GrepMatch[]>();
   try {
-    matches = await snapshot.grep(
-      [...new Set(targets.map((t) => t.name))].sort(compareStrings),
-      CODE_EXTENSIONS,
-    );
+    for (const family of FAMILIES) {
+      const names = targets.filter((t) => t.family === family).map((t) => t.name);
+      if (names.length === 0) continue;
+      matchesOf.set(
+        family,
+        await snapshot.grep([...new Set(names)].sort(compareStrings), family.extensions),
+      );
+    }
   } catch (e) {
     ctx.warn(
       `Could not search for outside references (${e instanceof Error ? e.message : String(e)})`,
@@ -130,34 +123,36 @@ export const refsStage: Stage<RefsStageInput, RefsStageOutput> = async (input, c
     added.has(`${m.path}:${m.line}`) ||
     (changedRanges.get(m.path) ?? []).some(([a, b]) => m.line >= a && m.line <= b);
 
-  const byName = new Map<string, Target[]>();
-  for (const t of targets) byName.set(t.name, [...(byName.get(t.name) ?? []), t]);
-
   // Line-level candidates per target, then file-level checks (imports) on the files they are in.
   const candidates = new Map<Target, GrepMatch[]>();
-  const sorted = [...matches].sort((a, b) => compareStrings(a.path, b.path) || a.line - b.line);
-  for (const m of sorted) {
-    if (inReview(m) || generated.byPath(m.path)) continue;
-    // A first cut on the line alone; block comments need the whole file (below).
-    const code = codeOnly(m.text);
-    for (const token of new Set(identifiers(code))) {
-      for (const t of byName.get(token) ?? []) {
-        if (t.owner && !callsMethod(code, t.name)) continue;
-        candidates.set(t, [...(candidates.get(t) ?? []), m]);
+  for (const [family, matches] of matchesOf) {
+    const byName = new Map<string, Target[]>();
+    for (const t of targets)
+      if (t.family === family) byName.set(t.name, [...(byName.get(t.name) ?? []), t]);
+    const sorted = [...matches].sort((a, b) => compareStrings(a.path, b.path) || a.line - b.line);
+    for (const m of sorted) {
+      if (inReview(m) || generated.byPath(m.path)) continue;
+      // A first cut on the line alone; block comments need the whole file (below).
+      const code = family.codeOnly(m.text);
+      for (const token of new Set(family.identifiers(code))) {
+        for (const t of byName.get(token) ?? []) {
+          if (t.owner && !family.callsMethod(code, t.name)) continue;
+          candidates.set(t, [...(candidates.get(t) ?? []), m]);
+        }
       }
     }
   }
 
   const facts = new Map<string, FileFacts | null>();
   let skippedFiles = 0;
-  const factsOf = async (path: string): Promise<FileFacts | null> => {
+  const factsOf = async (path: string, family: LanguageFamily): Promise<FileFacts | null> => {
     if (facts.has(path)) return facts.get(path)!;
     if (facts.size >= MAX_FILES_READ) {
       skippedFiles++;
       return null;
     }
     const text = await snapshot.readFile('new', path);
-    const f = text === null ? null : fileFacts(text);
+    const f = text === null ? null : family.fileFacts(text);
     facts.set(path, f);
     return f;
   };
@@ -168,15 +163,21 @@ export const refsStage: Stage<RefsStageInput, RefsStageOutput> = async (input, c
   for (const t of targets) {
     const kept: { m: GrepMatch; rank: number }[] = [];
     for (const m of candidates.get(t) ?? []) {
-      const f = await factsOf(m.path);
+      const f = await factsOf(m.path, t.family);
       if (!f || f.importLines.has(m.line)) continue;
       const code = f.codeLines[m.line - 1] ?? '';
-      const uses = t.owner ? callsMethod(code, t.name) : identifiers(code).includes(t.name);
+      const uses = t.owner
+        ? t.family.callsMethod(code, t.name)
+        : t.family.identifiers(code).includes(t.name);
       if (!uses) continue;
       const sameFile = m.path === t.path;
       if (t.owner) {
         if (!sameFile && !f.words.has(t.owner)) continue;
-      } else if (!sameFile && !f.imported.has(t.name)) continue;
+      } else if (
+        !sameFile &&
+        !(t.family.canUse ? t.family.canUse(f, m.path, t.path, t.name) : f.imported.has(t.name))
+      )
+        continue;
       kept.push({ m, rank: sameFile ? 1 : 0 });
     }
     if (kept.length === 0) continue;
@@ -216,7 +217,8 @@ function targetOf(
   hunkById: Map<string, Hunk>,
 ): Target | undefined {
   if (!SEARCHED_KINDS.has(s.kind) || !SEARCHED_CHANGES.has(s.change)) return undefined;
-  if (!file.language || !CODE_LANGUAGES.has(file.language) || file.generated) return undefined;
+  const family = familyOf(file.language);
+  if (!family || file.generated) return undefined;
   if (s.layer === 'test' || s.layer === 'docs' || s.layer === 'config') return undefined;
   if (s.hunkIds.every((id) => hunkById.get(id)!.kind !== 'logic')) return undefined;
 
@@ -233,9 +235,9 @@ function targetOf(
   // called by name from elsewhere.
   if (parts.length > 2 || (parts.length === 2 && s.kind !== 'method')) return undefined;
   const name = parts.at(-1)!;
-  if (name.length < MIN_NAME_LENGTH || name === 'constructor' || !/^[A-Za-z_$][\w$]*$/.test(name))
+  if (name.length < MIN_NAME_LENGTH || name === family.constructorName || !family.isName(name))
     return undefined;
-  const target: Target = { symbol: s, name, path };
+  const target: Target = { symbol: s, name, path, family };
   if (parts.length === 2) target.owner = parts[0]!;
   return target;
 }
@@ -244,103 +246,6 @@ function oldSymbol(s: ChangedSymbol, old: ParsedSource | undefined) {
   if (!old) return undefined;
   if (s.change === 'deleted') return old.symbols.find((x) => x.qualifiedName === s.qualifiedName);
   return old.symbols.find((x) => x.kind === s.kind && x.signature === s.oldSignature);
-}
-
-const IDENTIFIER = /[A-Za-z_$][\w$]*/g;
-const identifiers = (code: string): string[] => code.match(IDENTIFIER) ?? [];
-
-function callsMethod(code: string, name: string): boolean {
-  return new RegExp(`\\.\\s*${name.replace(/\$/g, '\\$')}\\s*(<[^>]*>)?\\s*\\(`).test(code);
-}
-
-/**
- * The text with comments and the contents of strings blanked out (line breaks kept), so a name
- * in a doc comment or a test title is not a use. Template literals keep their `${…}` code.
- * Regular expression literals are not recognized; a `//` inside one cuts the line short.
- */
-export function codeOnly(text: string): string {
-  const out = [...text];
-  const n = out.length;
-  const blank = (from: number, to: number) => {
-    for (let k = from; k < to && k < n; k++) if (out[k] !== '\n') out[k] = ' ';
-  };
-  const templates: number[] = []; // brace depth at each open `${`
-  let depth = 0;
-  // Blanks template text from `i` to the closing backtick or the next `${`; returns the next index.
-  const template = (i: number): number => {
-    let j = i;
-    while (j < n && out[j] !== '`' && !(out[j] === '$' && out[j + 1] === '{'))
-      j += out[j] === '\\' ? 2 : 1;
-    blank(i, j);
-    if (j < n && out[j] === '$') {
-      templates.push(++depth);
-      return j + 2;
-    }
-    return j + 1;
-  };
-  let i = 0;
-  while (i < n) {
-    const c = out[i]!;
-    if (c === '/' && out[i + 1] === '/') {
-      let e = i;
-      while (e < n && out[e] !== '\n') e++;
-      blank(i, e);
-      i = e;
-    } else if (c === '/' && out[i + 1] === '*') {
-      let e = i + 2;
-      while (e < n && !(out[e] === '*' && out[e + 1] === '/')) e++;
-      blank(i, e + 2);
-      i = e + 2;
-    } else if (c === "'" || c === '"') {
-      let e = i + 1;
-      while (e < n && out[e] !== c && out[e] !== '\n') e += out[e] === '\\' ? 2 : 1;
-      blank(i + 1, e);
-      i = e + 1;
-    } else if (c === '`') {
-      i = template(i + 1);
-    } else if (c === '}' && templates.at(-1) === depth) {
-      templates.pop();
-      depth--;
-      i = template(i + 1);
-    } else {
-      if (c === '{') depth++;
-      else if (c === '}') depth--;
-      i++;
-    }
-  }
-  return out.join('');
-}
-
-interface FileFacts {
-  /** Names brought in by import statements (or require destructuring). */
-  imported: Set<string>;
-  /** 1-based lines that belong to import statements. */
-  importLines: Set<number>;
-  /** Every identifier in the file's code (not in comments or strings). */
-  words: Set<string>;
-  /** The file's lines with comments and string contents blanked. */
-  codeLines: string[];
-}
-
-const IMPORT_RE =
-  /^[ \t]*(?:import|export)\b[^;'"]*?\bfrom\s*['"][^'"]+['"]|^[ \t]*(?:const|let|var)\s*\{[^}]*\}\s*=\s*require\(/gm;
-
-function fileFacts(text: string): FileFacts {
-  const imported = new Set<string>();
-  const importLines = new Set<number>();
-  for (const m of text.matchAll(IMPORT_RE)) {
-    for (const w of m[0].match(/[A-Za-z_$][\w$]*/g) ?? []) imported.add(w);
-    const first = text.slice(0, m.index).split('\n').length;
-    const count = m[0].split('\n').length;
-    for (let i = 0; i < count; i++) importLines.add(first + i);
-  }
-  const code = codeOnly(text);
-  return {
-    imported,
-    importLines,
-    words: new Set(identifiers(code)),
-    codeLines: code.split('\n'),
-  };
 }
 
 function excerpt(text: string): string {

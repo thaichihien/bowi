@@ -6,6 +6,8 @@
  * Plain words and camelCase identifiers are too common to say two changes belong together.
  */
 
+import { DEFAULT_FAMILY } from '../languages/index.ts';
+
 const LITERAL = /[A-Za-z][A-Za-z0-9]*(?:[-_][A-Za-z0-9]+)+/g;
 const MIN_LENGTH = 6;
 
@@ -34,13 +36,12 @@ const STOPLIST = new Set([
   'text-html',
 ]);
 
-// First and last line of an import or re-export, also when it spans lines (`} from "./x"`):
-// module paths say nothing about which changes belong together (imports are resolved anyway).
-const IMPORT_LINE =
-  /^\s*(import\b|export\s+(\*|\{[^}]*\})\s+from\b|\}\s*from\s*['"]|.*\brequire\s*\()/;
-
-export function literalsIn(line: string): string[] {
-  if (IMPORT_LINE.test(line)) return [];
+/**
+ * Literals in one line. Import lines are skipped (module paths say nothing about which changes
+ * belong together; imports are resolved anyway): `importLine` is the line's language family's.
+ */
+export function literalsIn(line: string, importLine = DEFAULT_FAMILY.importLine): string[] {
+  if (importLine.test(line)) return [];
   const found = new Set<string>();
   for (const m of line.matchAll(LITERAL)) {
     const token = m[0];

@@ -40,6 +40,8 @@ const KIND_OF_CAPTURE: Record<string, SymbolKind> = {
   'symbol.section': 'section',
   'symbol.test': 'function',
   'symbol.hook': 'function',
+  // Module-level names in Python and Go (the query keeps them at top level).
+  'symbol.constant': 'variable',
 };
 
 /**
@@ -56,6 +58,8 @@ interface Candidate {
   name: string;
   kind: SymbolKind;
   exported: boolean;
+  /** Go: a method's receiver type, which qualifies its name (`Server.Start`). */
+  receiver?: string;
 }
 
 export function extractSymbols(
@@ -104,16 +108,27 @@ export function extractSymbols(
       const value = node.childForFieldName('value');
       if (value && (value.type === 'arrow_function' || value.type === 'function_expression'))
         kind = 'function';
+    } else if (node.type === 'type_spec') {
+      // Go: a struct is a class, an interface an interface, anything else a type.
+      const of = node.childForFieldName('type')?.type;
+      kind = of === 'struct_type' ? 'class' : of === 'interface_type' ? 'interface' : 'type';
     }
 
     seen.add(node.id);
+    const receiver = node.type === 'method_declaration' ? receiverType(node) : undefined;
     candidates.push({
       node,
       range: rangeNodes(node),
       nameNode: nameCapture.node,
       name,
       kind,
-      exported: isExported(node),
+      exported:
+        language === 'go'
+          ? /^[A-Z]/.test(name)
+          : language === 'python'
+            ? !name.startsWith('_') || /^__\w+__$/.test(name)
+            : isExported(node),
+      ...(receiver && { receiver }),
     });
   }
 
@@ -130,8 +145,16 @@ export function extractSymbols(
     while (stack.length > 0 && candidates[stack.at(-1)!]!.node.endIndex <= c.node.startIndex)
       stack.pop();
     const parent = stack.length > 0 ? stack.at(-1)! : null;
-    const prefix = parent === null ? null : prefixes[parent]!;
+    const prefix = c.receiver ?? (parent === null ? null : prefixes[parent]!);
     let own = c.name;
+    // Python: a function defined directly in a class is a method.
+    if (
+      language === 'python' &&
+      c.kind === 'function' &&
+      parent !== null &&
+      symbols[parent]!.kind === 'class'
+    )
+      c.kind = 'method';
     // `###### hooks.beforeRetry` under `##### hooks`: `hooks.beforeRetry`, not `hooks.hooks.…`.
     if (c.kind === 'section' && parent !== null && own.startsWith(`${symbols[parent]!.name}.`))
       own = own.slice(symbols[parent]!.name.length + 1);
@@ -172,6 +195,8 @@ export function extractSymbols(
  */
 function rangeNodes(node: Node): Node[] {
   let top = node;
+  // Python: `@decorator` lines belong to the function or class they decorate.
+  if (node.parent?.type === 'decorated_definition') top = node.parent;
   if (
     node.type === 'variable_declarator' &&
     node.parent &&
@@ -188,6 +213,15 @@ function rangeNodes(node: Node): Node[] {
     prev = prev.previousSibling;
   }
   return nodes;
+}
+
+/** Go: the type a method is declared on, without `*` or type arguments: `Server`. */
+function receiverType(method: Node): string | undefined {
+  const param = method
+    .childForFieldName('receiver')
+    ?.namedChildren.find((c) => c?.type === 'parameter_declaration');
+  const name = param?.childForFieldName('type')?.descendantsOfType('type_identifier')[0];
+  return name?.text;
 }
 
 function isExported(node: Node): boolean {

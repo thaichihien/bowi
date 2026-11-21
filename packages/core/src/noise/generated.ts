@@ -22,6 +22,16 @@ export const BUILTIN_GENERATED = [
   'dist/**',
   '*.gen.ts',
   '*.generated.*',
+  // Python and Go (M15). Go's `// Code generated … DO NOT EDIT.` header is the marker below.
+  'poetry.lock',
+  'uv.lock',
+  'Pipfile.lock',
+  'pdm.lock',
+  '*_pb2.py',
+  '*_pb2_grpc.py',
+  '*_pb2.pyi',
+  'go.sum',
+  '*.pb.go',
 ];
 
 // Split so that this file does not mark itself.

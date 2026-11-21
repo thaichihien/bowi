@@ -11,6 +11,8 @@ import { parseComponent } from './component.ts';
 import { COMPONENT_LANGUAGES, type LanguageId } from './languages.ts';
 import { loadLanguage } from './loader.ts';
 import { indexNames, type NameIndex } from './references.ts';
+import { indexGo } from './references-go.ts';
+import { indexPython } from './references-python.ts';
 import { extractSymbols, type SourceSymbol } from './symbols.ts';
 
 export interface ParsedSource extends NameIndex {
@@ -43,7 +45,11 @@ export async function parseSource(language: LanguageId, text: string): Promise<P
     language,
     hasError: root.hasError,
     symbols: extractSymbols(root, query, language, text),
-    ...indexNames(root),
+    ...(language === 'python'
+      ? indexPython(root)
+      : language === 'go'
+        ? indexGo(root)
+        : indexNames(root)),
     fingerprint: fingerprint(root),
     isContentLine: (line) => lines.has(line),
     isCodeLine: (line) => code.has(line),

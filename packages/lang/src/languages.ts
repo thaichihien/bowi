@@ -3,7 +3,17 @@
  */
 
 export type LanguageId =
-  'typescript' | 'tsx' | 'javascript' | 'json' | 'yaml' | 'markdown' | 'vue' | 'svelte' | 'astro';
+  | 'typescript'
+  | 'tsx'
+  | 'javascript'
+  | 'json'
+  | 'yaml'
+  | 'markdown'
+  | 'vue'
+  | 'svelte'
+  | 'astro'
+  | 'python'
+  | 'go';
 
 interface LanguageSpec {
   grammar: string;
@@ -39,6 +49,9 @@ export const LANGUAGES: Record<LanguageId, LanguageSpec> = {
     query: 'typescript.scm',
     extensions: ['.astro'],
   },
+  // M15.
+  python: { grammar: 'tree-sitter-python.wasm', query: 'python.scm', extensions: ['.py', '.pyi'] },
+  go: { grammar: 'tree-sitter-go.wasm', query: 'go.scm', extensions: ['.go'] },
   // Block structure only (sections, paragraphs, lists); inline markup stays text.
   markdown: {
     grammar: 'tree-sitter-markdown.wasm',

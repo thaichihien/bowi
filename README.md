@@ -169,7 +169,7 @@ Bowi runs Claude Code locked down: in an empty temporary folder, with no tools a
 
 ## What Bowi understands
 
-Best supported today: **TypeScript and JavaScript projects**, with framework support for NestJS, Express, Koa, Fastify, Hono, tRPC, React, Next.js, React Router, Angular, Vue, Nuxt, Svelte, SvelteKit, SolidJS and Astro, and for the TypeORM, Sequelize, Mongoose and Drizzle database libraries. Other TypeScript/JavaScript projects (libraries) get everything except framework-specific layers, links and hints. Files in other languages are still shown, grouped and never dropped, but as plain text.
+Supported: **TypeScript and JavaScript**, **Python** and **Go** projects, with framework support for NestJS, Express, Koa, Fastify, Hono, tRPC, React, Next.js, React Router, Angular, Vue, Nuxt, Svelte, SvelteKit, SolidJS and Astro, and for the TypeORM, Sequelize, Mongoose and Drizzle database libraries. Other TypeScript/JavaScript projects (libraries) get everything except framework-specific layers, links and hints. Python and Go projects get the same, without framework support yet. Files in other languages are still shown, grouped and never dropped, but as plain text.
 
 For the details (languages, frameworks and layers) see [What Bowi understands](docs/what-bowi-understands.md).
 

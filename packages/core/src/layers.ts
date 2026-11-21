@@ -11,37 +11,43 @@ type Rule = [Layer, RegExp];
 // Checked in order: the first match wins. Tests and docs first so that `test/services/x.ts`
 // is a test, not a service; then config file names, so `packages/api/package.json` is config.
 const RULES: Rule[] = [
-  ['test', /(^|\/)(test|tests|__tests__|spec|e2e)\/|\.(spec|test|e2e-spec)\.[cm]?[jt]sx?$/],
+  [
+    'test',
+    /(^|\/)(test|tests|__tests__|spec|e2e)\/|\.(spec|test|e2e-spec)\.[cm]?[jt]sx?$|(^|\/)(test_[^/]*|conftest)\.py$|_test\.(py|go)$/,
+  ],
   [
     'docs',
     /(^|\/)docs?\/|\.(md|mdx|rst|adoc)$|(^|\/)(README|CHANGELOG|CONTRIBUTING|LICENSE)[^/]*$/i,
   ],
   [
     'config',
-    /(^|\/)(package\.json|tsconfig[^/]*\.json|\.[^/]*rc(\.[a-z]+)?|[^/]*\.config\.[a-z]+|Dockerfile|docker-compose[^/]*|\.env[^/]*|\.gitignore|\.gitattributes|\.editorconfig|Makefile)$|(^|\/)\.github\/|\.(ya?ml|toml|ini)$|(^|\/)[^/]*(lock|\.lock|-lock\.json|\.lockb)$/,
+    /(^|\/)(package\.json|tsconfig[^/]*\.json|\.[^/]*rc(\.[a-z]+)?|[^/]*\.config\.[a-z]+|Dockerfile|docker-compose[^/]*|\.env[^/]*|\.gitignore|\.gitattributes|\.editorconfig|Makefile)$|(^|\/)\.github\/|\.(ya?ml|toml|ini)$|(^|\/)[^/]*(lock|\.lock|-lock\.json|\.lockb)$|(^|\/)(requirements[^/]*\.txt|setup\.(py|cfg)|Pipfile|go\.(mod|sum|work))$/,
   ],
   ['schema', /(^|\/)(migrations?|schema|schemas|prisma)\/|\.(sql|prisma|graphql|gql|proto)$/],
   // Data shapes, including type-only code: `interfaces/`, `types/`, `*.interface.ts`, `types.ts`.
   [
     'data',
-    /(^|\/)(entities|entity|models?|repositories|repository|dto|dtos|interfaces?|types)\/|\.(entity|model|repository|dto|schema|interfaces?|types?)\.[cm]?[jt]s$|(^|\/)(interfaces?|types)\.[cm]?[jt]s$/,
+    /(^|\/)(entities|entity|models?|repositories|repository|dto|dtos|interfaces?|types)\/|\.(entity|model|repository|dto|schema|interfaces?|types?)\.[cm]?[jt]s$|(^|\/)(interfaces?|types)\.[cm]?[jt]s$|(^|\/)(models?|schemas?|entities|types)\.(py|go)$/,
   ],
   ['domain', /(^|\/)domain\//],
   [
     'service',
-    /(^|\/)(services?|jobs|workers|processors?|queues?)\/|\.(service|processor|worker|job)\.[cm]?[jt]s$/,
+    /(^|\/)(services?|jobs|workers|processors?|queues?)\/|\.(service|processor|worker|job)\.[cm]?[jt]s$|(^|\/)(services?|tasks)\.(py|go)$/,
   ],
   [
     'api',
-    /(^|\/)(controllers?|routes?|handlers?|resolvers?|api|endpoints?)\/|\.(controller|resolver|route|routes|handler|gateway)\.[cm]?[jt]s$/,
+    /(^|\/)(controllers?|routes?|handlers?|resolvers?|api|endpoints?)\/|\.(controller|resolver|route|routes|handler|gateway)\.[cm]?[jt]s$|(^|\/)(views|urls|routes|routers?|api|handlers?|endpoints)\.(py|go)$|(^|\/)(views|routers)\/[^/]*\.py$/,
   ],
   // Shared helpers, read before the services that use them. After the layers above, so that
   // `common/dto/` stays data and `shared/services/` stays a service; before `ui`, whose `app/`
   // folder would otherwise claim `app/utils/`.
   [
     'util',
-    /(^|\/)(helpers?|utils?|lib|common|shared)\/|(^|\/)(helpers?|utils?)\.[cm]?[jt]sx?$|\.(helpers?|utils?)\.[cm]?[jt]sx?$/,
+    /(^|\/)(helpers?|utils?|lib|common|shared)\/|(^|\/)(helpers?|utils?)\.[cm]?[jt]sx?$|\.(helpers?|utils?)\.[cm]?[jt]sx?$|(^|\/)(helpers?|utils?)\.(py|go)$/,
   ],
+  // Python and Go code that matched nothing above: not UI because of an `app/` or `views/`
+  // folder (FastAPI's `app/` package, Django's views).
+  ['unknown', /\.(py|pyi|go)$/],
   [
     'ui',
     /(^|\/)(components?|pages|views|app|screens|layouts)\/|\.(tsx|jsx|vue|svelte|astro|css|scss|html)$/,

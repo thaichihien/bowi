@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { codeOnly } from '../src/index.ts';
+import { javascript } from '../src/index.ts';
+
+const { codeOnly } = javascript;
 
 describe('codeOnly', () => {
   it('blanks comments and string contents but keeps template code and line breaks', () => {

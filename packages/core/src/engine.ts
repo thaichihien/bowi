@@ -10,6 +10,7 @@ import { performance } from 'node:perf_hooks';
 import type { AiEnricher } from './ai.ts';
 import type { FrameworkPlugin, HintRule } from './plugin.ts';
 import type { Snapshot } from './snapshot.ts';
+import { isLineManifest } from './manifests.ts';
 import type { StageContext } from './stage.ts';
 import { aiStage } from './stages/ai.ts';
 import { diffStage } from './stages/diff.ts';
@@ -213,7 +214,8 @@ export async function analyze(
 
     const manifests = new Map<string, string>();
     for (const f of files) {
-      if (f.status === 'deleted' || !/(^|\/)package\.json$/.test(f.path)) continue;
+      if (f.status === 'deleted') continue;
+      if (!/(^|\/)package\.json$/.test(f.path) && !isLineManifest(f.path)) continue;
       const text = await snapshot.readFile('new', f.path);
       if (text !== null) manifests.set(f.id, text);
     }

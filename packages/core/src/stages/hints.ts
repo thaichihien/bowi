@@ -7,6 +7,7 @@
  */
 
 import { compareStrings } from '../determinism.ts';
+import { addedDependencies, isLineManifest } from '../manifests.ts';
 import type { FrameworkPlugin, HintDraft, HintInput, HintRule, NewDependency } from '../plugin.ts';
 import type { Stage } from '../stage.ts';
 import type { ReviewHint } from '../types.ts';
@@ -126,6 +127,17 @@ function newDependencies(input: HintsStageInput): Map<string, NewDependency[]> {
   for (const [fileId, deps] of input.lockfileDependencies) {
     const rest = deps.filter((d) => !fromManifest.has(d.name));
     if (rest.length) out.set(fileId, rest);
+  }
+  // Python and Go manifests, read line by line (M15).
+  for (const file of input.files) {
+    const text = input.manifests.get(file.id);
+    if (text === undefined || !isLineManifest(file.path)) continue;
+    const deps = addedDependencies(
+      file.path,
+      text,
+      input.hunks.filter((h) => h.fileId === file.id),
+    );
+    if (deps.length) out.set(file.id, deps);
   }
   return out;
 }

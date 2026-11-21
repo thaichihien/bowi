@@ -4,16 +4,21 @@
  *   bun run bench:select <owner/repo …> [--cases 10]   pick cases, write bench/cases/*.json
  *   bun run bench [owner/repo …] [--json <file>]        run the cases, print the report
  *   bun run bench explain <case>                        show one case's groups and links
+ *   bun run bench plans --json <file> [--compare <file>] hash every case's whole plan; compare
+ *                                                       with an earlier run (refactors that
+ *                                                       must not change any output)
  *
  * Cases stay on this machine (bench/cases/ is git-ignored: they name the repositories used), so
  * every run here scores the same commits. Repositories are fetched into the
  * Bowi cache folder (`bench/`), without file contents except those the cases need.
  */
 
+import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { analyze, comparablePlanJson, createStageContext, DEFAULT_CONFIG } from '@bowi/core';
 import { defaultPlugins } from '@bowi/plugins';
 import { gitText } from '@bowi/sources';
 import { analyzeCase, evaluateCase } from './evaluate.ts';
@@ -43,10 +48,14 @@ async function main(argv: string[]): Promise<number> {
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
-    options: { cases: { type: 'string', default: '10' }, json: { type: 'string' } },
+    options: {
+      cases: { type: 'string', default: '10' },
+      json: { type: 'string' },
+      compare: { type: 'string' },
+    },
   });
   // `run` is the default: `bench <owner/repo>` runs one repository.
-  const command = ['run', 'select', 'explain'].includes(positionals[0] ?? '')
+  const command = ['run', 'select', 'explain', 'plans'].includes(positionals[0] ?? '')
     ? positionals[0]!
     : 'run';
   const names = command === positionals[0] ? positionals.slice(1) : positionals;
@@ -111,8 +120,10 @@ async function main(argv: string[]): Promise<number> {
     process.stderr.write(`No case "${names[0] ?? ''}" in ${CASES_DIR}.\n`);
     return 1;
   }
-  if (command !== 'run') {
-    process.stderr.write(`Unknown command "${command}". Use "select", "run" or "explain".\n`);
+  if (command !== 'run' && command !== 'plans') {
+    process.stderr.write(
+      `Unknown command "${command}". Use "select", "run", "explain" or "plans".\n`,
+    );
     return 1;
   }
   const local = await readdir(CASES_DIR).catch(() => [] as string[]);
@@ -128,6 +139,7 @@ async function main(argv: string[]): Promise<number> {
     );
     return 1;
   }
+  if (command === 'plans') return plans(files, cacheDir, values.json, values.compare);
   const results: RepoResults[] = [];
   for (const path of files) {
     const file = JSON.parse(await readFile(path, 'utf8')) as CaseFile;
@@ -147,6 +159,43 @@ async function main(argv: string[]): Promise<number> {
   process.stdout.write(`${formatReport(results)}\n`);
   if (values.json) await writeFile(values.json, `${JSON.stringify(results, null, 2)}\n`);
   return 0;
+}
+
+/**
+ * Every case's whole plan, outside references included, as a hash: a refactor that must not
+ * change Bowi's output (a new language interface) is checked against an earlier run.
+ */
+async function plans(
+  files: string[],
+  cacheDir: string,
+  out: string | undefined,
+  compare: string | undefined,
+): Promise<number> {
+  const hashes: Record<string, string> = {};
+  for (const path of files) {
+    const file = JSON.parse(await readFile(path, 'utf8')) as CaseFile;
+    const dir = await openBenchRepo(parseRepo(file.repo), cacheDir);
+    for (const c of file.cases) {
+      await prepareCase(dir, c);
+      const plan = await analyze(
+        caseSnapshot(dir, file.repo, c),
+        createStageContext(DEFAULT_CONFIG, { now: () => new Date(0) }),
+        { toolVersion: 'bench', plugins: defaultPlugins },
+      );
+      hashes[c.id] = createHash('sha256').update(comparablePlanJson(plan)).digest('hex');
+      process.stderr.write(`✓ ${c.id}\n`);
+    }
+  }
+  if (out) await writeFile(out, `${JSON.stringify(hashes, null, 2)}\n`);
+  if (!compare) return 0;
+  const before = JSON.parse(await readFile(compare, 'utf8')) as Record<string, string>;
+  const changed = Object.keys(hashes).filter((id) => before[id] !== hashes[id]);
+  process.stdout.write(
+    changed.length
+      ? `${changed.length} of ${Object.keys(hashes).length} plans changed: ${changed.join(', ')}\n`
+      : `All ${Object.keys(hashes).length} plans are identical.\n`,
+  );
+  return changed.length ? 1 : 0;
 }
 
 function parseRepo(name: string): BenchRepo {
