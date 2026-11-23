@@ -32,8 +32,10 @@ describe('review hint rules (HINT-2)', () => {
           ) + '\n',
         'src/math.ts': 'export function total(a: number, b = 0): number {\n  return a + b;\n}\n',
         'src/routes/users.ts':
-          "import { router } from '../router';\n\nrouter.get('/users', listAll);\nrouter.post('/users', create);\n// router.delete('/users', remove);\n",
+          "import { router } from '../router';\n\nrouter.get('/users', listAll);\nrouter.post('/users', create);\n// router.delete('/users', remove);\nthis.app.put('/users/:id', update);\n",
         'test/users.test.ts': "server.get('/fake', handler);\n",
+        // A decorator is left to the FastAPI and Flask plugins, which read it with its handler.
+        'app/items.py': '@app.get("/items")\ndef items():\n    return []\n',
         'db/migrations/001_add_users.sql': 'CREATE TABLE users (id int);\n',
         'src/session/store.ts': 'export const ttl = 120;\n',
       },
@@ -56,6 +58,7 @@ describe('review hint rules (HINT-2)', () => {
       'new-dependency attention: New dependency: right',
       'new-dependency attention: New dev dependency: tool',
       'public-route attention: New route: POST /users',
+      'public-route attention: New route: PUT /users/:id',
       'public-route info: Route changed: GET /users',
       'signature-outside-callers attention: `total()` changed its signature; 1 unchanged reference outside this PR',
     ]);

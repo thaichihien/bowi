@@ -67,6 +67,8 @@ export interface DecoratorUse {
   refs: string[];
   /** 1-based line of the `@`. */
   line: number;
+  /** What the decorator is called on, in Python: `app` for `@app.get('/users')`, `api.v1` too. */
+  receiver?: string;
   target: {
     kind: 'class' | 'method' | 'property' | 'parameter' | 'other';
     /** The decorated name: class, method, property or parameter. */

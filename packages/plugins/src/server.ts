@@ -12,22 +12,15 @@
  *   own (a default export).
  */
 
-import type {
-  FileChange,
-  FileSources,
-  FrameworkPlugin,
-  Layer,
-  PluginEdge,
-  PluginGraphInput,
-} from '@bowi/core';
+import type { FileChange, FileSources, FrameworkPlugin, Layer } from '@bowi/core';
 import {
   Changes,
   importsFrom,
+  mountEdges,
   SCRIPT_LANGUAGES,
   sourceOf,
   TEST_PATH,
   usesPackage,
-  where,
 } from './shared.ts';
 
 const VERBS = new Set([
@@ -84,38 +77,12 @@ function serverLayer(server: Server) {
   };
 }
 
-/** Changed lines that mount a router or plugin imported from another changed file. */
-function mountEdges(input: PluginGraphInput): PluginEdge[] {
-  const c = new Changes(input);
-  const edges: PluginEdge[] = [];
-  const seen = new Set<string>();
-  for (const { symbol, fileId, line } of c.changedLines()) {
-    const refs = c.refsAt(fileId, line);
-    if (!refs.some((r) => r.kind === 'call' && MOUNTS.has(r.name))) continue;
-    for (const r of refs) {
-      if (r.kind !== 'name' && r.kind !== 'member') continue;
-      const target = c.importedFrom(fileId, r.name);
-      const to = target && target !== fileId ? c.fileSymbol(target) : undefined;
-      const key = `${symbol.id} ${to?.id}`;
-      if (!to || seen.has(key)) continue;
-      seen.add(key);
-      edges.push({
-        from: symbol.id,
-        to: to.id,
-        text: `${where(c, symbol)} mounts \`${r.name}\` from \`${c.fileById.get(target!)!.path}\``,
-        locations: [{ fileId, line }],
-      });
-    }
-  }
-  return edges;
-}
-
 function serverPlugin(server: Server): FrameworkPlugin {
   return {
     id: server.id,
     detect: (repo) => usesPackage(repo, server.packages),
     layerOf: serverLayer(server),
-    extraEdges: mountEdges,
+    extraEdges: (input) => mountEdges(new Changes(input), MOUNTS),
   };
 }
 

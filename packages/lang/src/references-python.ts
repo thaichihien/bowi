@@ -111,7 +111,10 @@ function importsOf(node: Node): ImportDeclaration[] {
   return [{ source, names, line: at }];
 }
 
-/** `@app.get("/users")` on a function: name `get`, args `["/users"]`. */
+/**
+ * `@app.get("/users")` on a function: name `get`, receiver `app`, args `["/users"]`. Strings in a
+ * list argument count too: `methods=["POST"]`.
+ */
 function decoratorUse(node: Node): DecoratorUse | undefined {
   const expr = node.namedChildren[0];
   if (!expr) return undefined;
@@ -132,7 +135,13 @@ function decoratorUse(node: Node): DecoratorUse | undefined {
     const value = a.type === 'keyword_argument' ? a.childForFieldName('value') : a;
     if (value?.type === 'string') args.push(stringText(value));
     else if (value?.type === 'identifier') refs.push(value.text);
+    else if (value?.type === 'list') {
+      for (const item of value.namedChildren)
+        if (item?.type === 'string') args.push(stringText(item));
+    }
   }
+  const receiver =
+    callee?.type === 'attribute' ? callee.childForFieldName('object')?.text : undefined;
   const definition = node.parent?.childForFieldName('definition');
   const targetName = definition?.childForFieldName('name')?.text ?? '';
   const inClass = enclosingClass(node.parent ?? node);
@@ -141,6 +150,7 @@ function decoratorUse(node: Node): DecoratorUse | undefined {
     args,
     refs,
     line: node.startPosition.row + 1,
+    ...(receiver && { receiver }),
     target: {
       kind:
         definition?.type === 'class_definition'

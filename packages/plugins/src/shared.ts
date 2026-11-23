@@ -42,15 +42,86 @@ export function dependsOn(text: string, names: readonly string[]): boolean {
 
 /** The root package.json, and the nearest one of each changed file (monorepos), uses a package. */
 export async function usesPackage(repo: PluginRepo, names: readonly string[]): Promise<boolean> {
+  for (const dir of changedFolders(repo)) {
+    const text = await readEither(repo, dir ? `${dir}/package.json` : 'package.json');
+    if (text && dependsOn(text, names)) return true;
+  }
+  return false;
+}
+
+/** The folders of the changed files and every folder above them, the root first. */
+function changedFolders(repo: PluginRepo): string[] {
   const dirs = new Set<string>(['']);
   for (const f of repo.files) {
     const parts = f.path.split('/').slice(0, -1);
     for (let i = parts.length; i > 0; i--) dirs.add(parts.slice(0, i).join('/'));
   }
-  for (const dir of [...dirs].sort()) {
-    const path = dir ? `${dir}/package.json` : 'package.json';
-    const text = (await repo.readFile('new', path)) ?? (await repo.readFile('old', path));
-    if (text && dependsOn(text, names)) return true;
+  return [...dirs].sort();
+}
+
+/**
+ * Files read during detection, per analysis (keyed by its list of changed files): every plugin
+ * looks for the same manifests, and each missing one costs a git call.
+ */
+const detectionReads = new WeakMap<readonly FileChange[], Map<string, Promise<string | null>>>();
+
+function readEither(repo: PluginRepo, path: string): Promise<string | null> {
+  let reads = detectionReads.get(repo.files);
+  if (!reads) detectionReads.set(repo.files, (reads = new Map()));
+  let text = reads.get(path);
+  if (!text) {
+    text = (async () => (await repo.readFile('new', path)) ?? (await repo.readFile('old', path)))();
+    reads.set(path, text);
+  }
+  return text;
+}
+
+/** Whether the change touches a file matching `paths`: the plugins of a language need one. */
+export const changesAny = (repo: PluginRepo, paths: RegExp) =>
+  repo.files.some((f) => paths.test(f.path));
+
+/**
+ * Whether a build manifest in the root or in the folder of a changed file (or above it) says the
+ * project uses a framework (M17): `pom.xml`, `go.mod`, `pyproject.toml`, … `names` may hold
+ * `{dir}`, the folder's own name, for `Api/Api.csproj`.
+ */
+export async function manifestSays(
+  repo: PluginRepo,
+  names: readonly string[],
+  pattern: RegExp,
+): Promise<boolean> {
+  for (const dir of changedFolders(repo)) {
+    const own = dir.slice(dir.lastIndexOf('/') + 1);
+    for (const name of names) {
+      if (name.includes('{dir}') && !own) continue;
+      const file = name.replace('{dir}', own);
+      const text = await readEither(repo, dir ? `${dir}/${file}` : file);
+      if (text && pattern.test(text)) return true;
+    }
+  }
+  return false;
+}
+
+/** How many changed files `codeSays` reads at most. */
+const CODE_FILES_READ = 200;
+
+/**
+ * Whether changed code of a language says the project uses a framework: an import of it
+ * (`from django`, `import org.springframework.…`), for projects whose manifest is elsewhere.
+ */
+export async function codeSays(
+  repo: PluginRepo,
+  extensions: RegExp,
+  pattern: RegExp,
+): Promise<boolean> {
+  const paths = repo.files
+    .map((f) => f.path)
+    .filter((p) => extensions.test(p))
+    .sort()
+    .slice(0, CODE_FILES_READ);
+  for (const path of paths) {
+    const text = await readEither(repo, path);
+    if (text && pattern.test(text)) return true;
   }
   return false;
 }
@@ -74,7 +145,7 @@ export class Changes {
   readonly logic: ChangedSymbol[];
   readonly fileById: Map<string, FileChange>;
   private readonly byQualified = new Map<string, ChangedSymbol>();
-  private readonly addedLines = new Map<string, Set<number>>();
+  private readonly addedLines = new Map<string, Map<number, string>>();
   private readonly refsByLine = new Map<string, Map<number, Reference[]>>();
   private imported: Map<string, Set<string>> | undefined;
   private resolve: ((from: string, specifier: string) => string | undefined) | undefined;
@@ -87,17 +158,19 @@ export class Changes {
     for (const s of this.logic) this.byQualified.set(`${s.fileId}#${s.qualifiedName}`, s);
     for (const h of input.hunks) {
       if (h.kind !== 'logic') continue;
-      const set = this.addedLines.get(h.fileId) ?? new Set<number>();
-      for (const l of h.lines) if (l.kind === 'add') set.add(l.newNo!);
-      this.addedLines.set(h.fileId, set);
+      const added = this.addedLines.get(h.fileId) ?? new Map<number, string>();
+      for (const l of h.lines) if (l.kind === 'add') added.set(l.newNo!, l.text);
+      this.addedLines.set(h.fileId, added);
     }
   }
 
-  /** Parsed head version of each changed script file. */
-  *codeFiles(): Generator<{ file: FileChange; src: ParsedSource }> {
+  /** Parsed head version of each changed file of the languages (script files by default). */
+  *codeFiles(
+    languages: ReadonlySet<string> = SCRIPT_LANGUAGES,
+  ): Generator<{ file: FileChange; src: ParsedSource }> {
     for (const file of this.input.files) {
       const src = this.input.sources.get(file.id)?.new;
-      if (src && file.language && SCRIPT_LANGUAGES.has(file.language)) yield { file, src };
+      if (src && file.language && languages.has(file.language)) yield { file, src };
     }
   }
 
@@ -134,6 +207,11 @@ export class Changes {
 
   isAdded(fileId: string, line: number): boolean {
     return this.addedLines.get(fileId)?.has(line) ?? false;
+  }
+
+  /** The text of a line the PR adds, if it adds it. */
+  addedText(fileId: string, line: number): string | undefined {
+    return this.addedLines.get(fileId)?.get(line);
   }
 
   /** Changed symbol owning a changed line of a hunk, with the line's text. */
@@ -174,7 +252,12 @@ export class Changes {
     const imp = this.input.sources.get(fileId)?.new?.imports.find((i) => i.names.includes(name));
     if (!file || !imp) return undefined;
     this.resolve ??= createImportResolver(this.input.files);
-    return this.resolve(file.path, imp.source);
+    // Python's `from .routers import orders` may name a module of the package (M17).
+    const submodule =
+      file.language === 'python'
+        ? this.resolve(file.path, `${imp.source}${imp.source.endsWith('.') ? '' : '.'}${name}`)
+        : undefined;
+    return submodule ?? this.resolve(file.path, imp.source);
   }
 
   /** The changed files a file imports, in its head version. */
@@ -260,6 +343,34 @@ export function componentEdges(
         const name = byFile.get(target);
         if (name && imp.names.includes(name)) add(symbol, target, line, `imports \`${name}\``);
       }
+    }
+  }
+  return edges;
+}
+
+/**
+ * Changed lines that mount a router or plugin imported from another changed file
+ * (`app.use('/users', usersRouter)`, `app.include_router(users)`): `mounts` are the calls that do.
+ */
+export function mountEdges(c: Changes, mounts: ReadonlySet<string>): PluginEdge[] {
+  const edges: PluginEdge[] = [];
+  const seen = new Set<string>();
+  for (const { symbol, fileId, line } of c.changedLines()) {
+    const refs = c.refsAt(fileId, line);
+    if (!refs.some((r) => r.kind === 'call' && mounts.has(r.name))) continue;
+    for (const r of refs) {
+      if (r.kind !== 'name' && r.kind !== 'member') continue;
+      const target = c.importedFrom(fileId, r.name);
+      const to = target && target !== fileId ? c.fileSymbol(target) : undefined;
+      const key = `${symbol.id} ${to?.id}`;
+      if (!to || seen.has(key)) continue;
+      seen.add(key);
+      edges.push({
+        from: symbol.id,
+        to: to.id,
+        text: `${where(c, symbol)} mounts \`${r.name}\` from \`${c.fileById.get(target!)!.path}\``,
+        locations: [{ fileId, line }],
+      });
     }
   }
   return edges;

@@ -11,9 +11,12 @@
 import type { ChangedSymbol, HintDraft, HintRule } from '@bowi/core';
 
 const MIGRATION_PATH = /(^|\/)migrations?\/|(^|\/)[^/]*migration[^/]*$/i;
-/** Express, Fastify, Koa and similar: `router.post('/login', …)`. */
+/**
+ * Express, Fastify, Koa and similar: `router.post('/login', …)`. Not on a decorator
+ * (`@app.get('/login')`): the FastAPI and Flask plugins read those with their handler (M17).
+ */
 const ROUTE_CALL =
-  /\b(?:app|router|server|route|routes|fastify|api)\.(get|post|put|patch|delete|all)\(\s*['"`](\/[^'"`]*)['"`]/i;
+  /^(?!\s*@).*?\b(?:app|router|server|route|routes|fastify|api)\.(get|post|put|patch|delete|all)\(\s*['"`](\/[^'"`]*)['"`]/i;
 const COMMENT_LINE = /^\s*(\/\/|\/\*|\*)/;
 /** Path parts that usually mean authentication or authorization code. */
 const AUTH_PATH =

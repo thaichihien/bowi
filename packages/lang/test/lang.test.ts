@@ -591,3 +591,34 @@ describe('Java, Kotlin and C# (M16)', () => {
     );
   });
 });
+
+describe('Python decorators (M17)', () => {
+  it('record what a decorator is called on, and strings in list arguments', async () => {
+    const src = await parse(
+      [
+        '@bp.route("/orders", methods=["GET", "POST"])', // 1
+        '@login_required', // 2
+        'def orders():', // 3
+        '    pass', // 4
+      ].join('\n'),
+      'python',
+    );
+    expect(src.decorators).toEqual([
+      {
+        name: 'route',
+        args: ['/orders', 'GET', 'POST'],
+        refs: [],
+        line: 1,
+        receiver: 'bp',
+        target: { kind: 'other', name: 'orders' },
+      },
+      {
+        name: 'login_required',
+        args: [],
+        refs: [],
+        line: 2,
+        target: { kind: 'other', name: 'orders' },
+      },
+    ]);
+  });
+});
