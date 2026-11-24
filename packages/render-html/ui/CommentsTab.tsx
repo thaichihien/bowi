@@ -6,6 +6,7 @@
  * canvases.
  */
 
+import { readingOrder } from '@bowi/core/paths';
 import { anchorLabel, reviewMarkdown, sortComments } from '@bowi/core/review';
 import type { ReviewComment } from '@bowi/core/types';
 import type { ComponentChildren } from 'preact';
@@ -401,7 +402,8 @@ const sectionId = (key: string) =>
   key === OUTDATED ? 'comments-outdated' : `comments-${key.replace(/[^A-Za-z0-9_-]/g, '-')}`;
 
 function groupByPath(comments: ReviewComment[]): Map<string, ReviewComment[]> {
-  const paths = [...new Set(comments.map((c) => c.anchor.path))].sort(comparePaths);
+  const files = [...new Set(comments.map((c) => c.anchor.path))];
+  const paths = files.sort(readingOrder(files, comparePaths));
   return new Map(paths.map((p) => [p, comments.filter((c) => c.anchor.path === p)]));
 }
 

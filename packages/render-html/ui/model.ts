@@ -2,6 +2,7 @@
  * View model: lookups and reading order derived from the plan. Pure; no DOM.
  */
 
+import { readingOrder } from '@bowi/core/paths';
 import type {
   ChangedSymbol,
   DiffLine,
@@ -361,8 +362,13 @@ export function comparePaths(a: string, b: string): number {
   }
 }
 
+/** GitHub's file order, except that a migration's up file comes right before its down file. */
 export function githubOrder<T extends { path: string }>(files: readonly T[]): T[] {
-  return [...files].sort((a, b) => comparePaths(a.path, b.path));
+  const byPath = readingOrder(
+    files.map((f) => f.path),
+    comparePaths,
+  );
+  return [...files].sort((a, b) => byPath(a.path, b.path));
 }
 
 /** GitHub's five squares next to "+12 −3": green for additions, red for deletions. */

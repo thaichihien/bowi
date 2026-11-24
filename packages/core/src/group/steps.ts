@@ -8,11 +8,12 @@
  * used by a new module that `server.js` then calls), those steps are split along the files'
  * order, so each file still comes after what it uses; steps whose files really use each other
  * keep the layer order. Within a step, files are ordered the same way (topological order over the
- * graph's edges; cycles are condensed with Tarjan's algorithm and kept together), ties by path.
+ * graph's edges; cycles are condensed with Tarjan's algorithm and kept together), ties by path,
+ * a migration's up file before its down file (`paths.ts`).
  * Hunks of one file stay together, in file order.
  */
 
-import { compareStrings } from '../determinism.ts';
+import { readingOrder } from '../paths.ts';
 import type { ChangeEdge, FileChange, Hunk, Layer, Step } from '../types.ts';
 
 export const LAYER_ORDER: Layer[] = [
@@ -125,13 +126,12 @@ export function buildSteps(
   )) {
     if (cycle.length < 2) continue;
     const members = layerSteps.filter((s) => cycle.includes(s.id));
-    const files = members
-      .flatMap(filesOf)
-      .sort(
-        (a, b) =>
-          layerRank(a) - layerRank(b) ||
-          compareStrings(fileById.get(a)!.path, fileById.get(b)!.path),
-      );
+    const pathOf = (f: string) => fileById.get(f)!.path;
+    const memberFiles = members.flatMap(filesOf);
+    const byPath = readingOrder(memberFiles.map(pathOf));
+    const files = memberFiles.sort(
+      (a, b) => layerRank(a) - layerRank(b) || byPath(pathOf(a), pathOf(b)),
+    );
     const inCycle = new Set(files);
     const order = topoOrder(files, (f) =>
       [...(dependsOn.get(f) ?? [])].filter((d) => inCycle.has(d)),
@@ -195,9 +195,9 @@ export function orderFiles(
   fileById: Map<string, FileChange>,
   dependsOn: Map<string, Set<string>>,
 ): string[] {
-  const nodes = [...fileIds].sort((a, b) =>
-    compareStrings(fileById.get(a)!.path, fileById.get(b)!.path),
-  );
+  const pathOf = (f: string) => fileById.get(f)!.path;
+  const byPath = readingOrder(fileIds.map(pathOf));
+  const nodes = [...fileIds].sort((a, b) => byPath(pathOf(a), pathOf(b)));
   const inStep = new Set(nodes);
   const deps = (n: string) => [...(dependsOn.get(n) ?? [])].filter((d) => inStep.has(d));
   return topoOrder(nodes, deps);

@@ -94,6 +94,18 @@ describe('buildSteps', () => {
   const action = file('f0', 'src/steps/common/cancel.step.ts', 'unknown');
   const helper = file('f1', 'src/orders/mark-failed.ts', 'unknown');
 
+  it('reads a migration’s up file before its down file', () => {
+    const up = file('f1', 'hasura/migrations/1776_add/up.sql', 'schema');
+    const down = file('f0', 'hasura/migrations/1776_add/down.sql', 'schema');
+    const [step] = buildSteps(
+      'g1',
+      [hunk('f0'), hunk('f1')],
+      new Map([up, down].map((f) => [f.id, f])),
+      [],
+    ).steps;
+    expect(step!.hunkIds).toEqual(['f1:h0', 'f0:h0']);
+  });
+
   it('reads a step before the steps that call it, whatever its layer (GRP-7)', () => {
     expect(steps([service, action, helper], [calls('f2', 'f1'), calls('f0', 'f1')])).toEqual([
       'g1:unknown',

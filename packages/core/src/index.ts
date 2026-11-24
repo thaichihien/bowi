@@ -21,6 +21,7 @@ export * from './stages/refs.ts';
 export * from './stages/hints.ts';
 export * from './ai.ts';
 export * from './stages/ai.ts';
+export * from './paths.ts';
 export * from './review.ts';
 export * from './review-schema.ts';
 export * from './graph/imports.ts';

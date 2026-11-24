@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
-    "./review": "./src/review.ts"
+    "./review": "./src/review.ts",
+    "./paths": "./src/paths.ts"
   },
   "publishConfig": {
     "exports": {
@@ -23,6 +24,10 @@
       "./review": {
         "types": "./dist/review.d.ts",
         "default": "./dist/review.js"
+      },
+      "./paths": {
+        "types": "./dist/paths.d.ts",
+        "default": "./dist/paths.js"
       }
     }
   },

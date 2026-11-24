@@ -5,6 +5,7 @@ import {
   dayLabel,
   diffBlocks,
   formatTimestamp,
+  githubOrder,
   initials,
   midSplit,
   relativeTime,
@@ -42,6 +43,25 @@ describe('GitHub file order', () => {
       'test/x.ts',
       'README.md',
       'package.json',
+    ]);
+  });
+});
+
+describe('the order of files in the page', () => {
+  it('keeps GitHub’s order, with a migration’s up file before its down file', () => {
+    const files = [
+      'README.md',
+      'm/1/down.sql',
+      'm/1/up.sql',
+      'm/0001_a.down.sql',
+      'm/0001_a.up.sql',
+    ];
+    expect(githubOrder(files.map((path) => ({ path }))).map((f) => f.path)).toEqual([
+      'm/1/up.sql',
+      'm/1/down.sql',
+      'm/0001_a.up.sql',
+      'm/0001_a.down.sql',
+      'README.md',
     ]);
   });
 });

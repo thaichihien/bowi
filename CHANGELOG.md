@@ -91,6 +91,10 @@ From the owner's look at sindresorhus/ky#874 (§15 #82). Names and labels only: 
 - The skill knows merge requests ("review !17", a GitLab URL, `GITLAB_TOKEN` or `glab`).
 - Tried on public gitlab.com merge requests (gitlab-org/cli!4541 and one in a subgroup). Not tried: posting to a real GitLab project (no GitLab login on this machine), tested against a fake GitLab only.
 
+### A migration's up before its down
+
+- A migration's `up` file now comes right before its `down` file (owner's feedback, §15 #89): in a step, in the focus tour, and in the page's file trees and the Changes tab (`up.sql` / `down.sql`, `0001_users.up.sql` / `0001_users.down.sql`). Groups and steps do not change.
+
 ### Review tab
 
 - The step pills above the Files tree are bigger: eight to a row instead of ten (about 31 px instead of 23 px in the sidebar), with larger numbers (owner's request).
