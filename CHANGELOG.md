@@ -99,6 +99,10 @@ From the owner's look at sindresorhus/ky#874 (§15 #82). Names and labels only: 
 
 - The step pills above the Files tree are bigger: eight to a row instead of ten (about 31 px instead of 23 px in the sidebar), with larger numbers (owner's request).
 
+### Favicon
+
+- `review.html` has a favicon: the Bowi icon at 64 px, inlined as a data URI (about 3 KB), so the page still makes no requests.
+
 ## 0.2.0 (2026-11-17)
 
 ### M10 — Line comments in the report

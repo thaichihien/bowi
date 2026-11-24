@@ -43,9 +43,27 @@ function planFromReport(): Plugin {
   };
 }
 
+/**
+ * Inlines the favicon as a data URI: Vite keeps an `<link rel="icon">` file separate, and the page
+ * makes no requests (UI-1). `favicon.webp` is the Bowi icon, 64 px.
+ */
+function inlineFavicon(): Plugin {
+  return {
+    name: 'bowi-inline-favicon',
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html) {
+        const icon = readFileSync(fileURLToPath(new URL('./ui/favicon.webp', import.meta.url)));
+        const uri = `data:image/webp;base64,${icon.toString('base64')}`;
+        return html.replace('href="./favicon.webp"', () => `href="${uri}"`);
+      },
+    },
+  };
+}
+
 export default defineConfig({
   root: fileURLToPath(new URL('./ui', import.meta.url)),
-  plugins: [viteSingleFile(), planFromReport()],
+  plugins: [inlineFavicon(), viteSingleFile(), planFromReport()],
   oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },
   build: {
     outDir: fileURLToPath(new URL('./template', import.meta.url)),
