@@ -671,3 +671,60 @@ describe('Post to GitHub (UI-28)', () => {
     );
   });
 });
+
+describe('Post to GitLab (M13)', () => {
+  const MR = 'https://gitlab.com/acme/platform/api/-/merge_requests/7';
+  /** The fixture as merge request !7, with what went to GitLab recorded as such. */
+  function mergeRequest(comments: Partial<ReviewComment>[]): ReviewPlan {
+    const p = pullRequest(comments);
+    p.source = { ...p.source, kind: 'gitlab', repo: 'acme/platform/api', url: MR };
+    for (const c of p.review!.comments) {
+      if (c.sync) c.sync = { ...c.sync, host: 'gitlab', url: `${MR}/diffs` };
+    }
+    return p;
+  }
+
+  it('names GitLab and the merge request everywhere', async () => {
+    const p = mergeRequest([{ sync: sync(true) }, {}]);
+    backend(p, { status: { ...STATUS, via: 'glab' } });
+    await show(p);
+    expect(root.querySelector('.header-top')!.textContent).toContain(
+      'acme/platform/api · merge request !7',
+    );
+    const top = [...root.querySelector('.header-actions')!.querySelectorAll('a')];
+    expect(top.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['Open on GitLab', `${MR}/diffs`],
+    ]);
+    expect(root.querySelector('.banner.warn')!.textContent).toContain(
+      'until you submit the review on GitLab',
+    );
+    expect(text()).toContain('Read-only · change it on GitLab');
+    expect(text()).not.toContain('GitHub');
+
+    await click(/Post to GitLab/);
+    const d = dialog()!;
+    expect(d.textContent).toContain('acme/platform/api!7');
+    expect(d.textContent).toContain('your glab login');
+    expect(d.textContent).toContain('A draft on GitLab, not public yet');
+    expect(d.textContent).toContain('Everyone on the merge request sees it');
+    await click('Use another token');
+    const field = dialog()!.querySelector<HTMLInputElement>('.post-field input')!;
+    expect(field.closest('label')!.textContent).toContain('GitLab token');
+    expect(field.placeholder).toBe('glpat-…');
+    expect(links('Create a personal access token')[0]!.getAttribute('href')).toBe(
+      'https://gitlab.com/-/user_settings/personal_access_tokens?name=Bowi&scopes=api',
+    );
+    expect(dialog()!.textContent).not.toContain('GitHub');
+  });
+
+  it('describes the merge request on its tab', async () => {
+    const p = mergeRequest([]);
+    p.source.author = 'tanuki';
+    backend(p);
+    await show(p, server, '#description');
+    expect(root.querySelector('.desc')!.getAttribute('aria-label')).toBe(
+      'Merge request description',
+    );
+    expect(text()).toContain('tanuki opened this merge request');
+  });
+});

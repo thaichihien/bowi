@@ -314,21 +314,51 @@ export function bodyOnFile(c: ReviewComment): string {
   return `${where}:\n\n${c.body}`;
 }
 
-/** The address of a report's pull request; undefined for a local report. */
+/** The address of a report's pull or merge request; undefined for a local report. */
 export function pullRequestUrl(source: {
   kind: string;
   repo: string;
   prNumber?: number;
+  url?: string;
 }): string | undefined {
-  if (source.kind !== 'github' || source.prNumber === undefined) return undefined;
-  return `https://github.com/${source.repo}/pull/${source.prNumber}`;
+  if (source.kind === 'local' || source.prNumber === undefined) return undefined;
+  if (source.url) return source.url;
+  // Plans written before `url` existed: GitHub only.
+  return source.kind === 'github'
+    ? `https://github.com/${source.repo}/pull/${source.prNumber}`
+    : undefined;
+}
+
+/** Where a pending review is submitted: the pull request's files, the merge request's changes. */
+export function submitUrl(source: Parameters<typeof pullRequestUrl>[0]): string | undefined {
+  const url = pullRequestUrl(source);
+  return url && `${url}/${source.kind === 'gitlab' ? 'diffs' : 'files'}`;
+}
+
+export interface RequestWords {
+  host: 'GitHub' | 'GitLab';
+  /** "pull request" or "merge request". */
+  request: string;
+  /** "#12" or "!12". */
+  ref: string;
+}
+
+/** How a report names its host and what it reviews; undefined for a local report. */
+export function requestWords(source: {
+  kind: string;
+  prNumber?: number;
+}): RequestWords | undefined {
+  if (source.kind === 'local' || source.prNumber === undefined) return undefined;
+  return source.kind === 'gitlab'
+    ? { host: 'GitLab', request: 'merge request', ref: `!${source.prNumber}` }
+    : { host: 'GitHub', request: 'pull request', ref: `#${source.prNumber}` };
 }
 
 /** What the page and `bowi comments push` learn before sending (M11, UI-28). */
 export interface PostStatus {
   login: string;
-  /** Which login: the GitHub CLI's, the environment variable, or a token pasted in the dialog. */
-  via: 'gh' | 'GITHUB_TOKEN' | 'token';
+  /** Which login: the host's CLI (gh, glab), its environment variable, or a token pasted in the dialog. */
+  via: 'gh' | 'GITHUB_TOKEN' | 'glab' | 'GITLAB_TOKEN' | 'token';
   /** The name the reviewer gave a pasted token, if any. */
   tokenName?: string;
   /** The pull request's head on the host now; the report's own is in the plan. */

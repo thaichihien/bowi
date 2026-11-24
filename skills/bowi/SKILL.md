@@ -1,6 +1,6 @@
 ---
 name: bowi
-description: Review a pull request or a branch with Bowi, which groups related changes, orders them foundations first, collapses noise (lockfiles, formatting, moved code) and explains every group with evidence. Use it whenever the user asks to review a pull request (a GitHub PR URL, "review #42", "review this PR"), asks what a branch or the local changes do ("what does this branch change", "walk me through these changes"), or asks whether a change is safe to merge, even without naming Bowi. Bowi only reads; posting review comments stays the user's action.
+description: Review a pull request or a branch with Bowi, which groups related changes, orders them foundations first, collapses noise (lockfiles, formatting, moved code) and explains every group with evidence. Use it whenever the user asks to review a pull request or merge request (a GitHub PR or GitLab MR URL, "review #42", "review !17", "review this PR"), asks what a branch or the local changes do ("what does this branch change", "walk me through these changes"), or asks whether a change is safe to merge, even without naming Bowi. Bowi only reads; posting review comments stays the user's action.
 ---
 
 # Review with Bowi
@@ -16,8 +16,9 @@ command -v bowi >/dev/null && BOWI=bowi || BOWI="npx --yes @bowi/cli"
 ```
 
 - A GitHub pull request: `$BOWI https://github.com/<owner>/<repo>/pull/<n> --no-open`. Private repositories need `GITHUB_TOKEN` or a logged-in `gh`.
+- A GitLab merge request: `$BOWI https://gitlab.com/<group>/<project>/-/merge_requests/<n> --no-open` (subgroups and self-managed servers work the same way). Private projects need `GITLAB_TOKEN` or a logged-in `glab`.
 - The current branch or local changes, from inside the repository: `$BOWI --local --no-open` (against `origin/HEAD`, else `main`, else `master`; `--base <branch>` picks another).
-- "Review #42" without a URL: build the URL from the repository's GitHub remote (`git remote get-url origin`).
+- "Review #42" or "review !17" without a URL: build the URL from the repository's remote (`git remote get-url origin`): a pull request on GitHub, a merge request on GitLab.
 
 Always pass `--no-open`; offer to open the page afterwards. Do not pass `--ai`: you are the one explaining the review. Bowi prints the report folder (`Wrote …/review-plan.json`), by default `./.bowi/<repo>-<pr or branch>/` under the current directory. If `.bowi/` is not ignored by git there, say so, or pass `--out <folder>` outside the repository. On an error, Bowi prints the next step to take (exit code 1 usage, 2 source such as a missing token, 3 analysis); follow it or tell the user.
 
@@ -90,4 +91,4 @@ for (const r of p.outsideRefs.filter((r) => used.has(r.symbolId))) console.log(`
 
 - Offer to open `review.html` (`open` on macOS, `xdg-open` on Linux, `start ""` on Windows). It works offline and keeps the reviewer's progress in the browser.
 - To write line comments, the user runs `bowi serve <report folder>` and comments in the page; it keeps running until Ctrl+C, so suggest it rather than running it in the foreground. Read their comments back with `bowi comments <report folder>` (`--markdown` for text to paste).
-- Never post anything to the pull request. Sending comments to GitHub is the user's decision: they use "Post to GitHub" in the served page, or run `bowi comments push <report folder>` themselves and confirm there. Never run `bowi comments push` for them and never pass `--yes`.
+- Never post anything to the pull request. Sending comments to GitHub or GitLab is the user's decision: they use "Post to GitHub" (or GitLab) in the served page, or run `bowi comments push <report folder>` themselves and confirm there. Never run `bowi comments push` for them and never pass `--yes`.

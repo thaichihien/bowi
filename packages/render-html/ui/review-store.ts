@@ -11,6 +11,7 @@
  */
 
 import {
+  requestWords,
   setPosted,
   type PostedMark,
   type PostFailure,
@@ -70,7 +71,7 @@ export function serveCommand(folder: string | undefined): string {
 /** Drafts of a report: same repository and PR (or branch); they outlive re-runs. */
 export function draftKey(plan: ReviewPlan): string {
   const s = plan.source;
-  return `${DRAFT_PREFIX}${s.repo}${s.kind === 'github' ? `#${s.prNumber}` : `@${s.headRef}`}`;
+  return `${DRAFT_PREFIX}${s.repo}${requestWords(s)?.ref ?? `@${s.headRef}`}`;
 }
 
 export interface PendingDrafts {

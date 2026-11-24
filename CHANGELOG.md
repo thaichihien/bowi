@@ -81,6 +81,16 @@ From the owner's look at sindresorhus/ky#874 (§15 #82). Names and labels only: 
 
 - A changed word or number inside a Markdown code block or HTML block was taken for formatting: the grammar keeps only punctuation there as tokens, so `statusCodes: [413]` and `statusCodes: [500]` in a readme example looked the same, and a code line without punctuation counted as blank (found by the owner on sindresorhus/ky#874). These blocks are now compared by their text, whitespace runs collapsed and list indentation ignored, like paragraphs (§15 #83). Grouping benchmark: 4 of 229 cases changed, Bowi 0.449 → 0.452 mean ARI, at least as good as by folder in 147 cases (146 before).
 
+### M13 — GitLab merge requests
+
+- `bowi <gitlab-mr-url>` reviews a GitLab merge request (CLI-1, SRC-8, §15 #88): `https://gitlab.com/<group>/<subgroup…>/<project>/-/merge_requests/<n>`, on gitlab.com or a self-managed server. API v4 gives the merge request, GitLab's own merge base (`diff_refs`), the commits and the issues it closes; the code comes from git into the same blobless, shallow cache as GitHub's, now under `<host>/<group>/<subgroup…>/<project>.git`. History, blame and outside references work as for GitHub. The git half of the GitHub source is now shared (`remote.ts`), unchanged.
+- Login: `GITLAB_TOKEN`, sent only to gitlab.com or to the server in `GITLAB_HOST`, else glab's login on that very server (`glab config get token --host`). Public projects need none. Errors say how to log in on that server.
+- Comments go to GitLab as draft notes (CLI-16, UI-28): "Post to GitLab" in the served page and `bowi comments push`, pending (drafts only you see, submitted on GitLab) or published at once. Lines are placed on the merge request version the report was made from, with both line numbers for context lines and GitLab's line codes for ranges; a comment on a whole file uses GitLab's file comments. "Use another token" takes a GitLab token (`api` scope).
+- The page names the host: "merge request !12" in the header, "Open on GitLab", "Post to GitLab", "opened this merge request", "change it on GitLab". The plan has `source.kind: 'gitlab'`, and a new `source.url` (also for GitHub) with the request's page; a sent comment records `host: 'gitlab'`.
+- Fix, also for GitHub: after a fetch that was refused (a token that can read the merge request but not its code), the next run's check of the cache downloaded the missing commits with their history (`cat-file` in a partial clone fetches what it lacks), outside the shallow fetch and without the refs that keep them. The check now uses `rev-list --missing=print`, which never downloads. A refused fetch also shows GitLab's own reason (fine-grained tokens name the missing permission).
+- The skill knows merge requests ("review !17", a GitLab URL, `GITLAB_TOKEN` or `glab`).
+- Tried on public gitlab.com merge requests (gitlab-org/cli!4541 and one in a subgroup). Not tried: posting to a real GitLab project (no GitLab login on this machine), tested against a fake GitLab only.
+
 ### Review tab
 
 - The step pills above the Files tree are bigger: eight to a row instead of ten (about 31 px instead of 23 px in the sidebar), with larger numbers (owner's request).

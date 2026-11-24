@@ -14,7 +14,7 @@ import { BubbleIcon, ReadOnlyNote, SentChip, useComments } from './Comments.tsx'
 import { Markdown, MarkdownEditor } from './Editor.tsx';
 import { Chevron } from './Icons.tsx';
 import { comparePaths, relativeTime, type Model } from './model.ts';
-import { MarkPosted, PendingBanner } from './Post.tsx';
+import { MarkPosted, PendingBanner, wordsOf } from './Post.tsx';
 import { reportFolder, serveCommand, SUMMARY_ID } from './review-store.ts';
 
 type Filter = 'all' | 'waiting' | 'pending' | 'posted' | 'unsaved' | 'outdated';
@@ -38,7 +38,8 @@ export function CommentsTab(props: {
   }, [copied]);
 
   const unsavedShown = store.mode === 'file' || store.status === 'offline';
-  const isPr = props.model.plan.source.kind === 'github';
+  const isPr = props.model.plan.source.kind !== 'local';
+  const { host } = wordsOf(props.model.plan);
   const all = sortComments(review.comments);
   const isPending = (c: ReviewComment) => !!c.sync?.pending;
   const isPosted = (c: ReviewComment) => !!c.sync && !c.sync.pending;
@@ -140,7 +141,7 @@ export function CommentsTab(props: {
             {isPr && (
               <FilterPill
                 id="waiting"
-                label="Not on GitHub"
+                label={`Not on ${host}`}
                 n={waiting.length}
                 on={shownFilter}
                 set={setFilter}
@@ -226,7 +227,7 @@ export function CommentsTab(props: {
               {shownFilter === 'unsaved'
                 ? 'Not saved yet'
                 : shownFilter === 'waiting'
-                  ? 'Not on GitHub yet'
+                  ? `Not on ${host} yet`
                   : shownFilter === 'pending'
                     ? 'Sent as pending'
                     : shownFilter === 'posted'
@@ -242,7 +243,7 @@ export function CommentsTab(props: {
                     Delete {sentAny ? '' : 'all '}
                     {waiting.length} comment{waiting.length === 1 ? '' : 's'}
                     {summaryClearable ? ' and the summary' : ''}?
-                    {sentAny && ` The ${sentPending + sentPosted} on GitHub stay.`}
+                    {sentAny && ` The ${sentPending + sentPosted} on ${host} stay.`}
                   </span>
                   <button
                     class="btn small danger-solid"
@@ -259,7 +260,7 @@ export function CommentsTab(props: {
                 </span>
               ) : (
                 <div class="toolbar-group">
-                  {shownFilter === 'pending' && <MarkPosted store={store} />}
+                  {shownFilter === 'pending' && <MarkPosted store={store} host={host} />}
                   {sections.length > 0 && (
                     <button
                       class="btn small"
@@ -302,7 +303,7 @@ export function CommentsTab(props: {
 
           {hasAny && shownFilter !== 'all' && byFile.size === 0 && outdatedShown.length === 0 && (
             <p class="comments-none" role="status">
-              {EMPTY[shownFilter]}.{' '}
+              {empty(host)[shownFilter]}.{' '}
               <button class="link-btn" onClick={() => setFilter('all')}>
                 Show all comments
               </button>
@@ -316,14 +317,14 @@ export function CommentsTab(props: {
                   Review summary
                 </span>
                 {review.bodySync && <SentChip sync={review.bodySync} />}
-                {review.bodySync && <ReadOnlyNote />}
+                {review.bodySync && <ReadOnlyNote sync={review.bodySync} />}
               </div>
               {review.bodySync ? (
                 <Markdown text={review.body} />
               ) : (
                 <>
                   <div class="muted small summary-help">
-                    What you would write when submitting a review on GitHub. It goes at the top of
+                    What you would write when submitting a review on {host}. It goes at the top of
                     the review, and of “Copy all as Markdown”.
                   </div>
                   <MarkdownEditor
@@ -386,14 +387,14 @@ export function CommentsTab(props: {
 }
 
 /** What a filter with nothing in it says, in the middle of the list. */
-const EMPTY: Record<Filter, string> = {
+const empty = (host: string): Record<Filter, string> => ({
   all: 'No comments yet',
-  waiting: 'Every comment is on GitHub',
-  pending: 'No comments are waiting to be submitted on GitHub',
+  waiting: `Every comment is on ${host}`,
+  pending: `No comments are waiting to be submitted on ${host}`,
   posted: 'No comments posted yet',
   unsaved: 'Every comment is saved',
   outdated: 'No outdated comments',
-};
+});
 
 const OUTDATED = '#outdated';
 const sectionId = (key: string) =>
@@ -492,7 +493,7 @@ function CommentCard(props: {
         {api.store.isUnsaved(c.id) && <span class="chip k-draft">Not saved</span>}
         {c.sync && <SentChip sync={c.sync} />}
         <span class="comment-actions">
-          {c.sync && <ReadOnlyNote />}
+          {c.sync && <ReadOnlyNote sync={c.sync} />}
           {place && (
             <a
               class="go-link"

@@ -9,6 +9,7 @@
  * page works without it.
  */
 
+import { requestWords } from '@bowi/core/review';
 import type { ReviewPlan } from '@bowi/core/types';
 
 export interface Progress {
@@ -78,7 +79,7 @@ export function toggleViewed(
 /** Storage key of a report: same repository, PR or branch, and diff → same progress. */
 export function progressKey(plan: ReviewPlan): string {
   const s = plan.source;
-  const target = s.kind === 'github' ? `#${s.prNumber}` : `@${s.headRef}`;
+  const target = requestWords(s)?.ref ?? `@${s.headRef}`;
   return `${PROGRESS_PREFIX}${s.repo}${target}:${diffDigest(plan)}`;
 }
 

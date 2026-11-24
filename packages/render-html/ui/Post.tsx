@@ -1,7 +1,8 @@
 /**
- * "Post to GitHub" (M11, UI-28): the button next to the save status, the dialog that says what
- * goes where and as whom, and the way back to a pending review. This is the only way the page
- * sends anything to GitHub, and it does so through `bowi serve`: the token stays there. The two
+ * "Post to GitHub" (M11, UI-28), or to GitLab (M13): the button next to the save status, the dialog
+ * that says what goes where and as whom, and the way back to a pending review. This is the only way
+ * the page sends anything to the host, and it does so through `bowi serve`: the token stays there.
+ * Every text names the report's host, and GitLab's merge request with its `!12`. The two
  * ways of sending never look alike: "Sent as pending" (a draft only the reviewer sees) against
  * "Posted" (public). The design is the M11 canvas.
  */
@@ -9,10 +10,13 @@
 import {
   anchorLabel,
   pullRequestUrl,
+  requestWords,
   sortComments,
+  submitUrl,
   type PostFailure,
   type PostResult,
   type PostStatus,
+  type RequestWords,
 } from '@bowi/core/review';
 import type { ReviewComment, ReviewPlan } from '@bowi/core/types';
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -23,29 +27,39 @@ import { reportFolder, serveCommand, type ReviewStore } from './review-store.ts'
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+/** The host's words for a report; a local one never reaches the parts that use them. */
+export const wordsOf = (plan: ReviewPlan): RequestWords =>
+  requestWords(plan.source) ?? {
+    host: 'GitHub',
+    request: 'pull request',
+    ref: `#${plan.source.prNumber}`,
+  };
+
 const hasPendingSent = (store: ReviewStore) =>
   !!store.review.bodySync?.pending || store.review.comments.some((c) => c.sync?.pending);
 
 /**
- * "Open on GitHub" and "Post to GitHub", on every tab of a pull request's report. With a pending
- * review sent, "Open on GitHub" goes to the pull request's files, where it is submitted.
+ * "Open on GitHub" and "Post to GitHub", on every tab of a pull request's report (GitLab for a
+ * merge request). With a pending review sent, "Open on …" goes to where it is submitted: the pull
+ * request's files, the merge request's changes.
  */
 export function PostControls({ plan, store }: { plan: ReviewPlan; store: ReviewStore }) {
   const [open, setOpen] = useState(false);
   const url = pullRequestUrl(plan.source);
   if (!url) return null;
+  const { host } = wordsOf(plan);
   // Outdated ones wait in the dialog, unticked.
   const toSend = store.review.comments.filter((c) => !c.sync && c.status === 'active').length;
   return (
     <>
       <a
         class={toSend > 0 ? 'btn small' : 'btn small primary'}
-        href={hasPendingSent(store) ? `${url}/files` : url}
+        href={hasPendingSent(store) ? submitUrl(plan.source) : url}
         target="_blank"
         rel="noopener noreferrer"
         {...(hasPendingSent(store) && { title: 'Submit your pending review there' })}
       >
-        Open on GitHub
+        Open on {host}
         <OutIcon />
       </a>
       <button class={toSend > 0 ? 'btn small primary' : 'btn small'} onClick={() => setOpen(true)}>
@@ -62,12 +76,12 @@ export function PostControls({ plan, store }: { plan: ReviewPlan; store: ReviewS
         >
           <path d="M8 12.5v-9M4 7l4-4 4 4" />
         </svg>
-        Post to GitHub
+        Post to {host}
         {toSend > 0 && <span class="count">{toSend}</span>}
       </button>
       {open &&
         (store.mode === 'file' ? (
-          <FileNote close={() => setOpen(false)} store={store} />
+          <FileNote close={() => setOpen(false)} store={store} host={host} />
         ) : (
           <PostDialog plan={plan} url={url} store={store} close={() => setOpen(false)} />
         ))}
@@ -114,6 +128,7 @@ export function PendingBanner({ plan, store }: { plan: ReviewPlan; store: Review
     }
   };
   const n = store.review.comments.filter((c) => c.sync?.pending).length;
+  const { host } = wordsOf(plan);
   return (
     <div class="banner warn" role="status">
       <span class="banner-text">
@@ -122,19 +137,19 @@ export function PendingBanner({ plan, store }: { plan: ReviewPlan; store: Review
             ? `${plural(n, 'comment')} ${n === 1 ? 'was' : 'were'} sent as a pending review.`
             : 'The summary was sent as a pending review.'}
         </strong>{' '}
-        Nobody else can see {n === 1 ? 'it' : 'them'} until you submit the review on GitHub. Once
+        Nobody else can see {n === 1 ? 'it' : 'them'} until you submit the review on {host}. Once
         you did, mark {n === 1 ? 'it' : 'them'} as posted here.
       </span>
       <span class="banner-actions">
         <a
           class="btn small primary"
-          href={`${url}/files`}
+          href={submitUrl(plan.source)}
           target="_blank"
           rel="noopener noreferrer"
         >
-          Open on GitHub
+          Open on {host}
         </a>
-        <MarkPosted store={store} />
+        <MarkPosted store={store} host={host} />
         <button class="btn small" onClick={dismiss}>
           Dismiss
         </button>
@@ -144,11 +159,12 @@ export function PendingBanner({ plan, store }: { plan: ReviewPlan; store: Review
 }
 
 /**
- * "I submitted it": the reviewer says the pending review was submitted on GitHub, and its
+ * "I submitted it": the reviewer says the pending review was submitted on the host, and its
  * comments read "Posted" from then on. Bowi does not check (it reads nothing back), so one click
- * does it and "Undo" takes it back. All at once: GitHub submits a pending review as a whole.
+ * does it and "Undo" takes it back. All at once: GitHub submits a pending review as a whole, and
+ * GitLab publishes a review's drafts together.
  */
-export function MarkPosted({ store }: { store: ReviewStore }) {
+export function MarkPosted({ store, host }: { store: ReviewStore; host: string }) {
   const api = useComments();
   const ids = store.review.comments.filter((c) => c.sync?.pending).map((c) => c.id);
   const summary = !!store.review.bodySync?.pending;
@@ -166,7 +182,7 @@ export function MarkPosted({ store }: { store: ReviewStore }) {
   return (
     <button
       class="btn small"
-      title="Marks them as posted in Bowi, once you submitted the review on GitHub"
+      title={`Marks them as posted in Bowi, once you submitted the review on ${host}`}
       onClick={() => void mark()}
     >
       I submitted it
@@ -193,7 +209,8 @@ function useDialog(close: () => void, canClose: () => boolean) {
   return first;
 }
 
-function FileNote({ close, store }: { close: () => void; store: ReviewStore }) {
+function FileNote(props: { close: () => void; store: ReviewStore; host: string }) {
+  const { close, store, host } = props;
   const first = useDialog(close, () => true);
   const command = serveCommand(reportFolder(window.location) ?? store.folder);
   return (
@@ -203,11 +220,11 @@ function FileNote({ close, store }: { close: () => void; store: ReviewStore }) {
           <CloseIcon />
         </button>
         <div class="post-head">
-          <h2 id="post-title">Post to GitHub</h2>
+          <h2 id="post-title">Post to {host}</h2>
         </div>
         <div class="post-body">
           <p class="dialog-text">
-            This report is a plain file, so it cannot reach GitHub. Run this and open the link it
+            This report is a plain file, so it cannot reach {host}. Run this and open the link it
             prints, then post from there:
           </p>
           <pre class="cmd">{command}</pre>
@@ -237,6 +254,8 @@ function PostDialog(props: {
 }) {
   const { plan, url, store, close } = props;
   const head = plan.source.headSha;
+  const words = wordsOf(plan);
+  const { host } = words;
   const [phase, setPhase] = useState<Phase>('checking');
   const [status, setStatus] = useState<PostStatus>();
   const [failure, setFailure] = useState<PostFailure>();
@@ -288,7 +307,7 @@ function PostDialog(props: {
   const whatAll = picked.length > 0 && withSummary ? `${what} and the summary` : what;
   const asPending = effectiveMode === 'pending';
   const title = nothing
-    ? 'Post to GitHub'
+    ? `Post to ${host}`
     : asPending
       ? `Send ${whatAll} as a pending review`
       : `Post ${whatAll} now`;
@@ -356,7 +375,7 @@ function PostDialog(props: {
           <CloseIcon />
         </button>
         {phase === 'done' && result ? (
-          <Done result={result} url={url} close={close} />
+          <Done result={result} plan={plan} close={close} />
         ) : (
           <>
             <div class="post-head">
@@ -366,7 +385,8 @@ function PostDialog(props: {
                   <div class="post-who">
                     To{' '}
                     <strong class="mono">
-                      {plan.source.repo}#{plan.source.prNumber}
+                      {plan.source.repo}
+                      {words.ref}
                     </strong>{' '}
                     as <strong>@{status.login}</strong>{' '}
                     <span class="muted">· {loginLabel(status)}</span>
@@ -402,9 +422,10 @@ function PostDialog(props: {
                 <span role="status">
                   Checking{' '}
                   <strong class="mono">
-                    {plan.source.repo}#{plan.source.prNumber}
+                    {plan.source.repo}
+                    {words.ref}
                   </strong>{' '}
-                  on GitHub…
+                  on {host}…
                 </span>
               </div>
             ) : (
@@ -413,6 +434,7 @@ function PostDialog(props: {
                 {showToken && (
                   <TokenForm
                     store={store}
+                    plan={plan}
                     {...(status && !failure && { cancel: () => setTokenOpen(false) })}
                     done={(next) => {
                       setStatus(next);
@@ -425,10 +447,10 @@ function PostDialog(props: {
                 {moved && (
                   <div class="banner warn" role="status">
                     <span class="banner-text">
-                      <strong>This pull request has new commits.</strong> This report is on{' '}
-                      <code>{head.slice(0, 7)}</code>, GitHub is on{' '}
+                      <strong>This {words.request} has new commits.</strong> This report is on{' '}
+                      <code>{head.slice(0, 7)}</code>, {host} is on{' '}
                       <code>{status!.headSha.slice(0, 7)}</code>. Comments posted now show as
-                      outdated on GitHub if their lines changed. To check, run Bowi again first:
+                      outdated on {host} if their lines changed. To check, run Bowi again first:
                       comments carry over.
                     </span>
                   </div>
@@ -440,7 +462,7 @@ function PostDialog(props: {
                         You already have a pending review here, with{' '}
                         {plural(pending.comments, 'comment')}.
                       </strong>{' '}
-                      These join it, and you submit them together on GitHub.
+                      These join it, and you submit them together on {host}.
                       {pending.hasBody && summaryWaiting
                         ? ' It already has a summary, so yours stays here.'
                         : ''}
@@ -451,11 +473,11 @@ function PostDialog(props: {
                   <div class="banner warn" role="alert">
                     <span class="banner-text">
                       <strong>
-                        Your pending review on GitHub is on commit{' '}
+                        Your pending review on {host} is on commit{' '}
                         <code>{pending.headSha.slice(0, 7)}</code>, this report on{' '}
                         <code>{head.slice(0, 7)}</code>.
                       </strong>{' '}
-                      Submit or discard that review on GitHub, then post again.
+                      Submit or discard that review on {host}, then post again.
                     </span>
                   </div>
                 )}
@@ -476,7 +498,7 @@ function PostDialog(props: {
                               <strong>
                                 Pending review <span class="chip k-pending">Only you</span>
                               </strong>
-                              A draft on GitHub, not public yet. You still have to submit it there,
+                              A draft on {host}, not public yet. You still have to submit it there,
                               where you can also approve or request changes.
                             </span>
                           </label>
@@ -491,7 +513,7 @@ function PostDialog(props: {
                               <strong>
                                 Post now <span class="chip k-posted">Public</span>
                               </strong>
-                              Everyone on the pull request sees it and gets notified right away.
+                              Everyone on the {words.request} sees it and gets notified right away.
                               Neither approves nor requests changes.
                             </span>
                           </label>
@@ -550,13 +572,13 @@ function PostDialog(props: {
                         })}
                         {rows.length === 0 && !summaryRow && (
                           <div class="post-empty">
-                            Nothing new to post. Every comment is already on GitHub.
+                            Nothing new to post. Every comment is already on {host}.
                           </div>
                         )}
                       </div>
                       {already > 0 && (
                         <p class="post-note" style={{ marginTop: '8px' }}>
-                          {plural(already, 'comment')} already on GitHub, not sent again.
+                          {plural(already, 'comment')} already on {host}, not sent again.
                         </p>
                       )}
                     </div>
@@ -567,14 +589,14 @@ function PostDialog(props: {
             <div class="post-foot">
               {status && !blocked && (
                 <span class="post-foot-note">
-                  Once posted, a comment is read-only here: you change it on GitHub. Nothing is ever
+                  Once posted, a comment is read-only here: you change it on {host}. Nothing is ever
                   posted without this step.
                 </span>
               )}
               <span class="post-foot-actions">
                 {failure?.kind === 'uncertain' && (
                   <a class="btn" href={url} target="_blank" rel="noopener noreferrer">
-                    Open the pull request
+                    Open the {words.request}
                   </a>
                 )}
                 {failure?.kind !== 'uncertain' && (
@@ -616,18 +638,20 @@ function PostDialog(props: {
 
 /** "your gh login", "GITHUB_TOKEN", "token “work”". */
 function loginLabel(status: PostStatus): string {
-  if (status.via === 'gh') return 'your gh login';
-  if (status.via === 'GITHUB_TOKEN') return 'GITHUB_TOKEN';
+  if (status.via === 'gh' || status.via === 'glab') return `your ${status.via} login`;
+  if (status.via === 'GITHUB_TOKEN' || status.via === 'GITLAB_TOKEN') return status.via;
   return status.tokenName ? `token “${status.tokenName}”` : 'your token';
 }
 
 /**
  * "Use another token" (§15 #73): a token of the reviewer's choice, also when `gh` or
- * `GITHUB_TOKEN` already gives a login, with an optional name to tell it apart. The server checks
- * it with GitHub, then keeps it in memory until it stops; the page forgets it at once.
+ * `GITHUB_TOKEN` (glab or `GITLAB_TOKEN`) already gives a login, with an optional name to tell it
+ * apart. The server checks it with the host, then keeps it in memory until it stops; the page
+ * forgets it at once.
  */
 function TokenForm(props: {
   store: ReviewStore;
+  plan: ReviewPlan;
   cancel?: () => void;
   done: (status: PostStatus) => void;
 }) {
@@ -663,14 +687,14 @@ function TokenForm(props: {
       </p>
       <div class="post-token-fields">
         <label class="post-field">
-          <span>GitHub token</span>
+          <span>{wordsOf(props.plan).host} token</span>
           <input
             ref={input}
             type="password"
             class="mono"
             autocomplete="off"
             spellcheck={false}
-            placeholder="github_pat_… or ghp_…"
+            placeholder={props.plan.source.kind === 'gitlab' ? 'glpat-…' : 'github_pat_… or ghp_…'}
             value={token}
             onInput={(e) => setToken((e.target as HTMLInputElement).value)}
           />
@@ -688,26 +712,36 @@ function TokenForm(props: {
           />
         </label>
       </div>
-      <p class="post-note">
-        It needs “Pull requests: write” on this repository (a classic token: the <code>repo</code>{' '}
-        scope). Create a{' '}
-        <a
-          href="https://github.com/settings/personal-access-tokens/new"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          fine-grained token
-        </a>{' '}
-        or a{' '}
-        <a
-          href="https://github.com/settings/tokens/new?scopes=repo&description=Bowi"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          classic one
-        </a>
-        . <code>bowi serve</code> keeps it in memory until it stops; it is never saved.
-      </p>
+      {props.plan.source.kind === 'gitlab' ? (
+        <p class="post-note">
+          It needs the <code>api</code> scope and the right to comment on this merge request.{' '}
+          <a href={gitlabTokenUrl(props.plan)} target="_blank" rel="noopener noreferrer">
+            Create a personal access token
+          </a>
+          . <code>bowi serve</code> keeps it in memory until it stops; it is never saved.
+        </p>
+      ) : (
+        <p class="post-note">
+          It needs “Pull requests: write” on this repository (a classic token: the <code>repo</code>{' '}
+          scope). Create a{' '}
+          <a
+            href="https://github.com/settings/personal-access-tokens/new"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            fine-grained token
+          </a>{' '}
+          or a{' '}
+          <a
+            href="https://github.com/settings/tokens/new?scopes=repo&description=Bowi"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            classic one
+          </a>
+          . <code>bowi serve</code> keeps it in memory until it stops; it is never saved.
+        </p>
+      )}
       {error && (
         <div class="banner danger" role="alert">
           <span class="banner-text">
@@ -737,6 +771,12 @@ function TokenForm(props: {
   );
 }
 
+/** The token page of the merge request's own GitLab server, with Bowi's name and scope filled in. */
+function gitlabTokenUrl(plan: ReviewPlan): string {
+  const origin = /^https:\/\/[^/]+/.exec(plan.source.url ?? '')?.[0] ?? 'https://gitlab.com';
+  return `${origin}/-/user_settings/personal_access_tokens?name=Bowi&scopes=api`;
+}
+
 function FailureBanner(props: { failure: PostFailure; partial?: PostResult | undefined }) {
   const { failure, partial } = props;
   const sentSome = !!partial && partial.sent + Number(partial.summarySent) > 0;
@@ -759,8 +799,9 @@ function FailureBanner(props: { failure: PostFailure; partial?: PostResult | und
   );
 }
 
-function Done(props: { result: PostResult; url: string; close: () => void }) {
-  const { result, url, close } = props;
+function Done(props: { result: PostResult; plan: ReviewPlan; close: () => void }) {
+  const { result, plan, close } = props;
+  const { host, request } = wordsOf(plan);
   const pending = result.mode === 'pending';
   const n = result.sent;
   const subject = n > 0 ? plural(n, 'comment') : result.summarySent ? 'The summary' : 'Nothing';
@@ -806,9 +847,9 @@ function Done(props: { result: PostResult; url: string; close: () => void }) {
             </h2>
             <p class="dialog-text" style={{ marginBottom: 0 }}>
               {pending
-                ? 'One step left: submit the review on GitHub. Only you can see it until then. “Open on GitHub” at the top of this report takes you there. '
-                : 'Everyone on the pull request can see it now. '}
-              Sent comments are read-only in Bowi: to change one, edit it on GitHub.
+                ? `One step left: submit the review on ${host}. Only you can see it until then. “Open on ${host}” at the top of this report takes you there. `
+                : `Everyone on the ${request} can see it now. `}
+              Sent comments are read-only in Bowi: to change one, edit it on {host}.
             </p>
           </div>
         </div>
@@ -818,7 +859,7 @@ function Done(props: { result: PostResult; url: string; close: () => void }) {
               <div class="post-result" key={f.id}>
                 <span class="chip k-draft">On the file</span>
                 <span>
-                  <span class="mono">{f.path}</span> {f.label.toLowerCase()}. GitHub did not accept
+                  <span class="mono">{f.path}</span> {f.label.toLowerCase()}. {host} did not accept
                   this place, so the comment starts with it.
                 </span>
               </div>
@@ -845,11 +886,11 @@ function Done(props: { result: PostResult; url: string; close: () => void }) {
           </button>
           <a
             class="btn primary"
-            href={pending ? `${url}/files` : url}
+            href={pending ? submitUrl(plan.source) : pullRequestUrl(plan.source)}
             target="_blank"
             rel="noopener noreferrer"
           >
-            Open on GitHub
+            Open on {host}
             <OutIcon />
           </a>
         </span>

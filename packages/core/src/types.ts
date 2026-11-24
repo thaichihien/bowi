@@ -9,9 +9,10 @@ export interface ReviewPlan {
   generatedAt: string; // ISO timestamp (excluded from determinism checks)
   tool: { name: 'bowi'; version: string };
   source: {
-    kind: 'github' | 'local';
-    repo: string; // "owner/name" or local folder name
-    prNumber?: number;
+    kind: 'github' | 'gitlab' | 'local';
+    repo: string; // "owner/name", a GitLab project's path ("group/subgroup/name"), or local folder name
+    prNumber?: number; // a pull request's number, or a merge request's iid (GitLab's "!12")
+    url?: string; // the pull or merge request's page on its host
     title?: string;
     description?: string; // markdown, as written on the host
     /** Filled only in the plan embedded in review.html: `description` rendered and sanitized. */
@@ -26,7 +27,7 @@ export interface ReviewPlan {
     commits: Commit[]; // oldest first
     totalCommits?: number; // set when the host listed fewer commits than the PR has
     uncommitted?: boolean; // local: the working tree has changes not in HEAD
-    linkedIssues?: string[]; // "#12", "owner/repo#5" from closing keywords in the description
+    linkedIssues?: string[]; // "#12", "owner/repo#5": closing keywords (GitHub), the issues it closes (GitLab)
   };
   stats: {
     files: number;
@@ -210,7 +211,7 @@ export interface Review {
  * reads nothing back, so `pending` stays true after the reviewer submits the review on the host.
  */
 export interface ReviewSync {
-  host: 'github';
+  host: 'github' | 'gitlab';
   id: string; // the host's id of the comment (of the review, for the summary)
   url: string; // https
   syncedAt: string; // ISO timestamp

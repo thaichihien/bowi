@@ -39,7 +39,7 @@ const snippetLine = z
 
 const sync = z
   .object({
-    host: z.literal('github'),
+    host: z.enum(['github', 'gitlab']),
     id: text(256).min(1),
     // Shown as a link in the page, and a plan file may have been edited by hand.
     url: text(2048).regex(/^https:\/\//, 'must be an https address'),

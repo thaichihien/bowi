@@ -29,7 +29,7 @@ Bowi does that sorting for you, so your attention goes to the change itself. It 
 
 ## What Bowi does
 
-Give Bowi a branch or a GitHub pull request, and it:
+Give Bowi a branch, a GitHub pull request or a GitLab merge request, and it:
 
 1. **Sets the noise aside.** Generated files, lockfiles, formatting-only edits and code that was only moved are collapsed, never hidden, so they do not compete with real changes.
 2. **Groups related changes.** It follows how the code connects (calls, types, imports, tests, shared names, commits) and puts changes that belong to one idea into one group, even when they are spread across many files.
@@ -53,7 +53,7 @@ npm install -g @bowi/cli      # or: pnpm add -g @bowi/cli, bun add -g @bowi/cli
 bowi --version
 ```
 
-Installing runs nothing (Bowi has no install scripts), and Bowi itself connects only to GitHub, for pull request URLs, and to the AI provider when you turn AI on.
+Installing runs nothing (Bowi has no install scripts), and Bowi itself connects only to GitHub or GitLab, for pull and merge request URLs, and to the AI provider when you turn AI on.
 
 ## Usage
 
@@ -63,9 +63,10 @@ In any git repository, on the branch you want to review:
 bowi --local                                       # this branch against main (or origin/HEAD), uncommitted work included
 bowi --local --base develop                        # against another branch
 bowi https://github.com/<owner>/<repo>/pull/<n>    # a GitHub pull request; no clone of that repository needed
+bowi https://gitlab.com/<group>/<project>/-/merge_requests/<n>  # a GitLab merge request (subgroups and self-managed servers too)
 ```
 
-Both write `review-plan.json` and `review.html` to `.bowi/<repo>-<pr-or-branch>/` and open the page. Private GitHub repositories need `gh auth login` ([GitHub CLI](https://cli.github.com)) or a `GITHUB_TOKEN` environment variable; public repositories and `--local` need nothing. Fetched code is cached (`bowi cache clear` removes it).
+Both write `review-plan.json` and `review.html` to `.bowi/<repo>-<pr-or-branch>/` and open the page. Private GitHub repositories need `gh auth login` ([GitHub CLI](https://cli.github.com)) or a `GITHUB_TOKEN` environment variable. Private GitLab projects need `glab auth login` ([GitLab CLI](https://gitlab.com/gitlab-org/cli)) or a `GITLAB_TOKEN` that can read the API and the code (scopes `read_api` and `read_repository`; a fine-grained token also needs Code: Download); Bowi sends `GITLAB_TOKEN` only to gitlab.com, or to the server named in `GITLAB_HOST`, and for any other server uses glab's login there. Public repositories and `--local` need nothing. Fetched code is cached (`bowi cache clear` removes it).
 
 In the report, `j` / `k` move to the next and previous step and `r` marks the current step reviewed.
 
@@ -91,7 +92,7 @@ bowi comments .bowi/<repo>-<pr-or-branch> --markdown     # print them as Markdow
 `bowi serve` listens on `127.0.0.1` only, with a random token in the link it prints, and writes nothing but the comments of that report. When you run Bowi again into the same folder, comments move with their lines; a comment whose lines changed is kept as outdated, with the code it was written on. `--no-comments` leaves them out of `review.html` (for sharing the page); the plan keeps them.
 
 <details>
-<summary><strong>Sending comments to GitHub</strong></summary>
+<summary><strong>Sending comments to GitHub or GitLab</strong></summary>
 
 When the report is of a pull request, **Post to GitHub** in the served page sends your comments to it, under your own login. A dialog first shows where they go and as whom, and you can leave any comment out. Nothing is ever sent without this step, and Bowi contacts GitHub only when you press the button.
 
@@ -110,6 +111,8 @@ bowi comments push .bowi/<repo>-<pr> --outdated  # also send outdated comments, 
 Posting needs a GitHub login that can write to the pull request: `gh auth login` ([GitHub CLI](https://cli.github.com)), or a `GITHUB_TOKEN` with "Pull requests: write" (the `repo` scope for a classic token). The token stays on your computer, in the local server. In the dialog, **Use another token** lets you paste a different token (and give it a name), even when you are logged in with `gh`; Bowi keeps it in memory until `bowi serve` stops and never saves it.
 
 Bowi only sends. What you sent is read-only in the report, and you change it on GitHub; Bowi never changes or removes anything there, and it does not read comments back. So after you submit a pending review on GitHub, press **I submitted it** in the report to have its comments marked as posted.
+
+A merge request's report has **Post to GitLab** instead, and `bowi comments push` works the same way. A pending review is your draft comments on the merge request, which GitLab shows only to you until you submit the review there (**Open on GitLab** takes you to its changes); **Post now** publishes them together. Posting needs `glab auth login` or a `GITLAB_TOKEN` with the `api` scope, found as for reading; **Use another token** takes a GitLab token too.
 
 </details>
 
@@ -334,7 +337,7 @@ No. Everything above runs locally, with no AI and no sign-up. AI is an opt-in ex
 <details>
 <summary><strong>Does my code leave my machine?</strong></summary>
 
-Only when you ask for it: Bowi fetches a pull request from GitHub when you give it a URL, and sends changed code to the AI provider when you turn AI on. It never builds, installs or runs anything from the repository it reviews.
+Only when you ask for it: Bowi fetches a pull request from GitHub, or a merge request from GitLab, when you give it a URL, and sends changed code to the AI provider when you turn AI on. It never builds, installs or runs anything from the repository it reviews.
 
 </details>
 

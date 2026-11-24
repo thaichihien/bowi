@@ -6,6 +6,7 @@
  * is plain text with code spans.
  */
 
+import { requestWords } from '@bowi/core/review';
 import type { ReviewPlan } from '@bowi/core/types';
 import { Inline } from './Inline.tsx';
 import { formatTimestamp, initials, relativeTime, writtenBy } from './model.ts';
@@ -13,7 +14,7 @@ import { formatTimestamp, initials, relativeTime, writtenBy } from './model.ts';
 export function DescriptionTab({ plan, now }: { plan: ReviewPlan; now: number }) {
   return (
     <div class="wrap tab-page desc-page">
-      {plan.source.kind === 'github' && <PullRequestDescription plan={plan} now={now} />}
+      {plan.source.kind !== 'local' && <PullRequestDescription plan={plan} now={now} />}
       {plan.overview && (
         <section class="card desc" aria-label="Overview written by AI">
           <div class="desc-head">
@@ -33,8 +34,10 @@ export function DescriptionTab({ plan, now }: { plan: ReviewPlan; now: number })
 function PullRequestDescription({ plan, now }: { plan: ReviewPlan; now: number }) {
   const s = plan.source;
   const empty = !(s.description ?? '').trim();
+  const request = requestWords(s)?.request ?? 'pull request';
+  const Request = request.charAt(0).toUpperCase() + request.slice(1);
   return (
-    <article class="card desc" aria-label="Pull request description">
+    <article class="card desc" aria-label={`${Request} description`}>
       <div class="desc-head">
         {s.author && (
           <span class="avatar" aria-hidden="true">
@@ -44,10 +47,10 @@ function PullRequestDescription({ plan, now }: { plan: ReviewPlan; now: number }
         <span>
           {s.author ? (
             <>
-              <strong class="ink">{s.author}</strong> opened this pull request
+              <strong class="ink">{s.author}</strong> opened this {request}
             </>
           ) : (
-            'Pull request opened'
+            `${Request} opened`
           )}
           {s.createdAt && (
             <>

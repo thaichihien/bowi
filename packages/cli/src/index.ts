@@ -34,13 +34,18 @@ import { renderHtml } from '@bowi/render-html';
 import { defaultRules } from '@bowi/rules';
 import {
   checkGit,
+  fetchMergeRequest,
   fetchPullRequest,
   openGithubSnapshot,
+  openGitlabSnapshot,
   openLocalSnapshot,
+  parseMergeRequestUrl,
   parsePullRequestUrl,
   repoRoot,
+  resolveGitlabToken,
   resolveToken,
   type GithubOptions,
+  type GitlabOptions,
 } from '@bowi/sources';
 import { carryComments, HTML_FILE, PLAN_FILE, planJson, runComments } from './comments.ts';
 import { createProgress, type Progress } from './progress.ts';
@@ -69,6 +74,8 @@ export interface CliIo {
   ask?: (question: string) => Promise<string>;
   /** For tests: GitHub API access and where to clone from. */
   github?: GithubOptions & { remoteUrl?: string };
+  /** For tests: GitLab API access and where to clone from. */
+  gitlab?: GitlabOptions & { remoteUrl?: string };
   /**
    * For tests: the AI CLI to run (`claude` or `codex`), the API providers' `fetch`, or a whole
    * enricher instead of a provider.
@@ -103,9 +110,12 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
   const program = new Command('bowi')
     .description('Turn a pull request into a guided, grouped review.')
     .usage(
-      '<github-pr-url> | --local [options]\n       bowi serve <dir>\n       bowi comments <dir> [--markdown]\n       bowi comments push <dir> [--yes] [--now] [--outdated]\n       bowi cache clear',
+      '<pr-url> | --local [options]\n       bowi serve <dir>\n       bowi comments <dir> [--markdown]\n       bowi comments push <dir> [--yes] [--now] [--outdated]\n       bowi cache clear',
     )
-    .argument('[pr-url]', 'GitHub pull request URL, e.g. https://github.com/owner/repo/pull/123')
+    .argument(
+      '[pr-url]',
+      'GitHub pull request or GitLab merge request URL, e.g. https://github.com/owner/repo/pull/123',
+    )
     .option('--local', 'review the current repository: merge base of --base vs the working tree')
     .option(
       '--base <branch>',
@@ -402,15 +412,41 @@ async function openSnapshot(
   if (!target && !opts.local) {
     throw new UsageError(
       'Nothing to review.',
-      'Run `bowi <github-pr-url>` or `bowi --local`. See `bowi --help`.',
+      'Run `bowi <pr-url>` or `bowi --local`. See `bowi --help`.',
     );
   }
   if (target) {
+    const mr = parseMergeRequestUrl(target);
+    if (mr) {
+      const token = io.gitlab?.token ?? (await resolveGitlabToken(mr.host, io.env));
+      const gitlab: GitlabOptions = { ...io.gitlab, ...(token && { token }) };
+      const info = await progress.time(
+        'Resolved',
+        () => fetchMergeRequest(mr, gitlab),
+        (m) =>
+          `MR !${m.ref.iid} · head ${m.headSha.slice(0, 7)} · merge base ${m.mergeBaseSha.slice(0, 7)}`,
+        `Asking GitLab about ${mr.path}!${mr.iid}`,
+      );
+      return progress.time(
+        'Fetched',
+        () =>
+          openGitlabSnapshot(info, {
+            cacheDir: cacheDirOf(opts, io),
+            ...(token && { token }),
+            ...(io.gitlab?.remoteUrl && { remoteUrl: io.gitlab.remoteUrl }),
+          }),
+        (s) =>
+          s.fromCache
+            ? 'both commits already cached'
+            : `head and merge base from ${mr.host}/${mr.path}`,
+        'Fetching code',
+      );
+    }
     const ref = parsePullRequestUrl(target);
     if (!ref) {
       throw new UsageError(
-        `Not a GitHub pull request URL: ${target}`,
-        'Expected https://github.com/<owner>/<repo>/pull/<number>.',
+        `Not a pull request or merge request URL: ${target}`,
+        'Expected https://github.com/<owner>/<repo>/pull/<number> or https://gitlab.com/<group>/<project>/-/merge_requests/<number>.',
       );
     }
     const token = io.github?.token ?? (await resolveToken(io.env));
@@ -477,10 +513,10 @@ function formatSize(bytes: number): string {
 function outDirFor(plan: ReviewPlan, opts: CliOptions, cwd: string): string {
   if (opts.out) return resolve(cwd, opts.out);
   const s = plan.source;
-  // GitHub: "<name>-<pr>" (web-app-be-482); local: "<folder>-<branch>".
+  // GitHub and GitLab: "<name>-<pr>" (web-app-be-482); local: "<folder>-<branch>".
   const name =
     s.prNumber !== undefined
-      ? `${s.repo.slice(s.repo.indexOf('/') + 1)}-${s.prNumber}`
+      ? `${s.repo.slice(s.repo.lastIndexOf('/') + 1)}-${s.prNumber}`
       : `${s.repo}-${s.headRef}`;
   return resolve(cwd, '.bowi', name.replace(/[^A-Za-z0-9._-]+/g, '-'));
 }

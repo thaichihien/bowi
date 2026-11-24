@@ -18,6 +18,12 @@ describe('cache locations', () => {
     expect(repoCacheDir('/c', 'github.com', 'acme', '../evil')).toBe(
       join('/c', 'repos', 'github.com', 'acme', '.._evil.git'),
     );
+    expect(repoCacheDir('/c', 'gitlab.com', 'group', 'sub', 'name')).toBe(
+      join('/c', 'repos', 'gitlab.com', 'group', 'sub', 'name.git'),
+    );
+    expect(repoCacheDir('/c', 'gitlab.com', '..', '.', 'name')).toBe(
+      join('/c', 'repos', 'gitlab.com', '__', '_', 'name.git'),
+    );
   });
 
   it('uses the usual cache folder of each system', () => {

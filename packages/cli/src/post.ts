@@ -12,10 +12,13 @@ import {
   bodyOnFile,
   emptyReview,
   HostError,
+  requestWords,
+  rowsOf,
   sortComments,
   UsageError,
   type HostComment,
   type HostRef,
+  type HostRow,
   type PostRequest,
   type PostResult,
   type PostStatus,
@@ -25,13 +28,21 @@ import {
   type ReviewSync,
 } from '@bowi/core';
 import { supportsComments, withReview } from '@bowi/render-html';
-import { findGithubLogin, githubReviewHost, type GithubLogin } from '@bowi/sources';
+import {
+  findGithubLogin,
+  findGitlabLogin,
+  githubReviewHost,
+  gitlabReviewHost,
+  parseMergeRequestUrl,
+  type GithubLogin,
+  type GitlabLogin,
+} from '@bowi/sources';
 import { HTML_FILE, PLAN_FILE, planJson, readReport, writeFileAtomic } from './comments.ts';
 import type { CliIo } from './index.ts';
 
 export interface HostAccess {
   host: ReviewHost;
-  via: GithubLogin['via'];
+  via: GithubLogin['via'] | GitlabLogin['via'];
   tokenName?: string;
 }
 
@@ -52,12 +63,28 @@ export async function hostOf(
 ): Promise<HostAccess> {
   const { kind, repo, prNumber } = plan.source;
   const [owner, name] = repo.split('/');
-  if (kind !== 'github' || prNumber === undefined || !owner || !name) {
-    throw new UsageError(
+  const local = () =>
+    new UsageError(
       'This report is of a local branch, so it has no pull request to post to.',
       '`bowi comments <dir> --markdown` prints the comments for pasting.',
     );
+  if (kind === 'gitlab') {
+    // The host and path come from the address GitLab gave, as the report was made from it.
+    const ref = parseMergeRequestUrl(plan.source.url ?? '');
+    if (!ref || prNumber === undefined || ref.iid !== prNumber) throw local();
+    const given = io.gitlab?.token;
+    const login: GitlabLogin = pasted
+      ? { token: pasted.token, via: 'token' }
+      : given
+        ? { token: given, via: 'GITLAB_TOKEN' }
+        : await findGitlabLogin(ref.host, io.env);
+    const host = gitlabReviewHost(ref, login, {
+      ...(io.gitlab?.fetch && { fetch: io.gitlab.fetch }),
+      ...(io.gitlab?.apiBase && { apiBase: io.gitlab.apiBase }),
+    });
+    return { host, via: login.via, ...(pasted?.name && { tokenName: pasted.name }) };
   }
+  if (kind !== 'github' || prNumber === undefined || !owner || !name) throw local();
   const given = io.github?.token;
   const login: GithubLogin = pasted
     ? { token: pasted.token, via: 'token' }
@@ -86,24 +113,29 @@ export async function postStatus(access: HostAccess): Promise<PostStatus> {
 /** Why a pending review the reviewer already has stops this send, if it does. */
 export function pendingConflict(
   status: Pick<PostStatus, 'pending'>,
-  reportHead: string,
+  plan: Pick<ReviewPlan, 'source'>,
   mode: PostRequest['mode'],
 ): HostError | undefined {
   const pending = status.pending;
   if (!pending) return undefined;
+  const reportHead = plan.source.headSha;
+  const { host, request } = requestWords(plan.source) ?? {
+    host: 'GitHub',
+    request: 'pull request',
+  };
   // Lines are read against the review's commit: on another one they could land on the wrong code.
   if (pending.headSha !== reportHead) {
     return new HostError(
       'other',
-      `Your pending review on GitHub is on commit ${pending.headSha.slice(0, 7)}, this report on ${reportHead.slice(0, 7)}.`,
-      'Submit or discard that review on GitHub, then post again.',
+      `Your pending review on ${host} is on commit ${pending.headSha.slice(0, 7)}, this report on ${reportHead.slice(0, 7)}.`,
+      `Submit or discard that review on ${host}, then post again.`,
     );
   }
   if (mode === 'now') {
     return new HostError(
       'other',
-      'You have a pending review on this pull request, so new comments can only join it.',
-      'Submit it on GitHub first to post right away, or send these as pending.',
+      `You have a pending review on this ${request}, so new comments can only join it.`,
+      `Submit it on ${host} first to post right away, or send these as pending.`,
     );
   }
   return undefined;
@@ -118,18 +150,34 @@ async function writePage(dir: string, plan: ReviewPlan): Promise<void> {
   }
 }
 
-function toHost(c: ReviewComment, onLines: boolean): HostComment {
-  const { path, line, side, startLine, startSide } = c.anchor;
+function toHost(c: ReviewComment, onLines: boolean, plan: ReviewPlan): HostComment {
+  const { path, line, side, startLine, startSide, hunkId } = c.anchor;
+  const oldPath = plan.files.find((f) => f.path === path)?.oldPath;
+  const file = { path, ...(oldPath !== undefined && { oldPath }) };
   if (!onLines || line === undefined || side === undefined) {
-    return { path, body: bodyOnFile(c) };
+    return { ...file, body: bodyOnFile(c) };
   }
+  const hunk = plan.hunks.find((h) => h.id === hunkId);
+  const rows = hunk && rowsOf(hunk, c.anchor);
   return {
-    path,
+    ...file,
     body: c.body,
     line,
     side,
     ...(startLine !== undefined && { startLine, startSide: startSide ?? side }),
+    ...(hunk && rows && { rows: { start: rowAt(hunk, rows[0]), end: rowAt(hunk, rows[1]) } }),
   };
+}
+
+/** Row `index` of a hunk in both versions, counted from the hunk's header. */
+function rowAt(hunk: ReviewPlan['hunks'][number], index: number): HostRow {
+  let oldNo = hunk.oldStart;
+  let newNo = hunk.newStart;
+  for (const l of hunk.lines.slice(0, index)) {
+    if (l.kind !== 'add') oldNo++;
+    if (l.kind !== 'del') newNo++;
+  }
+  return { kind: hunk.lines[index]!.kind, oldNo, newNo };
 }
 
 /** Sends what was asked and records it; a host's refusal comes back in `error`, never thrown. */
@@ -158,7 +206,7 @@ export async function sendReview(
 
   const save = () => writeFileAtomic(join(dir, PLAN_FILE), planJson(plan));
   const record = (ref: HostRef): ReviewSync => ({
-    host: 'github',
+    host: plan.source.kind === 'gitlab' ? 'gitlab' : 'github',
     id: ref.id,
     url: ref.url,
     syncedAt: now().toISOString(),
@@ -168,7 +216,7 @@ export async function sendReview(
   try {
     const status = await access.host.status();
     result.login = status.login;
-    const conflict = pendingConflict(status, plan.source.headSha, request.mode);
+    const conflict = pendingConflict(status, plan, request.mode);
     if (conflict) throw conflict;
 
     let reviewId = status.pendingId;
@@ -194,10 +242,10 @@ export async function sendReview(
     for (const c of comments) {
       const where = { id: c.id, path: c.anchor.path, label: anchorLabel(c.anchor) };
       const onLines = c.status === 'active' && c.anchor.line !== undefined;
-      let answer = await access.host.addComment(reviewId, toHost(c, onLines));
+      let answer = await access.host.addComment(reviewId, toHost(c, onLines, plan));
       // Outside the host's diff, as with a rename found differently: on the file instead.
       if ('refused' in answer && onLines) {
-        answer = await access.host.addComment(reviewId, toHost(c, false));
+        answer = await access.host.addComment(reviewId, toHost(c, false, plan));
         if (!('refused' in answer)) result.onFile.push(where);
       }
       if ('refused' in answer) {

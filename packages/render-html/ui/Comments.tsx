@@ -374,7 +374,7 @@ export function Thread({ comment, variant }: { comment: ReviewComment; variant: 
         <span class="grow" />
         {editing === undefined && (
           <>
-            {comment.sync && <ReadOnlyNote />}
+            {comment.sync && <ReadOnlyNote sync={comment.sync} />}
             <button
               class="link-btn"
               title="Hide this comment. The badge on its line shows it again."
@@ -422,15 +422,22 @@ export function Thread({ comment, variant }: { comment: ReviewComment; variant: 
   );
 }
 
+/** "GitHub" or "GitLab": where a comment went. */
+const hostOf = (sync: ReviewSync) => (sync.host === 'gitlab' ? 'GitLab' : 'GitHub');
+
 /**
- * How a comment went to GitHub, and the way to it. The chip records what Bowi sent and never
- * changes: Bowi reads nothing back, so it stays "Sent as pending" after the review is submitted.
+ * How a comment went to GitHub or GitLab, and the way to it. The chip records what Bowi sent and
+ * never changes: Bowi reads nothing back, so it stays "Sent as pending" after the review is
+ * submitted.
  */
 export function SentChip({ sync }: { sync: ReviewSync }) {
   return (
     <>
       {sync.pending ? (
-        <span class="chip k-pending" title="A draft on GitHub until you submit the review there">
+        <span
+          class="chip k-pending"
+          title={`A draft on ${hostOf(sync)} until you submit the review there`}
+        >
           <svg
             width="12"
             height="12"
@@ -448,7 +455,10 @@ export function SentChip({ sync }: { sync: ReviewSync }) {
           Sent as pending
         </span>
       ) : (
-        <span class="chip k-posted" title="Public on the pull request">
+        <span
+          class="chip k-posted"
+          title={`Public on the ${sync.host === 'gitlab' ? 'merge' : 'pull'} request`}
+        >
           <svg
             width="12"
             height="12"
@@ -475,8 +485,8 @@ export function SentChip({ sync }: { sync: ReviewSync }) {
   );
 }
 
-export const ReadOnlyNote = () => (
-  <span class="muted small read-only">Read-only · change it on GitHub</span>
+export const ReadOnlyNote = ({ sync }: { sync: ReviewSync }) => (
+  <span class="muted small read-only">Read-only · change it on {hostOf(sync)}</span>
 );
 
 export const OutIcon = () => (

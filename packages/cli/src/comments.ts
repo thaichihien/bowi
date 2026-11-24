@@ -15,6 +15,8 @@ import {
   HostError,
   parseReview,
   pullRequestUrl,
+  requestWords,
+  submitUrl,
   reviewMarkdown,
   sortComments,
   SourceError,
@@ -110,7 +112,7 @@ function sameReview(old: Partial<ReviewPlan>, plan: ReviewPlan): boolean {
     !!a &&
     a.kind === b.kind &&
     a.repo === b.repo &&
-    (b.kind === 'github' ? a.prNumber === b.prNumber : a.headRef === b.headRef)
+    (b.kind === 'local' ? a.headRef === b.headRef : a.prNumber === b.prNumber)
   );
 }
 
@@ -222,7 +224,7 @@ function shortPlace(c: ReviewComment): string {
 /** `bowi comments push <dir> [--yes] [--now] [--outdated]` (CLI-16). */
 async function runPush(argv: string[], io: CliIo): Promise<number> {
   const program = new Command('bowi comments push')
-    .description('Send the comments of a report to its pull request. Asks first.')
+    .description('Send the comments of a report to its pull or merge request. Asks first.')
     .argument('<dir>', 'the report folder (holds review-plan.json)')
     .option('--yes', 'do not ask; stops if the pull request has new commits since the report')
     .option('--now', 'post at once, public, instead of as a pending review')
@@ -244,7 +246,8 @@ async function runPush(argv: string[], io: CliIo): Promise<number> {
   const plan = await readReport(dir);
   const review = plan.review ?? { body: '', comments: [] };
   const url = pullRequestUrl(plan.source);
-  const submitLine = `→ Submit    ${url}/files\n`;
+  const words = requestWords(plan.source);
+  const submitLine = `→ Submit    ${submitUrl(plan.source)}\n`;
   const anyPending = !!review.bodySync?.pending || review.comments.some((c) => c.sync?.pending);
   const unsent = sortComments(review.comments).filter((c) => !c.sync);
   const left = unsent.filter((c) => c.status === 'outdated' && !opts.outdated);
@@ -267,20 +270,21 @@ async function runPush(argv: string[], io: CliIo): Promise<number> {
   const mode = opts.now ? 'now' : 'pending';
   const status = await postStatus(access);
   const head = plan.source.headSha;
-  const conflict = pendingConflict(status, head, mode);
+  const conflict = pendingConflict(status, plan, mode);
   if (conflict) throw conflict;
-  const via = status.via === 'gh' ? 'gh login' : status.via;
-  out(`Posting to ${plan.source.repo}#${plan.source.prNumber} as @${status.login} (${via})\n`);
+  const via = status.via === 'gh' || status.via === 'glab' ? `${status.via} login` : status.via;
+  const { host, request } = words!;
+  out(`Posting to ${plan.source.repo}${words!.ref} as @${status.login} (${via})\n`);
   const moved = status.headSha !== head;
   if (moved && opts.yes) {
     throw new SourceError(
-      `The pull request has new commits since this report (${head.slice(0, 7)}, GitHub is on ${status.headSha.slice(0, 7)}).`,
+      `The ${request} has new commits since this report (${head.slice(0, 7)}, ${host} is on ${status.headSha.slice(0, 7)}).`,
       `Run \`bowi ${url} --out ${dir}\` first, or run without --yes to decide.`,
     );
   }
   if (moved) {
     out(
-      `! This pull request has new commits. This report is on ${head.slice(0, 7)}, GitHub is on ${status.headSha.slice(0, 7)}. Run Bowi again to check first.\n`,
+      `! This ${request} has new commits. This report is on ${head.slice(0, 7)}, ${host} is on ${status.headSha.slice(0, 7)}. Run Bowi again to check first.\n`,
     );
   }
   const leftOutSummary = summary && status.pending?.hasBody;
@@ -328,10 +332,10 @@ async function runPush(argv: string[], io: CliIo): Promise<number> {
     access,
     io.now,
   );
-  return pushOutcome(result, url!, io);
+  return pushOutcome(result, plan, io);
 }
 
-function pushOutcome(result: PostResult, url: string, io: CliIo): number {
+function pushOutcome(result: PostResult, plan: ReviewPlan, io: CliIo): number {
   const out = (s: string) => void io.stdout.write(s);
   const what = sentWhat(result.sent, result.summarySent);
   const any = result.sent > 0 || result.summarySent;
@@ -339,15 +343,16 @@ function pushOutcome(result: PostResult, url: string, io: CliIo): number {
   const pending = result.mode === 'pending' || !!result.error;
   if (any && pending) {
     out(`✓ Sent      ${what} as a pending review, not public yet\n`);
-    out(`→ Submit    ${url}/files\n`);
+    out(`→ Submit    ${submitUrl(plan.source)}\n`);
     out('  Only you can see them until you submit.\n');
   } else if (any) {
     out(`✓ Posted    ${what}, public now\n`);
-    out(`→ Open      ${url}\n`);
+    out(`→ Open      ${pullRequestUrl(plan.source)}\n`);
   }
+  const host = requestWords(plan.source)?.host ?? 'GitHub';
   for (const f of result.onFile) {
     out(
-      `! On file   ${f.path}: GitHub did not accept ${f.label.toLowerCase()}, so it starts with it\n`,
+      `! On file   ${f.path}: ${host} did not accept ${f.label.toLowerCase()}, so it starts with it\n`,
     );
   }
   if (result.summaryLeftOut)

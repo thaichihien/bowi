@@ -21,10 +21,16 @@ export function defaultCacheDir(
   return join(homedir(), '.cache', 'bowi');
 }
 
-/** Folder for one remote repository, e.g. <cache>/repos/github.com/owner/name.git. */
-export function repoCacheDir(cacheDir: string, host: string, owner: string, repo: string): string {
-  const safe = (s: string) => s.replace(/[^A-Za-z0-9._-]/g, '_');
-  return join(cacheDir, 'repos', safe(host), safe(owner), `${safe(repo)}.git`);
+/**
+ * Folder for one remote repository: <cache>/repos/github.com/owner/name.git, or a GitLab project's
+ * path, which can be deeper (<cache>/repos/gitlab.com/group/subgroup/name.git).
+ */
+export function repoCacheDir(cacheDir: string, host: string, ...path: string[]): string {
+  // A folder named `.` or `..` would leave the cache.
+  const safe = (s: string) =>
+    s.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+$/, (m) => '_'.repeat(m.length));
+  const folders = path.slice(0, -1).map(safe);
+  return join(cacheDir, 'repos', safe(host), ...folders, `${safe(path.at(-1) ?? '')}.git`);
 }
 
 export async function clearCache(cacheDir: string): Promise<void> {

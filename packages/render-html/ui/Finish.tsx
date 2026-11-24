@@ -4,6 +4,7 @@
  * clicked, never on its own. With reduced motion, no fireworks or animation (styles.css).
  */
 
+import { requestWords } from '@bowi/core/review';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ArrowIcon, CloseIcon, StepIconBadge } from './Icons.tsx';
 import { Inline } from './Inline.tsx';
@@ -46,8 +47,8 @@ export function FinishDialog(props: {
     props.close();
     props.go(f.groupIndex, f.step.id);
   };
-  const what =
-    plan.source.kind === 'github' ? `pull request #${plan.source.prNumber}` : plan.source.headRef;
+  const words = requestWords(plan.source);
+  const what = words ? `${words.request} ${words.ref}` : plan.source.headRef;
 
   return (
     <>

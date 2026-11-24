@@ -84,12 +84,14 @@ describe('renderHtml', () => {
     const outsidePlan = html.replace(/<script id="bowi-plan"[^>]*>[\s\S]*?<\/script>/, '');
     const urls = [...outsidePlan.matchAll(/https?:\/\/[^\s"'`<>)]+/g)].map((m) => m[0]);
     // Only XML namespace identifiers inside the bundled UI code, which are never fetched, and
-    // links the reviewer clicks (M11): the report's pull request and GitHub's token pages.
+    // links the reviewer clicks (M11, M13): the report's pull request and GitHub's token pages,
+    // and gitlab.com for GitLab's token page when a merge request's own server is unknown.
     const allowed = (u: string) =>
       u.startsWith('http://www.w3.org/') ||
       u.startsWith('https://github.com/${') ||
       u === 'https://github.com/settings/personal-access-tokens/new' ||
-      u === 'https://github.com/settings/tokens/new?scopes=repo&description=Bowi';
+      u === 'https://github.com/settings/tokens/new?scopes=repo&description=Bowi' ||
+      u === 'https://gitlab.com';
     expect(urls.filter((u) => !allowed(u))).toEqual([]);
     // The theme before the first paint (M18), the plan and the page.
     expect(html.match(/<\/script>/g)).toHaveLength(3);

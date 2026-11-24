@@ -135,7 +135,17 @@ export async function buildPackage(): Promise<string> {
     version: cli.version,
     description:
       'Turns a pull request into a guided review: related changes grouped, foundations first, noise collapsed, every group explained.',
-    keywords: ['code-review', 'pull-request', 'review', 'diff', 'git', 'github', 'cli'],
+    keywords: [
+      'code-review',
+      'pull-request',
+      'merge-request',
+      'review',
+      'diff',
+      'git',
+      'github',
+      'gitlab',
+      'cli',
+    ],
     license: 'MIT',
     author: 'thaichihien',
     homepage: 'https://github.com/thaichihien/bowi#readme',

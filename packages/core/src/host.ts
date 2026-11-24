@@ -1,7 +1,7 @@
 /**
- * Where a report's comments can be sent (M11, §15 #70): the steps of sending a review, so another
- * host (GitLab, M13) needs no change in the CLI or the page. Bowi only sends: nothing here reads
- * comments back.
+ * Where a report's comments can be sent (M11, §15 #70): the steps of sending a review, the same for
+ * GitHub and GitLab (M13), so the CLI and the page do not tell them apart. Bowi only sends: nothing
+ * here reads comments back.
  */
 
 import { SourceError } from './errors.ts';
@@ -15,11 +15,25 @@ export interface HostRef {
 /** A comment on a file, or on lines of it when `line` is set. */
 export interface HostComment {
   path: string;
+  /** The file's path in the base, when it was renamed. */
+  oldPath?: string;
   body: string;
   line?: number;
   side?: 'old' | 'new';
   startLine?: number;
   startSide?: 'old' | 'new';
+  /** The first and last line in both versions, for a host that places lines by both (GitLab). */
+  rows?: { start: HostRow; end: HostRow };
+}
+
+/**
+ * A diff row's place in both versions, counted the way a unified diff's header counts: a line
+ * missing from one version gets the number that version's next line has there.
+ */
+export interface HostRow {
+  kind: 'context' | 'add' | 'del';
+  oldNo: number;
+  newNo: number;
 }
 
 export interface ReviewHost {

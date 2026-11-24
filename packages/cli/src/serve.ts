@@ -6,8 +6,9 @@
  * (`?t=`) for the page, in the `X-Bowi-Token` header for the API, so no other page in the browser
  * can read or write. The `Host` header must name this server and an `Origin`, when sent, the
  * page's own, which shuts out DNS rebinding. The only thing it writes is the review of this one
- * folder. It contacts GitHub only when the reviewer presses "Post to GitHub", with the login found
- * at that moment; the page never sees the token and talks only to this server (NFR-3, M11).
+ * folder. It contacts GitHub or GitLab only when the reviewer presses "Post to GitHub" (or GitLab),
+ * with the login found at that moment; the page never sees the token and talks only to this server
+ * (NFR-3, M11, M13). The API keeps the names `/api/github…` for both hosts.
  */
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -21,6 +22,7 @@ import {
   HostError,
   keepSent,
   parseReview,
+  requestWords,
   setPosted,
   UsageError,
   type PostedMark,
@@ -235,7 +237,7 @@ export async function serveReport(
     if (!/^[\x21-\x7e]{1,255}$/.test(token)) {
       return sendJson(res, 400, {
         kind: 'login',
-        error: 'That does not look like a GitHub token.',
+        error: `That does not look like a ${requestWords((await readReport(dir)).source)?.host ?? 'GitHub'} token.`,
         hint: 'Paste the whole token, without spaces.',
       });
     }
@@ -251,7 +253,7 @@ export async function serveReport(
     }
   }
 
-  /** "Post to GitHub": `GET` what the dialog shows, `POST` to send. Only ever on these requests. */
+  /** "Post to GitHub" (or GitLab): `GET` what the dialog shows, `POST` to send. Only ever on these requests. */
   async function github(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const failed = (e: unknown) => {
       if (!(e instanceof HostError) && !(e instanceof UsageError)) throw e;
