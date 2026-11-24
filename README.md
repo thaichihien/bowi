@@ -135,10 +135,15 @@ What is sent: for each group, its changed lines with a few lines around them, th
 
 The AI is reached through a provider, chosen with `ai.provider` in the config:
 
-| Provider      | Status    | What it uses                                                                                     |
-| ------------- | --------- | ------------------------------------------------------------------------------------------------ |
-| `claude-code` | Available | Your local [Claude Code](https://claude.com/claude-code) and its login (no API key for Bowi)     |
-| Others        | Planned   | More providers, such as AI provider APIs with your own key and local models, will be added later |
+| Provider            | What it uses                                                                                                                         | Default model        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
+| `claude-code`       | Your local [Claude Code](https://claude.com/claude-code) and its login (no API key for Bowi)                                         | Claude Code's own    |
+| `codex`             | Your local [Codex CLI](https://github.com/openai/codex) and its login, which can be a ChatGPT plan (no API key)                      | Codex's own          |
+| `anthropic`         | The Anthropic API with your `ANTHROPIC_API_KEY`                                                                                      | `claude-opus-5-5`    |
+| `openai`            | The OpenAI API with your `OPENAI_API_KEY`                                                                                            | `gpt-5.6-sol`        |
+| `openai-compatible` | Any server that speaks OpenAI's Chat Completions API (Ollama, LM Studio, vLLM, a gateway), with an optional key in `BOWI_AI_API_KEY` | none: set `ai.model` |
+
+Keys are read only from environment variables, never from a config file. With `claude-code` and `codex`, the provider's own program sends the code; with the three API providers, Bowi connects to the endpoint itself, and the line it prints before the analysis names it: "AI is on: group diffs … go to claude-opus-5-5 at api.anthropic.com, with your ANTHROPIC_API_KEY". With the API providers, the progress line also shows the tokens used.
 
 <details>
 <summary><strong>Set up Claude Code</strong></summary>
@@ -164,6 +169,47 @@ To pick the model and effort, or to turn AI on without `--ai`, put an `ai` secti
 - For `--local`, the file can be the repository's `.bowi.json`. For a pull request, the repository's own `.bowi.json` cannot turn AI on (otherwise whoever opened the pull request could make Bowi send code using your account), so keep your settings in a file of your own and pass it: `bowi <pr-url> --config ~/bowi.json`. All AI keys are listed under [Configuration](#configuration).
 
 Bowi runs Claude Code locked down: in an empty temporary folder, with no tools and no MCP servers, and without your CLAUDE.md, hooks or plugins. Your own Claude Code setup does not see Bowi's requests and cannot change the answers. Calls use your Claude Code login and count toward its usage limits.
+
+</details>
+
+<details>
+<summary><strong>Set up Codex (ChatGPT plans)</strong></summary>
+
+1. Install Codex: `npm install -g @openai/codex` (see the [Codex docs](https://developers.openai.com/codex)). On Windows Bowi needs a native `codex.exe` on PATH; it cannot run the npm package's `codex.cmd`.
+2. Run `codex login` once (a ChatGPT plan or an OpenAI API key).
+3. Use your own config file with `"ai": { "enabled": true, "provider": "codex" }` (`model` and `effort` are optional), and run `bowi --local --config ~/bowi.json`.
+
+Bowi runs Codex locked down: in an empty temporary folder with a read-only sandbox, the shell tool, web search and image viewing turned off, without your `config.toml` (and so without your MCP servers), and with no session saved. Calls use your Codex login and count toward its usage limits.
+
+</details>
+
+<details>
+<summary><strong>Set up an API key (Anthropic, OpenAI)</strong></summary>
+
+1. Create a key in the [Claude Console](https://platform.claude.com/settings/keys) or on the [OpenAI platform](https://platform.openai.com/api-keys), and set it in the environment you run Bowi from: `export ANTHROPIC_API_KEY=…` or `export OPENAI_API_KEY=…`.
+2. Use your own config file with `"ai": { "enabled": true, "provider": "anthropic" }` (or `"openai"`); `model` and `effort` are optional.
+
+Calls are billed to your API account. Bowi asks for the answer's format with the API's structured output and uses no tools. With `anthropic`, a request the model declines on the models that support it is answered by the fallback model Anthropic recommends.
+
+</details>
+
+<details>
+<summary><strong>Set up a local model or another server (OpenAI-compatible)</strong></summary>
+
+Name the server and the model in your own config file, passed with `--config`:
+
+```json
+{
+  "ai": {
+    "enabled": true,
+    "provider": "openai-compatible",
+    "baseUrl": "http://localhost:11434/v1",
+    "model": "qwen3-coder"
+  }
+}
+```
+
+`baseUrl` is the server's address up to `/v1` (Ollama: `http://localhost:11434/v1`, LM Studio: `http://localhost:1234/v1`). It is read only from a file you pass with `--config`: a repository's own `.bowi.json` cannot pick where code is sent. If the server needs a key, set `BOWI_AI_API_KEY`; Bowi never sends your `OPENAI_API_KEY` to another server. The model must support JSON-schema output (`response_format`). With a local model, the code never leaves your machine.
 
 </details>
 
@@ -200,8 +246,9 @@ Bowi reads `.bowi.json` from the repository root (for a pull request: the file a
 | `outsideRefs.maxPerSymbol` | Unchanged callers listed per changed symbol (0–50); `0` turns the search off                                                                            |
 | `order`                    | Reading order the report opens with: `dependency` or `tests-first`. `--order` wins                                                                      |
 | `ai.enabled`               | AI enrichment (see above). `--ai` / `--no-ai` win. Ignored in a pull request's own `.bowi.json`: only you can turn it on                                |
-| `ai.provider`              | `claude-code`, the only available provider so far                                                                                                       |
-| `ai.model`                 | Model for the provider, e.g. `sonnet` for Claude Code (empty: the provider's default)                                                                   |
+| `ai.provider`              | `claude-code` (default), `codex`, `anthropic`, `openai` or `openai-compatible` (see above). Ignored in a pull request's own `.bowi.json`                |
+| `ai.model`                 | Model for the provider, e.g. `sonnet` for Claude Code (empty: the provider's default; required for `openai-compatible`)                                 |
+| `ai.baseUrl`               | `openai-compatible` only: the server's address up to `/v1`. Read only from your own file (`--config`), never from a repository's `.bowi.json`           |
 | `ai.effort`                | `low`, `medium`, `high`, `xhigh` or `max` (empty: the provider's default)                                                                               |
 | `ai.concurrency`           | Calls to the AI at once (1–10, default 3)                                                                                                               |
 | `ai.timeoutSeconds`        | Time per call before that group keeps Bowi's own title (default 120)                                                                                    |
@@ -224,7 +271,7 @@ Options on the command line win over `.bowi.json`. `bowi <command> --help` print
 | `--no-comments`     | Leave the comments out of `review.html`, e.g. for sharing the page; the plan keeps them |
 | `--config <path>`   | Config file (default `.bowi.json` in the repository, if present)                        |
 | `--order <order>`   | Reading order the report opens with: `dependency` (default) or `tests-first`            |
-| `--ai`              | AI titles, intents and an overview through Claude Code (sends group diffs to Claude)    |
+| `--ai`              | AI titles, intents and an overview (sends group diffs to the provider of `ai.provider`) |
 | `--no-ai`           | No AI enrichment, even when the config file turns it on                                 |
 | `--cache-dir <dir>` | Cache folder (default: the system cache folder, e.g. `~/Library/Caches/bowi` on macOS)  |
 | `-q`, `--quiet`     | Print nothing but errors                                                                |

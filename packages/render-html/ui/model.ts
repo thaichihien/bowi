@@ -34,7 +34,13 @@ export const KIND_LABELS: Record<Group['kind'], string> = {
 /** File cards with more changed lines than this start closed (Review and Changes tabs). */
 export const LARGE_FILE_LINES = 300;
 
-const AI_PROVIDERS: Record<string, string> = { 'claude-code': 'Claude Code' };
+const AI_PROVIDERS: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  codex: 'Codex',
+  anthropic: 'Anthropic API',
+  openai: 'OpenAI API',
+  'openai-compatible': 'OpenAI-compatible API',
+};
 
 /** Credit for AI-written text: "Written by claude-sonnet-5-5 · low effort · via Claude Code". */
 export function writtenBy(ai: ReviewPlan['meta']['ai']): string {

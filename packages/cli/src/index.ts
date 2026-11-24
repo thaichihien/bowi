@@ -12,7 +12,7 @@ import { platform } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command, CommanderError, Option } from 'commander';
-import { checkClaudeCode, claudeCode, createEnricher } from '@bowi/ai';
+import { createEnricher, openProvider } from '@bowi/ai';
 import { clearCache, defaultCacheDir } from '@bowi/cache';
 import {
   AiError,
@@ -69,8 +69,11 @@ export interface CliIo {
   ask?: (question: string) => Promise<string>;
   /** For tests: GitHub API access and where to clone from. */
   github?: GithubOptions & { remoteUrl?: string };
-  /** For tests: the Claude Code executable, or a whole enricher instead of Claude Code. */
-  ai?: { command?: string | string[]; enricher?: AiEnricher };
+  /**
+   * For tests: the AI CLI to run (`claude` or `codex`), the API providers' `fetch`, or a whole
+   * enricher instead of a provider.
+   */
+  ai?: { command?: string | string[]; fetch?: typeof fetch; enricher?: AiEnricher };
   /** For tests: called once `bowi serve` listens, instead of waiting for Ctrl+C. */
   onServe?: (server: ServeHandle) => void;
 }
@@ -123,7 +126,7 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
     )
     .option(
       '--ai',
-      'AI titles, intents and an overview through Claude Code (sends group diffs to Claude)',
+      'AI titles, intents and an overview (sends group diffs to the AI provider of the config file, Claude Code by default)',
     )
     .option('--no-ai', 'no AI enrichment, even when the config file turns it on')
     .option('--cache-dir <dir>', `cache folder (default: ${defaultCacheDir(io.env)})`)
@@ -305,7 +308,8 @@ async function runCache(argv: string[], io: CliIo): Promise<number> {
 
 /**
  * The AI enricher when AI is on (`--ai`, or `ai.enabled` in the config, unless `--no-ai`).
- * Checks first that Claude Code is installed, so a run does not fail after the analysis.
+ * Checks first that the provider can work (CLI installed, key set), so a run does not fail
+ * after the analysis.
  */
 async function aiEnricher(
   config: BowiConfig,
@@ -314,28 +318,17 @@ async function aiEnricher(
 ): Promise<AiEnricher | undefined> {
   if (!(opts.ai ?? config.ai.enabled)) return undefined;
   if (io.ai?.enricher) return io.ai.enricher;
-  if (config.ai.provider !== 'claude-code') {
-    throw new UsageError(
-      `The AI provider "${config.ai.provider}" is not available yet.`,
-      'Set "ai": { "provider": "claude-code" } in the config file, or run without --ai.',
-    );
-  }
-  const options = {
-    model: config.ai.model,
-    effort: config.ai.effort,
-    ...(io.ai?.command && { command: io.ai.command }),
-    ...(io.env && { env: io.env }),
-  };
   try {
-    await checkClaudeCode(options);
+    const transport = await openProvider(config.ai, {
+      ...(io.env && { env: io.env }),
+      ...(io.ai?.command && { command: io.ai.command }),
+      ...(io.ai?.fetch && { fetch: io.ai.fetch }),
+    });
+    return createEnricher({ transport, cacheDir: join(cacheDirOf(opts, io), 'ai') });
   } catch (e) {
     if (e instanceof AiError) throw new UsageError(e.message, e.hint);
     throw e;
   }
-  return createEnricher({
-    transport: claudeCode(options),
-    cacheDir: join(cacheDirOf(opts, io), 'ai'),
-  });
 }
 
 function cacheDirOf(opts: CliOptions, io: CliIo): string {
@@ -350,14 +343,25 @@ async function localConfig(opts: CliOptions, io: CliIo): Promise<LoadedConfig> {
   if (opts.config) return configFile(resolve(io.cwd, opts.config), opts.config);
   const root = await repoRoot(io.cwd);
   const text = await readFile(join(root, '.bowi.json'), 'utf8').catch(() => null);
-  return text === null ? { config: DEFAULT_CONFIG, warnings: [] } : parseConfig(text, '.bowi.json');
+  if (text === null) return { config: DEFAULT_CONFIG, warnings: [] };
+  const loaded = parseConfig(text, '.bowi.json');
+  // The repository must not pick where code is sent (§15 #87).
+  if (loaded.config.ai.baseUrl === DEFAULT_CONFIG.ai.baseUrl) return loaded;
+  return {
+    config: { ...loaded.config, ai: { ...loaded.config.ai, baseUrl: DEFAULT_CONFIG.ai.baseUrl } },
+    warnings: [
+      ...loaded.warnings,
+      '.bowi.json: "ai.baseUrl" of the repository is ignored (set it in your own file, passed with --config)',
+    ],
+  };
 }
 
 /**
  * Config for a pull request: `--config <path>`, else `.bowi.json` as it is on the base side
  * (merge base). Never the PR's own version: a pull request must not be able to change how it is
  * presented, e.g. mark its own code as generated noise. Its `ai` settings are ignored too: the
- * repository must not turn AI on, or pick the model, on the reviewer's own Claude account.
+ * repository must not turn AI on, or pick the provider, model or endpoint, on the reviewer's own
+ * account.
  */
 async function prConfig(opts: CliOptions, io: CliIo, snapshot: Snapshot): Promise<LoadedConfig> {
   if (opts.config) return configFile(resolve(io.cwd, opts.config), opts.config);

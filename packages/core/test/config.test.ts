@@ -58,12 +58,27 @@ describe('parseConfig (§10, CLI-9)', () => {
       provider: 'claude-code',
       model: 'sonnet',
       effort: 'low',
+      baseUrl: '',
       concurrency: 5,
       timeoutSeconds: 60,
     });
     expect(() => parseConfig('{"ai":{"effort":"extreme"}}', '.bowi.json')).toThrow(
       /\.bowi\.json has invalid settings: ai\.effort: /,
     );
+  });
+
+  it('knows the AI providers (M12) and the base URL of a compatible server', () => {
+    for (const provider of ['claude-code', 'codex', 'anthropic', 'openai', 'openai-compatible']) {
+      expect(parseConfig(JSON.stringify({ ai: { provider } }), 'a.json').config.ai.provider).toBe(
+        provider,
+      );
+    }
+    const { config } = parseConfig(
+      '{"ai":{"provider":"openai-compatible","baseUrl":"http://localhost:11434/v1"}}',
+      'a.json',
+    );
+    expect(config.ai.baseUrl).toBe('http://localhost:11434/v1');
+    expect(() => parseConfig('{"ai":{"provider":"ollama"}}', 'a.json')).toThrow(/ai\.provider/);
   });
 
   it('rejects wrong values and invalid JSON with a usage error naming the key', () => {

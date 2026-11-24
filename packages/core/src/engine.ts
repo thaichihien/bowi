@@ -198,6 +198,7 @@ export async function analyze(
               o.overview ? 'overview' : '',
               o.suggested ? `${o.suggested} move${o.suggested === 1 ? '' : 's'} suggested` : '',
               o.cached ? `${o.cached} from cache` : '',
+              o.tokens ? `${o.tokens.input} tokens in, ${o.tokens.output} out` : '',
             ]
               .filter(Boolean)
               .join(' · '),

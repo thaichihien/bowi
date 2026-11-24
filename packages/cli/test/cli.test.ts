@@ -29,7 +29,7 @@ async function bowiWith(extra: Partial<CliIo> & { tty?: boolean }, cwd: string, 
   let stderr = '';
   const code = await run(argv, {
     cwd,
-    env: {},
+    env: extra.env ?? {},
     stdout: { write: (s: string) => (stdout += s), isTTY: !!extra.tty },
     stderr: { write: (s: string) => (stderr += s) },
     now: () => new Date('2026-01-01T00:00:00Z'),
@@ -361,7 +361,7 @@ describe('AI enrichment (CLI-8, AI-1)', () => {
     expect(readPlan(off).meta.ai).toEqual({ enabled: false });
   });
 
-  it('exits 1 with a next step when Claude Code is missing or the provider is not available', async () => {
+  it('exits 1 with a next step when Claude Code is missing or a key is not set', async () => {
     const missing = await bowiWith(
       { ai: { command: join(tempDir(), 'claude') } },
       repo,
@@ -377,7 +377,81 @@ describe('AI enrichment (CLI-8, AI-1)', () => {
     writeFileSync(config, JSON.stringify({ ai: { provider: 'openai' } }));
     const other = await bowi(repo, '--local', '--json-only', '--ai', '--config', config);
     expect(other.code).toBe(1);
-    expect(other.stderr).toContain('The AI provider "openai" is not available yet.');
+    expect(other.stderr).toContain('error: OPENAI_API_KEY is not set.');
+    expect(other.stderr).toContain('export OPENAI_API_KEY=');
+  });
+
+  it('titles the groups through an API provider, naming the endpoint and counting tokens (M12)', async () => {
+    const config = join(tempDir(), 'ai.json');
+    writeFileSync(config, JSON.stringify({ ai: { enabled: true, provider: 'anthropic' } }));
+    const sent: {
+      headers: Record<string, string>;
+      body: { output_config: { format: { schema: { properties: object } } } };
+    }[] = [];
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string) as (typeof sent)[number]['body'];
+      sent.push({ headers: init.headers as Record<string, string>, body });
+      const output =
+        'overview' in body.output_config.format.schema.properties
+          ? { overview: 'The pull request as a whole, in a sentence.' }
+          : {
+              title: 'Verify email addresses',
+              intent: 'Adds a token check after sign-up.',
+              moves: [],
+            };
+      return Response.json({
+        model: 'claude-test-api',
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: JSON.stringify(output) }],
+        usage: { input_tokens: 1000, output_tokens: 50 },
+      });
+    }) as unknown as typeof fetch;
+    const out = join(tempDir(), 'out');
+    const r = await bowiWith(
+      { ai: { fetch: fakeFetch }, env: { ANTHROPIC_API_KEY: 'sk-test' } },
+      repo,
+      '--local',
+      '--json-only',
+      '--config',
+      config,
+      '--cache-dir',
+      join(tempDir(), 'cache'),
+      '--out',
+      out,
+    );
+    expect(r.code).toBe(0);
+    expect(r.stderr).toContain(
+      'go to claude-opus-5-5 at api.anthropic.com, with your ANTHROPIC_API_KEY.',
+    );
+    expect(r.stderr).toMatch(/✓ AI {8}1 of 1 groups titled · overview · 2000 tokens in, 100 out/);
+    expect(sent).toHaveLength(2);
+    expect(sent[0]!.headers['x-api-key']).toBe('sk-test');
+    const plan = readPlan(out);
+    expect(plan.groups[0]!.title).toBe('Verify email addresses');
+    expect(plan.meta.ai).toEqual({
+      enabled: true,
+      provider: 'anthropic',
+      model: 'claude-test-api',
+    });
+  });
+
+  it("ignores a repository's ai.baseUrl: only the reviewer's own file picks the endpoint", async () => {
+    const own = buildFixtureRepo(emailVerification, join(tempDir(), 'repo')).dir;
+    writeFileSync(
+      join(own, '.bowi.json'),
+      JSON.stringify({
+        ai: {
+          enabled: true,
+          provider: 'openai-compatible',
+          model: 'm',
+          baseUrl: 'https://elsewhere.example/v1',
+        },
+      }),
+    );
+    const r = await bowi(own, '--local', '--json-only', '--out', join(tempDir(), 'out'));
+    expect(r.stderr).toContain('! .bowi.json: "ai.baseUrl" of the repository is ignored');
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain('error: The provider "openai-compatible" needs "ai.baseUrl".');
   });
 });
 

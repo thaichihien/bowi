@@ -60,6 +60,8 @@ export interface AiStageOutput {
   /** Hunks the AI suggests moving to another group. */
   suggested: number;
   cached: number;
+  /** Tokens used by the calls made, when the provider said. */
+  tokens?: { input: number; output: number };
 }
 
 /** Context lines kept on each side of a change. */
@@ -101,6 +103,11 @@ export const aiStage: Stage<AiStageInput, AiStageOutput> = async (input, ctx) =>
       const answer = await withTimeout(call, timeoutMs, stop.signal);
       if (answer.model) out.model ??= answer.model;
       if (answer.cached) out.cached++;
+      else if (answer.usage) {
+        out.tokens ??= { input: 0, output: 0 };
+        out.tokens.input += answer.usage.inputTokens;
+        out.tokens.output += answer.usage.outputTokens;
+      }
       return answer;
     } catch (e) {
       if (e instanceof AiError && e.fatal && !fatal) {

@@ -107,6 +107,8 @@ export interface AiAnswer {
   model?: string;
   /** True when the answer came from Bowi's cache (AI-6). */
   cached?: boolean;
+  /** Tokens the call used, when the provider says (not kept in the cache). */
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 export interface AiEnricher {

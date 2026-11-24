@@ -10,9 +10,16 @@ import type { Layer } from './types.ts';
 
 export type ReadingOrder = 'dependency' | 'tests-first';
 
-export type AiProviderId = 'claude-code' | 'anthropic' | 'openai' | 'ollama';
+export const AI_PROVIDERS = [
+  'claude-code',
+  'codex',
+  'anthropic',
+  'openai',
+  'openai-compatible',
+] as const;
+export type AiProviderId = (typeof AI_PROVIDERS)[number];
 
-/** Claude Code's `--effort` levels; '' leaves it to Claude Code. */
+/** Effort levels (Claude Code's `--effort`, Codex's and the APIs' reasoning effort); '' leaves it to the provider. */
 export type AiEffort = '' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface BowiConfig {
@@ -35,6 +42,11 @@ export interface BowiConfig {
     /** Model alias or name; '' for the provider's default. */
     model: string;
     effort: AiEffort;
+    /**
+     * `openai-compatible` only: the server's address up to `/v1`. Taken only from the reviewer's
+     * own file (`--config`), never from a repository's `.bowi.json`.
+     */
+    baseUrl: string;
     /** Calls running at once. */
     concurrency: number;
     /** Per call. */
@@ -53,6 +65,7 @@ export const DEFAULT_CONFIG: BowiConfig = {
     provider: 'claude-code',
     model: '',
     effort: '',
+    baseUrl: '',
     concurrency: 3,
     timeoutSeconds: 120,
   },
@@ -91,8 +104,9 @@ const configSchema = z.object({
   ai: z
     .object({
       enabled: z.boolean().optional(),
-      provider: z.enum(['claude-code', 'anthropic', 'openai', 'ollama']).optional(),
+      provider: z.enum(AI_PROVIDERS).optional(),
       model: z.string().optional(),
+      baseUrl: z.string().optional(),
       effort: z.enum(['', 'low', 'medium', 'high', 'xhigh', 'max']).optional(),
       concurrency: z.number().int().min(1).max(10).optional(),
       timeoutSeconds: z.number().int().min(10).max(1800).optional(),

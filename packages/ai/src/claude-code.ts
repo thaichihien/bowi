@@ -17,28 +17,9 @@
  * Flags checked against Claude Code 2.1.314.
  */
 
-import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
 import { AiError, type AiAnswer } from '@bowi/core';
-
-export interface AiRequest {
-  system: string;
-  prompt: string;
-  /** JSON Schema of the answer. */
-  schema: Record<string, unknown>;
-}
-
-/** Sends one request to a model. Implemented per provider; prompts and caching are shared. */
-export interface AiTransport {
-  id: string;
-  /** Settings that change answers (model, effort); part of the cache key. */
-  settings: Record<string, string>;
-  describe(): string;
-  complete(request: AiRequest, signal: AbortSignal): Promise<AiAnswer>;
-}
+import { childEnv, inTempDir, npmShimOnly, runProcess, type RunResult } from './process.ts';
+import { firstLine, type AiTransport } from './transport.ts';
 
 export interface ClaudeCodeOptions {
   /** Model alias or name for `--model`; empty for Claude Code's default. */
@@ -88,107 +69,49 @@ export function claudeCode(options: ClaudeCodeOptions = {}): AiTransport {
         ...(model ? ['--model', model] : []),
         ...(effort ? ['--effort', effort] : []),
       ];
-      const cwd = await mkdtemp(join(tmpdir(), 'bowi-ai-'));
-      try {
-        const result = await runClaude(command, args, request.prompt, {
+      const result = await inTempDir((cwd) =>
+        runClaude(command, args, request.prompt, {
           cwd,
           env: childEnv(options.env ?? process.env),
           signal,
-        });
-        return parseResult(result);
-      } finally {
-        await removeTemp(cwd);
-      }
+        }),
+      );
+      return parseResult(result);
     },
   };
 }
 
 /** Checks that Claude Code is installed; returns its version. Throws a fatal AiError if not. */
 export async function checkClaudeCode(options: ClaudeCodeOptions = {}): Promise<string> {
-  const cwd = await mkdtemp(join(tmpdir(), 'bowi-ai-'));
-  try {
-    const { code, stdout, stderr } = await runClaude(
-      options.command ?? 'claude',
-      ['--version'],
-      '',
-      {
-        cwd,
-        env: childEnv(options.env ?? process.env),
-        signal: AbortSignal.timeout(15_000),
-      },
-    );
-    if (code !== 0) {
-      throw new AiError(
-        `\`claude --version\` failed: ${firstLine(stderr) || `exit code ${code}`}`,
-        {
-          fatal: true,
-          hint: NOT_INSTALLED_HINT,
-        },
-      );
-    }
-    return stdout.trim().split(/\s/)[0] ?? '';
-  } finally {
-    await removeTemp(cwd);
+  const { code, stdout, stderr } = await inTempDir((cwd) =>
+    runClaude(options.command ?? 'claude', ['--version'], '', {
+      cwd,
+      env: childEnv(options.env ?? process.env),
+      signal: AbortSignal.timeout(15_000),
+    }),
+  );
+  if (code !== 0) {
+    throw new AiError(`\`claude --version\` failed: ${firstLine(stderr) || `exit code ${code}`}`, {
+      fatal: true,
+      hint: NOT_INSTALLED_HINT,
+    });
   }
-}
-
-interface RunResult {
-  code: number | null;
-  stdout: string;
-  stderr: string;
+  return stdout.trim().split(/\s/)[0] ?? '';
 }
 
 function runClaude(
-  commandLine: string | string[],
+  command: string | string[],
   args: string[],
   stdin: string,
   options: { cwd: string; env: NodeJS.ProcessEnv; signal: AbortSignal },
 ): Promise<RunResult> {
-  const [command = 'claude', ...before] =
-    typeof commandLine === 'string' ? [commandLine] : commandLine;
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, [...before, ...args], {
-      cwd: options.cwd,
-      env: options.env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    let stdout = '';
-    let stderr = '';
-    let settled = false;
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      options.signal.removeEventListener('abort', onAbort);
-      fn();
-    };
-    const onAbort = () => {
-      child.kill('SIGTERM');
-      const reason: unknown = options.signal.reason;
-      finish(() => reject(reason instanceof Error ? reason : new AiError('stopped')));
-    };
-    if (options.signal.aborted) {
-      onAbort();
-      return;
-    }
-    options.signal.addEventListener('abort', onAbort, { once: true });
-    child.stdout.setEncoding('utf8').on('data', (d: string) => (stdout += d));
-    child.stderr.setEncoding('utf8').on('data', (d: string) => (stderr += d));
-    child.on('error', (e: NodeJS.ErrnoException) =>
-      finish(() =>
-        reject(
-          e.code === 'ENOENT'
-            ? new AiError(`Claude Code is not installed (\`${command}\` was not found).`, {
-                fatal: true,
-                hint: npmShimOnly(command, options.env) ? WINDOWS_NPM_HINT : NOT_INSTALLED_HINT,
-              })
-            : new AiError(`could not run \`${command}\`: ${e.message}`, { fatal: true }),
-        ),
-      ),
-    );
-    child.on('close', (code) => finish(() => resolve({ code, stdout, stderr })));
-    // The child may exit before reading its input (EPIPE): the exit code tells what happened.
-    child.stdin.on('error', () => {});
-    child.stdin.end(stdin);
+  return runProcess(command, args, stdin, {
+    ...options,
+    notFound: (name) =>
+      new AiError(`Claude Code is not installed (\`${name}\` was not found).`, {
+        fatal: true,
+        hint: npmShimOnly(name, options.env) ? WINDOWS_NPM_HINT : NOT_INSTALLED_HINT,
+      }),
   });
 }
 
@@ -261,39 +184,4 @@ function classify(message: string): AiError {
     });
   }
   return new AiError(message);
-}
-
-/** Windows, and `command` was not found as an executable but an npm shim of it is on PATH. */
-function npmShimOnly(command: string, env: NodeJS.ProcessEnv): boolean {
-  if (process.platform !== 'win32' || /[\\/]/.test(command)) return false;
-  // Windows environment names are case-insensitive; a copied env object keeps the original case.
-  const path = Object.entries(env).find(([k]) => k.toUpperCase() === 'PATH')?.[1] ?? '';
-  return path
-    .split(delimiter)
-    .filter(Boolean)
-    .some((dir) => ['.cmd', '.bat', '.ps1'].some((ext) => existsSync(join(dir, command + ext))));
-}
-
-/**
- * Deletes the empty working folder of a call. On Windows a process that was just stopped still
- * holds its working folder for a moment (EBUSY): retry, and never let the cleanup replace the
- * error of the call itself; a left-over empty temporary folder is harmless.
- */
-async function removeTemp(dir: string): Promise<void> {
-  await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }).catch(() => {});
-}
-
-/** The child gets the user's environment (login, proxy settings) but no GitHub token. */
-function childEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const { GITHUB_TOKEN: _g, GH_TOKEN: _h, GH_ENTERPRISE_TOKEN: _e, ...rest } = env;
-  return rest;
-}
-
-function firstLine(text: string): string {
-  return (
-    text
-      .split('\n')
-      .map((l) => l.trim())
-      .find(Boolean) ?? ''
-  ).slice(0, 300);
 }

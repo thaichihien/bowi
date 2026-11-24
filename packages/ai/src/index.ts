@@ -1,8 +1,8 @@
 /**
  * Optional AI enrichment (§7.11): providers, prompts and the answer cache.
  *
- * `createEnricher` turns a transport (one provider: `claude-code` for now, AI-2) into the
- * engine's `AiEnricher`: it writes the prompts, asks the transport, and caches valid answers.
+ * `createEnricher` turns a transport (one provider, AI-2: `claude-code`, `codex`, `anthropic`,
+ * `openai` or `openai-compatible`, opened by `openProvider`) into the engine's `AiEnricher`: it writes the prompts, asks the transport, and caches valid answers.
  * The engine validates every answer again before using it (AI-5).
  */
 
@@ -14,11 +14,15 @@ import {
   type AiEnricher,
 } from '@bowi/core';
 import { answerKey, readAnswer, writeAnswer } from './cache.ts';
-import type { AiRequest, AiTransport } from './claude-code.ts';
 import { groupPrompt, overviewPrompt, PROMPT_VERSION, SYSTEM_PROMPT } from './prompts.ts';
+import type { AiRequest, AiTransport } from './transport.ts';
 
-export { checkClaudeCode, claudeCode } from './claude-code.ts';
-export type { AiRequest, AiTransport, ClaudeCodeOptions } from './claude-code.ts';
+export { anthropic, ANTHROPIC_DEFAULT_MODEL, type AnthropicOptions } from './anthropic.ts';
+export { checkClaudeCode, claudeCode, type ClaudeCodeOptions } from './claude-code.ts';
+export { checkCodex, codex, type CodexOptions } from './codex.ts';
+export { OPENAI_DEFAULT_MODEL, openAi, type OpenAiOptions } from './openai.ts';
+export { openProvider, type ProviderEnvironment, type ProviderSettings } from './providers.ts';
+export { strictSchema, type AiRequest, type AiTransport } from './transport.ts';
 export { groupPrompt, overviewPrompt, PROMPT_VERSION, SYSTEM_PROMPT } from './prompts.ts';
 
 export interface EnricherOptions {

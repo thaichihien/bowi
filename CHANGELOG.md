@@ -58,6 +58,16 @@
 - A test runs both snippets on the fixture's plan, so a change to the plan contract cannot break them unnoticed. The package contains the skill; the smoke test now also checks for files that must be in it.
 - Tried with Claude Code 2.1.325: in a fresh session with only the skill installed, "review https://github.com/sindresorhus/ky/pull/874" made it pick the skill, run Bowi, read the plan in parts and review it group by group in Bowi's order (15 turns, $0.69), posting nothing. A first try regrouped the change by topic; the skill now says to keep one section per group. Not tried with Codex yet (not installed on this machine).
 
+### M12 — More AI providers
+
+- `ai.provider` takes four new values besides `claude-code` (AI-2, §15 #87): `codex` (the local Codex CLI and its login, which can be a ChatGPT plan), `anthropic` (the Messages API with `ANTHROPIC_API_KEY`), `openai` (Chat Completions with `OPENAI_API_KEY`) and `openai-compatible` (Ollama, LM Studio, vLLM or a gateway at `ai.baseUrl`, with an optional `BOWI_AI_API_KEY`). The prompts, the answer cache, zod validation and what is sent (never noise, never whole files) are the same for all.
+- `codex exec` runs locked down like `claude -p`: an empty temporary folder, a read-only sandbox, the shell tool, web search and image viewing off, the user's `config.toml` (and its MCP servers) not loaded, no session saved, the answer schema passed with `--output-schema`, the prompt on stdin.
+- The API providers ask for the answer's format with structured output (Anthropic's `output_config.format`, OpenAI's strict `json_schema`), through Node's `fetch` with no new dependency. A busy server is asked once more; a rejected key, a spent quota or credit, an unknown model or an unreachable server stops the remaining calls with one warning, as a missing login does for Claude Code. With `anthropic`, a declined request is answered by Anthropic's recommended fallback model on the models that take it.
+- Keys are read only from environment variables, and checked before the analysis: a missing one exits 1 with where to create it. The notice names the endpoint ("go to claude-opus-5-5 at api.anthropic.com, with your ANTHROPIC_API_KEY"), and the AI progress line counts the tokens used ("2000 tokens in, 100 out") when the provider reports them. The report credits "via Codex", "via Anthropic API", "via OpenAI API" or "via OpenAI-compatible API".
+- `ai.baseUrl` is read only from the reviewer's own file (`--config`): a repository's `.bowi.json` cannot pick where code is sent, not even with `--local` (ignored with a warning). An OpenAI key is never sent to an OpenAI-compatible server.
+- Default models: `claude-opus-5-5` for `anthropic`, `gpt-5.6-sol` for `openai`; Claude Code and Codex keep their own defaults; `openai-compatible` needs `ai.model`. The placeholder provider `ollama` is gone (`openai-compatible` covers it).
+- Not tried against real providers yet (no Codex or API keys on this machine): the tests use a fake `codex` and a fake `fetch`. The comparison of providers on the email-verification fixture and ky#874 (titles, time, cost) is still to do.
+
 ### Group names and labels
 
 From the owner's look at sindresorhus/ky#874 (§15 #82). Names and labels only: which hunks go together is unchanged, and the grouping benchmark gives the same score in all 229 cases (Bowi 0.45, by folder 0.37).
