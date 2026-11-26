@@ -20,7 +20,7 @@ command -v bowi >/dev/null && BOWI=bowi || BOWI="npx --yes @bowi/cli"
 - The current branch or local changes, from inside the repository: `$BOWI --local --no-open` (against `origin/HEAD`, else `main`, else `master`; `--base <branch>` picks another).
 - "Review #42" or "review !17" without a URL: build the URL from the repository's remote (`git remote get-url origin`): a pull request on GitHub, a merge request on GitLab.
 
-Always pass `--no-open`; offer to open the page afterwards. Do not pass `--ai`: you are the one explaining the review. Bowi prints the report folder (`Wrote …/review-plan.json`), by default `./.bowi/<repo>-<pr or branch>/` under the current directory. If `.bowi/` is not ignored by git there, say so, or pass `--out <folder>` outside the repository. On an error, Bowi prints the next step to take (exit code 1 usage, 2 source such as a missing token, 3 analysis); follow it or tell the user.
+Always pass `--no-open`; after your walkthrough, offer the page (section 4). Do not pass `--ai`: you are the one explaining the review. Bowi prints the report folder (`Wrote …/review-plan.json`), by default `./.bowi/<repo>-<pr or branch>/` under the current directory. If `.bowi/` is not ignored by git there, say so, or pass `--out <folder>` outside the repository. On an error, Bowi prints the next step to take (exit code 1 usage, 2 source such as a missing token, 3 analysis); follow it or tell the user.
 
 ## 2. Read the plan in parts
 
@@ -85,10 +85,28 @@ for (const r of p.outsideRefs.filter((r) => used.has(r.symbolId))) console.log(`
 - Mention every hint and every piece of unchanged code that uses a changed symbol: those are the places a change can break something outside the diff.
 - Summarize noise without reading it: generated files, formatting-only changes, and code moved unchanged. For moved code, look only at the lines changed on the way.
 - If the grouping looks unsure (low or medium confidence, a `mixed` group, "Other changes"), say so instead of inventing a story.
-- End with the overall picture: is it ready to merge, what to ask the author, what to test.
+- End with the overall picture: is it ready to merge, what to ask the author, what to test. Then make the offer in section 4.
 
-## 4. The report and comments
+## 4. Offer the report, and read the comments back
 
-- Offer to open `review.html` (`open` on macOS, `xdg-open` on Linux, `start ""` on Windows). It works offline and keeps the reviewer's progress in the browser.
-- To write line comments, the user runs `bowi serve <report folder>` and comments in the page; it keeps running until Ctrl+C, so suggest it rather than running it in the foreground. Read their comments back with `bowi comments <report folder>` (`--markdown` for text to paste).
-- Never post anything to the pull request. Sending comments to GitHub or GitLab is the user's decision: they use "Post to GitHub" (or GitLab) in the served page, or run `bowi comments push <report folder>` themselves and confirm there. Never run `bowi comments push` for them and never pass `--yes`.
+Always end the review by offering the page, and say in a sentence or two what it gives them: the exact changes in the same groups and order as your walkthrough, with the full diff, the noise folded away and their progress kept, so they check the real lines instead of trusting your summary. Served, it also lets them comment on any line or file, and you can read those comments back and act on them here, with no other editor or review tool. Ask which they want:
+
+- **Open it** to read: open `review.html` from the report folder (`open` on macOS, `xdg-open` on Linux, `start ""` on Windows). It works offline; comments cannot be saved from a page opened as a file.
+- **Serve it** to comment (recommended when they will comment, or the changes are their own): run `$BOWI serve <report folder> --no-open` in the background (it runs until stopped; never in the foreground, where it would block you). It prints `Open http://127.0.0.1:<port>/?t=<token>` within a second or two: give the user that whole link (the token is part of it; without it the page refuses), or open it for them if they ask. Every comment is saved into the report's `review-plan.json` as they write it. Stop the server when they are done.
+
+When they say they have commented ("I left comments", "fix what I wrote", "address my review"), read them with `$BOWI comments <report folder>`: each comment comes with its file and lines (`path · Line 18`, `path · Lines 44–46`, `Old line …` on removed code, or `File comment`), the review summary first if they wrote one. Then:
+
+- On their own changes (`--local`, or their own branch or pull request checked out here): go through the comments in order and fix the code each one points to, then say what you changed per comment. Ask when a comment is a question rather than a request.
+- On someone else's pull request: the comments are for its author; help them sharpen the wording, or give `$BOWI comments <report folder> --markdown` for text to paste.
+- After fixing, run Bowi again with the same `--out` folder to review the new state: the comments are kept, and those whose lines changed are marked outdated.
+
+Never post anything to the pull request. Sending comments to GitHub or GitLab is the user's decision: they use "Post to GitHub" (or GitLab) in the served page, or run `bowi comments push <report folder>` themselves and confirm there. Never run `bowi comments push` for them and never pass `--yes`.
+
+## 5. Clean up when the review is done
+
+Each review leaves a report folder (`.bowi/<repo>-<pr or branch>/`, a few hundred kilobytes to a few megabytes) that Bowi never deletes, and the comments live only there. When the user is done (the review is finished, their comments are fixed or sent), offer to delete it:
+
+- Local changes (`--local`): offer to delete the report folder. If it holds comments they may still want, say so first and offer `$BOWI comments <report folder> --markdown` to keep them as text.
+- A pull or merge request: first run `$BOWI comments <report folder>`. If any comment is not marked `posted` or `sent as pending` (or there is a review summary, whose listing does not say whether it was sent), ask whether they want to post them before cleaning up, since deleting the folder loses them; posting stays their action (section 4). Offer to delete the folder only once they have posted or said they do not need to.
+
+Delete only on a yes: stop a `bowi serve` you started for that folder first, then remove exactly the folder Bowi printed, never `.bowi/` as a whole or other reviews' folders (remove `.bowi/` only if it is then empty). Fetched code stays in Bowi's cache, shared by all reviews and fetched again when needed; mention `$BOWI cache clear` only if they ask about disk space, as it empties the cache for every repository.
