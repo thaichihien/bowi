@@ -53,8 +53,6 @@ npm install -g @bowi/cli      # or: pnpm add -g @bowi/cli, bun add -g @bowi/cli
 bowi --version
 ```
 
-Installing runs nothing (Bowi has no install scripts), and Bowi itself connects only to GitHub or GitLab, for pull and merge request URLs, and to the AI provider when you turn AI on.
-
 ## Usage
 
 In any git repository, on the branch you want to review:
@@ -62,11 +60,13 @@ In any git repository, on the branch you want to review:
 ```bash
 bowi --local                                       # this branch against main (or origin/HEAD), uncommitted work included
 bowi --local --base develop                        # against another branch
-bowi https://github.com/<owner>/<repo>/pull/<n>    # a GitHub pull request; no clone of that repository needed
-bowi https://gitlab.com/<group>/<project>/-/merge_requests/<n>  # a GitLab merge request (subgroups and self-managed servers too)
+bowi https://github.com/<owner>/<repo>/pull/<n>    # a GitHub pull request or GitLab merge request; no clone of that repository needed
 ```
 
-Both write `review-plan.json` and `review.html` to `.bowi/<repo>-<pr-or-branch>/` and open the page. Private GitHub repositories need `gh auth login` ([GitHub CLI](https://cli.github.com)) or a `GITHUB_TOKEN` environment variable. Private GitLab projects need `glab auth login` ([GitLab CLI](https://gitlab.com/gitlab-org/cli)) or a `GITLAB_TOKEN` that can read the API and the code (scopes `read_api` and `read_repository`; a fine-grained token also needs Code: Download); Bowi sends `GITLAB_TOKEN` only to gitlab.com, or to the server named in `GITLAB_HOST`, and for any other server uses glab's login there. Public repositories and `--local` need nothing. Fetched code is cached (`bowi cache clear` removes it).
+Both write `review-plan.json` and `review.html` to `.bowi/<repo>-<pr-or-branch>/` and open the page. Public repositories and `--local` need nothing. Fetched code is cached (`bowi cache clear` removes it).
+
+- Private GitHub repositories need `gh auth login` ([GitHub CLI](https://cli.github.com)) or a `GITHUB_TOKEN` environment variable.
+- Private GitLab projects need `glab auth login` ([GitLab CLI](https://docs.gitlab.com/cli)) or a `GITLAB_TOKEN` that can read the API and the code (scopes `read_api` and `read_repository`; a fine-grained token also needs Code: Download); Bowi sends `GITLAB_TOKEN` only to gitlab.com, or to the server named in `GITLAB_HOST`, and for any other server uses glab's login there. 
 
 In the report, `j` / `k` move to the next and previous step and `r` marks the current step reviewed.
 
@@ -132,7 +132,7 @@ Create the folder first if it does not exist (`mkdir -p ~/.claude/skills ~/.agen
 
 ### AI enrichment (optional)
 
-With `--ai`, Bowi asks an AI model to name each group of code changes, explain in 1–3 sentences what it does, and write an overview of the whole change (shown in the Description tab). Everything the AI wrote is marked "AI" in the report, together with the model that wrote it. AI is off by default; without it, Bowi writes its own titles and descriptions.
+With `--ai`, Bowi asks an AI model to name each group of code changes, explain in 1–3 sentences what it does, and write an overview of the whole change (shown in the Description tab). AI is off by default; without it, Bowi writes its own titles and descriptions.
 
 What is sent: for each group, its changed lines with a few lines around them, the functions and classes they touch and why Bowi grouped them; and the pull request's title, description and commit messages (first lines only). Never sent: generated files, formatting-only changes, moved code or whole files. Bowi checks every answer against the expected format before using it and caches it, so running again on the same changes makes no new calls. If a call fails or times out, that group keeps Bowi's own title.
 
