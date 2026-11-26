@@ -642,8 +642,9 @@ describe('Dark mode (M18)', () => {
   const real = window.matchMedia;
   const isDark = () => document.documentElement.classList.contains('dark');
   const themeButton = () => root.querySelector<HTMLButtonElement>('.theme-btn')!;
-  // The page renders outside act, so its effects (the class on <html>) run a frame later.
-  const settle = () => act(() => new Promise((r) => setTimeout(r, 20)));
+  // Rendered inside act, so the effects (the system listener, the class on <html>) have run
+  // before the test goes on; waiting a fixed time instead was too short on slow runners.
+  const showNow = (...args: Parameters<typeof show>) => act(() => show(...args));
 
   beforeEach(() => document.documentElement.classList.remove('dark'));
   afterEach(() => {
@@ -653,8 +654,7 @@ describe('Dark mode (M18)', () => {
 
   it('follows the system until the reviewer picks, live', async () => {
     const system = fakeSystem(false);
-    show(local);
-    await settle();
+    await showNow(local);
     expect(isDark()).toBe(false);
     expect(themeButton().getAttribute('aria-label')).toBe('Switch to dark mode');
     await system.set(true);
@@ -665,8 +665,7 @@ describe('Dark mode (M18)', () => {
 
   it('remembers a pick, which then wins over the system', async () => {
     const system = fakeSystem(true);
-    show(local);
-    await settle();
+    await showNow(local);
     expect(isDark()).toBe(true);
     await press(themeButton());
     expect(isDark()).toBe(false);
@@ -674,8 +673,7 @@ describe('Dark mode (M18)', () => {
     await system.set(true);
     expect(isDark()).toBe(false);
     // A new page load keeps the pick.
-    show(local, '', { keepStorage: true });
-    await settle();
+    await showNow(local, '', { keepStorage: true });
     expect(isDark()).toBe(false);
     await press(themeButton());
     expect(localStorage.getItem('bowi:theme')).toBe('dark');
