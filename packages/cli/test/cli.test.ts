@@ -353,11 +353,16 @@ describe('AI enrichment (CLI-8, AI-1)', () => {
     const cache = join(tempDir(), 'cache');
     const base = ['--local', '--json-only', '--config', config, '--cache-dir', cache];
     const on = join(tempDir(), 'on');
-    expect((await bowiWith({ ai: { command: claude } }, repo, ...base, '--out', on)).code).toBe(0);
+    const withAi = await bowiWith({ ai: { command: claude } }, repo, ...base, '--out', on);
+    expect(withAi.code).toBe(0);
+    expect(withAi.stderr).toContain('AI is on');
+    expect(withAi.stderr).toContain('✓ AI ');
     expect(readPlan(on).meta.ai).toMatchObject({ enabled: true, effort: 'low' });
     const off = join(tempDir(), 'off');
     const r = await bowiWith({ ai: { command: claude } }, repo, ...base, '--no-ai', '--out', off);
-    expect(r.stderr).not.toContain('AI');
+    // Neither the notice nor the stage line; not a bare 'AI', which a temp folder's name can hold.
+    expect(r.stderr).not.toContain('AI is on');
+    expect(r.stderr).not.toContain('✓ AI ');
     expect(readPlan(off).meta.ai).toEqual({ enabled: false });
   });
 
