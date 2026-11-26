@@ -66,7 +66,7 @@ bowi https://github.com/<owner>/<repo>/pull/<n>    # a GitHub pull request or Gi
 Both write `review-plan.json` and `review.html` to `.bowi/<repo>-<pr-or-branch>/` and open the page. Public repositories and `--local` need nothing. Fetched code is cached (`bowi cache clear` removes it).
 
 - Private GitHub repositories need `gh auth login` ([GitHub CLI](https://cli.github.com)) or a `GITHUB_TOKEN` environment variable.
-- Private GitLab projects need `glab auth login` ([GitLab CLI](https://docs.gitlab.com/cli)) or a `GITLAB_TOKEN` that can read the API and the code (scopes `read_api` and `read_repository`; a fine-grained token also needs Code: Download); Bowi sends `GITLAB_TOKEN` only to gitlab.com, or to the server named in `GITLAB_HOST`, and for any other server uses glab's login there. 
+- Private GitLab projects need `glab auth login` ([GitLab CLI](https://docs.gitlab.com/cli)) or a `GITLAB_TOKEN` that can read the API and the code (scopes `read_api` and `read_repository`; a fine-grained token also needs Code: Download); Bowi sends `GITLAB_TOKEN` only to gitlab.com, or to the server named in `GITLAB_HOST`, and for any other server uses glab's login there.
 
 In the report, `j` / `k` move to the next and previous step and `r` marks the current step reviewed.
 
