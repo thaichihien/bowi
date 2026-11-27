@@ -34,7 +34,7 @@ process.stdin.setEncoding('utf8').on('data', (d) => (stdin += d)).on('end', () =
   const group = (/^Group (g\\d+)/m.exec(stdin) || [])[1];
   const output = schema.properties.overview
     ? { overview: 'The pull request as a whole, in a sentence.' }
-    : { title: 'AI title for ' + group, intent: 'What these changes do together.', moves: [] };
+    : { title: 'AI title for ' + group, intent: 'What these changes do together.' };
   console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
     result: JSON.stringify(output), structured_output: output,
     modelUsage: { 'claude-small': { outputTokens: 3 }, 'claude-test-1': { outputTokens: 40 } } }));

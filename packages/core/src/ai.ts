@@ -49,8 +49,6 @@ export interface AiGroupInput {
   };
   /** The group's hunks in reading order; all are logic hunks. */
   hunks: AiHunk[];
-  /** The other logic groups: where a hunk of this group may be moved (AI-3). */
-  otherGroups: { id: string; title: string; files: string[]; symbols: string[] }[];
 }
 
 export interface AiOverviewInput {
@@ -70,19 +68,10 @@ export interface AiOverviewInput {
 
 const oneLine = /^[^\r\n]*$/;
 
-/** Answer for one group: a new title, an intent, and hunks that belong to another group. */
+/** Answer for one group: a new title and an intent. */
 export const aiGroupAnswer = z.object({
   title: z.string().trim().min(3).max(100).regex(oneLine, 'must be one line'),
   intent: z.string().trim().min(10).max(600),
-  moves: z
-    .array(
-      z.object({
-        hunkId: z.string(),
-        toGroupId: z.string(),
-        reason: z.string().trim().min(3).max(300),
-      }),
-    )
-    .max(50),
 });
 export type AiGroupAnswer = z.infer<typeof aiGroupAnswer>;
 

@@ -196,7 +196,6 @@ export async function analyze(
             [
               `${o.titled} of ${o.groups.filter((g) => g.kind !== 'noise' && g.kind !== 'move').length} groups titled`,
               o.overview ? 'overview' : '',
-              o.suggested ? `${o.suggested} move${o.suggested === 1 ? '' : 's'} suggested` : '',
               o.cached ? `${o.cached} from cache` : '',
               o.tokens ? `${o.tokens.input} tokens in, ${o.tokens.output} out` : '',
             ]

@@ -470,35 +470,7 @@ describe('Description tab', () => {
   });
 });
 
-describe('AI move suggestions (AI-3)', () => {
-  const suggesting = (all: boolean) => {
-    const p = structuredClone(local);
-    const g1 = p.groups[0]!;
-    const hunkIds = g1.steps.flatMap((s) => s.hunkIds);
-    g1.titleSource = 'ai';
-    g1.moveSuggestions = (all ? hunkIds : hunkIds.slice(0, 1)).map((hunkId) => ({
-      hunkId,
-      toGroupId: 'g2',
-      reason: 'It uses `slugify()`.',
-    }));
-    return { p, first: p.hunks.find((h) => h.id === hunkIds[0])! };
-  };
-
-  it('lists each suggestion with links to the hunk and the other group', () => {
-    const { p, first } = suggesting(false);
-    show(p);
-    const box = root.querySelector('.group-card .suggestions')!;
-    const path = p.files.find((f) => f.id === first.fileId)!.path;
-    expect(box.textContent).toBe(
-      `AISuggests ${path}:${first.newStart} belongs with Move slugify() from helpers.ts to string.ts: It uses slugify().`,
-    );
-    const links = [...box.querySelectorAll('a')].map((a) => a.getAttribute('href'));
-    expect(links).toEqual([
-      `#${p.groups[0]!.steps.find((s) => s.hunkIds.includes(first.id))!.id}`,
-      '#g2',
-    ]);
-  });
-
+describe('AI group cards', () => {
   it('credits the AI on the right of the first line of an AI-titled group card', () => {
     const p = structuredClone(local);
     p.meta.ai = {
@@ -523,13 +495,6 @@ describe('AI move suggestions (AI-3)', () => {
     p.groups[0]!.intent = 'Adds `verifyEmail()` to the service.';
     show(p);
     expect(root.querySelector('.group-card .intent code')!.textContent).toBe('verifyEmail()');
-  });
-
-  it('reads as one suggestion when every hunk would go to the same group', () => {
-    show(suggesting(true).p);
-    expect(root.querySelector('.group-card .suggestions')!.textContent).toBe(
-      'AISuggests reading this group together with Move slugify() from helpers.ts to string.ts: It uses slugify().',
-    );
   });
 });
 

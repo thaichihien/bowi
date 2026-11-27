@@ -1,15 +1,14 @@
 /**
  * Prompts for AI enrichment (AI-3): what a provider is asked, built from the engine's inputs.
  *
- * The model may only name and describe groups, write an overview, and point out hunks that
- * belong to another group. It never judges the code. Everything taken from the repository is
+ * The model may only name and describe groups and write an overview. It never judges the code. Everything taken from the repository is
  * marked as data, so instructions written in a diff or a description are not followed.
  */
 
 import type { AiGroupInput, AiOverviewInput, AiPullRequest } from '@bowi/core';
 
 /** Part of every cache key: bump when a prompt changes so old answers are not reused. */
-export const PROMPT_VERSION = 1;
+export const PROMPT_VERSION = 2;
 
 export const SYSTEM_PROMPT = [
   'You help a reviewer read a pull request that a tool called Bowi has split into groups of related changes, each read in steps.',
@@ -47,23 +46,12 @@ export function groupPrompt(input: AiGroupInput): string {
       );
     }
   }
-  lines.push('</data>', '');
-  if (input.otherGroups.length) {
-    lines.push('The other groups of this pull request:');
-    for (const o of input.otherGroups) {
-      lines.push(`- ${o.id}: "${o.title}"`);
-      if (o.files.length) lines.push(`  files: ${o.files.join(', ')}`);
-      if (o.symbols.length) lines.push(`  symbols: ${o.symbols.join(', ')}`);
-    }
-  } else {
-    lines.push('This is the only group of changes to read.');
-  }
   lines.push(
+    '</data>',
     '',
     'Write:',
     '- title: what this group of changes does, in at most 10 words, like a good commit subject ("Verify email addresses after sign-up"). No trailing period.',
     '- intent: 1 to 3 sentences on what these changes do together and why, for a reviewer about to read them. Facts from the diff and the description only. Do not mention group or hunk ids.',
-    `- moves: hunks of group ${g.id} that are part of another group's change instead, each with the hunk id, the target group id and a one-sentence reason (the reason names no ids). Example: an import or a call added only for code another group introduces, or tests of code in another group. Moving every hunk merges this group into the other one. Usually an empty list. Never suggest a move only because files share a folder or a file.`,
   );
   return lines.join('\n');
 }

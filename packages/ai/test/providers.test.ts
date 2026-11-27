@@ -20,7 +20,7 @@ const request = {
   prompt: 'Group g1, kind "feature".',
   schema: aiAnswerJsonSchema('group'),
 };
-const answer = { title: 'AI title', intent: 'What these changes do together.', moves: [] };
+const answer = { title: 'AI title', intent: 'What these changes do together.' };
 const signal = () => new AbortController().signal;
 
 interface Sent {
@@ -58,10 +58,13 @@ describe('strictSchema', () => {
     expect(text).not.toMatch(/minLength|maxLength|pattern|maxItems/);
     expect(schema).toMatchObject({
       type: 'object',
-      required: ['title', 'intent', 'moves'],
+      required: ['title', 'intent'],
       additionalProperties: false,
-      properties: { moves: { type: 'array', items: { additionalProperties: false } } },
     });
+    // Nested schemas are stripped too.
+    expect(
+      strictSchema({ type: 'array', maxItems: 5, items: { type: 'string', maxLength: 9 } }),
+    ).toEqual({ type: 'array', items: { type: 'string' } });
     // A property named like a keyword stays.
     expect(strictSchema({ properties: { pattern: { type: 'string', minLength: 1 } } })).toEqual({
       properties: { pattern: { type: 'string' } },
@@ -84,7 +87,7 @@ describe('codex provider', () => {
       signal(),
     );
     expect(result).toEqual({
-      output: { title: 'AI title for g1', intent: 'What these changes do together.', moves: [] },
+      output: { title: 'AI title for g1', intent: 'What these changes do together.' },
       model: 'gpt-test',
       usage: { inputTokens: 1200, outputTokens: 80 },
     });

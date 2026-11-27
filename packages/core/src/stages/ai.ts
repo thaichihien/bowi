@@ -2,16 +2,13 @@
  * Stage: optional AI enrichment (AI-1..6), after groups.
  *
  * Input: the groups and the analysis they came from, plus an AiEnricher. Output: the groups with
- * AI titles and intents where an answer was valid, the AI's suggestions to move a hunk to another
- * group (shown in the report, never applied: the groups stay as Bowi made them), and a short PR
- * overview.
+ * AI titles and intents where an answer was valid, and a short PR overview. The groups stay as
+ * Bowi made them.
  *
  * One call per logic group (at most `concurrency` at a time, each with a timeout), then one for
  * the overview. Moved code and noise groups are never sent (AI-4). Every answer is validated
  * (AI-5); a failed, late or invalid answer keeps the rule-based result for that group and adds a
- * warning. A fatal error (not installed, not logged in) stops further calls. Suggestions that
- * name an unknown hunk or group, a hunk of another group, or a noise or moved-code group are
- * dropped with a warning.
+ * warning. A fatal error (not installed, not logged in) stops further calls.
  */
 
 import {
@@ -26,16 +23,8 @@ import {
   type AiOverviewInput,
   type AiPullRequest,
 } from '../ai.ts';
-import type { Stage, StageContext } from '../stage.ts';
-import type {
-  ChangedSymbol,
-  ChangeEdge,
-  FileChange,
-  Group,
-  Hunk,
-  MoveSuggestion,
-  ReviewPlan,
-} from '../types.ts';
+import type { Stage } from '../stage.ts';
+import type { ChangedSymbol, ChangeEdge, FileChange, Group, Hunk, ReviewPlan } from '../types.ts';
 
 export interface AiStageInput {
   source: ReviewPlan['source'];
@@ -57,8 +46,6 @@ export interface AiStageOutput {
   /** The model that answered, when the provider said. */
   model?: string;
   titled: number;
-  /** Hunks the AI suggests moving to another group. */
-  suggested: number;
   cached: number;
   /** Tokens used by the calls made, when the provider said. */
   tokens?: { input: number; output: number };
@@ -72,8 +59,6 @@ const MAX_LINE_CHARS = 200;
 const MAX_DESCRIPTION_CHARS = 3000;
 const MAX_COMMITS = 30;
 const MAX_GROUP_SYMBOLS = 40;
-const MAX_OTHER_SYMBOLS = 12;
-const MAX_OTHER_FILES = 8;
 
 const isLogicGroup = (g: Group) => g.kind !== 'noise' && g.kind !== 'move';
 
@@ -81,12 +66,7 @@ export const aiStage: Stage<AiStageInput, AiStageOutput> = async (input, ctx) =>
   const { enricher } = input;
   const timeoutMs = input.timeoutMs ?? 120_000;
   const targets = input.groups.filter(isLogicGroup);
-  const out: AiStageOutput = {
-    groups: input.groups,
-    titled: 0,
-    suggested: 0,
-    cached: 0,
-  };
+  const out: AiStageOutput = { groups: input.groups, titled: 0, cached: 0 };
   if (targets.length === 0) return out;
 
   const pr = pullRequest(input.source);
@@ -140,19 +120,15 @@ export const aiStage: Stage<AiStageInput, AiStageOutput> = async (input, ctx) =>
     if (why) ctx.warn(`AI: group ${r.group.id} kept its rule-based text (${why})`);
   }
 
-  const suggestions = moveSuggestions(input.groups, answers, input.hunks, ctx);
   const groups = input.groups.map((g) => {
     const a = answers.get(g.id);
     if (!a) return g;
     out.titled++;
-    const moves = suggestions.get(g.id) ?? [];
-    out.suggested += moves.length;
     return {
       ...g,
       title: a.title.replace(/\.$/, ''),
       titleSource: 'ai' as const,
       intent: a.intent,
-      ...(moves.length > 0 && { moveSuggestions: moves }),
     };
   });
   out.groups = groups;
@@ -240,20 +216,6 @@ function buildGroupInputs(
           .map((s) => `${s.qualifiedName} (${s.change})`),
       },
       hunks,
-      otherGroups: targets
-        .filter((o) => o.id !== g.id)
-        .map((o) => ({
-          id: o.id,
-          title: o.title,
-          files: [
-            ...new Set(
-              o.steps.flatMap((s) => s.hunkIds.map((id) => pathOf.get(hunkById.get(id)!.fileId)!)),
-            ),
-          ].slice(0, MAX_OTHER_FILES),
-          symbols: symbolsOf(o)
-            .slice(0, MAX_OTHER_SYMBOLS)
-            .map((s) => s.qualifiedName),
-        })),
     };
   });
 }
@@ -284,53 +246,6 @@ function trimHunk(h: Hunk, maxLines: number): { lines: string[]; omitted: number
     lines.push(prefix + text);
   });
   return { lines, omitted };
-}
-
-/**
- * AI-3, AI-5: the AI's suggestions to move a hunk of a group to another logic group, kept only
- * when the hunk exists and is in that group, the target is another logic group (noise and moved
- * code never give or take hunks), and the hunk is not suggested twice. They are not applied.
- */
-function moveSuggestions(
-  groups: Group[],
-  answers: Map<string, AiGroupAnswer>,
-  hunks: Hunk[],
-  ctx: StageContext,
-): Map<string, MoveSuggestion[]> {
-  const groupById = new Map(groups.map((g) => [g.id, g]));
-  const groupOfHunk = new Map<string, string>();
-  for (const g of groups)
-    for (const s of g.steps) for (const id of s.hunkIds) groupOfHunk.set(id, g.id);
-  const known = new Set(hunks.map((h) => h.id));
-
-  const out = new Map<string, MoveSuggestion[]>();
-  for (const g of groups) {
-    const seen = new Set<string>();
-    for (const move of answers.get(g.id)?.moves ?? []) {
-      const target = groupById.get(move.toGroupId);
-      const why = !known.has(move.hunkId)
-        ? 'no such hunk'
-        : groupOfHunk.get(move.hunkId) !== g.id
-          ? `the hunk is not in ${g.id}`
-          : !target || !isLogicGroup(target)
-            ? 'not a group of changes to read'
-            : target.id === g.id
-              ? 'it is already there'
-              : seen.has(move.hunkId)
-                ? 'the hunk was already suggested'
-                : undefined;
-      if (why) {
-        ctx.warn(`AI: suggestion to move ${move.hunkId} to ${move.toGroupId} was dropped (${why})`);
-        continue;
-      }
-      seen.add(move.hunkId);
-      out.set(g.id, [
-        ...(out.get(g.id) ?? []),
-        { hunkId: move.hunkId, toGroupId: move.toGroupId, reason: move.reason },
-      ]);
-    }
-  }
-  return out;
 }
 
 function overviewInput(pr: AiPullRequest, groups: Group[], hunks: Hunk[]): AiOverviewInput {

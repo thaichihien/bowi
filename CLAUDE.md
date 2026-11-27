@@ -47,7 +47,7 @@ Each stage is `(input, ctx) => Promise<output>`, documented at the top of its fi
 6. **history** (`stages/history.ts`) — `snapshot.blame` (PR commit per head line, only with > 1 commit) and `snapshot.baseHistory(300)`; empty when the snapshot cannot.
 7. **graph** (`stages/graph.ts`) — edges `calls`, `uses-type`, `tests`, `same-symbol`, `shared-literal`, `docs-mentions`, `same-commit`, `co-change`, plugin `framework` edges, resolved through imports (`graph/imports.ts`), literals from `graph/literals.ts`, hub down-weighting.
 8. **group** (`stages/group.ts`) — clustering (`group/cluster.ts`: strong components, seeded Louvain split, weak pass, attach by edge/file/directory, "Other changes", then glue — imports and injected constructor parameters — moved to the group of the code using them, `group/glue.ts`), steps in dependency order with layer tie-break (`group/steps.ts`, Tarjan), titles/kinds/reasons/confidence (`group/describe.ts`), then the partition check (`invariants.ts`).
-9. **ai** (`stages/ai.ts`, only with `--ai`) — one call per logic group through an `AiEnricher` passed in by the CLI (never noise, trimmed diff), answers validated with zod, titles/intents applied, valid hunk-move suggestions kept on the group (shown, never applied), then a PR overview.
+9. **ai** (`stages/ai.ts`, only with `--ai`) — one call per logic group through an `AiEnricher` passed in by the CLI (never noise, trimmed diff), answers validated with zod, titles/intents applied, then a PR overview.
 10. **refs** (`stages/refs.ts`) — outside references through `snapshot.grep`, filtered to plausible unchanged uses (`codeOnly` blanks comments and strings).
 11. **hints** (`stages/hints.ts`) — runs the hint rules and plugin hints, places each on its hunk's step and group.
 

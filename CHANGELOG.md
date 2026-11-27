@@ -103,6 +103,10 @@ From the owner's look at sindresorhus/ky#874 (§15 #82). Names and labels only: 
 
 - `review.html` has a favicon: the Bowi icon at 64 px, inlined as a data URI (about 3 KB), so the page still makes no requests.
 
+### AI move suggestions removed
+
+- The AI no longer suggests that a hunk belongs to another group (owner's decision, §15 #90): it only titles groups, writes their intents and the overview. The group card has no "Suggests … belongs with …" box, the plan no `Group.moveSuggestions`, and the group prompt no longer lists the other groups, so each request is smaller. Answers cached by earlier versions are asked again once (`PROMPT_VERSION` 2).
+
 ## 0.2.0 (2026-11-17)
 
 ### M10 — Line comments in the report

@@ -883,36 +883,6 @@ code {
   background: var(--warn-soft);
   color: var(--edit-ink);
 }
-.suggestions {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--accent-soft);
-  font-size: 14px;
-  line-height: 21px;
-  color: var(--text-2);
-}
-.suggestions .chip {
-  margin: 0;
-  flex: none;
-  background: var(--surface);
-}
-.suggestions p,
-.suggestions ul {
-  margin: 0;
-}
-.suggestions ul {
-  padding-left: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.suggestions a {
-  color: var(--accent-ink);
-}
 .reasons {
   border-top: 1px solid var(--border-soft);
   padding-top: 8px;

@@ -35,7 +35,7 @@ process.stdin.setEncoding('utf8').on('data', (d) => (stdin += d)).on('end', () =
   const group = (/^Group (g\\d+)/m.exec(stdin) || [])[1];
   const output = schema.properties.overview
     ? { overview: 'The pull request as a whole, in a sentence.' }
-    : { title: 'AI title for ' + group, intent: 'What these changes do together.', moves: [] };
+    : { title: 'AI title for ' + group, intent: 'What these changes do together.' };
   console.log(JSON.stringify({ type: 'item.completed', item: { id: 'i1', type: 'reasoning', text: 'thinking' } }));
   console.log(JSON.stringify({ type: 'item.completed', item: { id: 'i2', type: 'agent_message', text: JSON.stringify(output) } }));
   console.log(JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1200, cached_input_tokens: 0, output_tokens: 80 } }));

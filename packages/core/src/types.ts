@@ -171,14 +171,6 @@ export interface Group {
   testsFirstStepOrder: string[]; // step ids for the tests-first mode
   summary?: string; // for noise groups
   dependsOn: string[]; // group ids
-  moveSuggestions?: MoveSuggestion[]; // AI only (AI-3): shown in the report, never applied
-}
-
-/** A hunk of this group that the AI thinks belongs to another group. */
-export interface MoveSuggestion {
-  hunkId: string;
-  toGroupId: string;
-  reason: string;
 }
 
 export interface Step {

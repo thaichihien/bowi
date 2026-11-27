@@ -49,7 +49,6 @@ const input: AiGroupInput = {
       omittedLines: 3,
     },
   ],
-  otherGroups: [{ id: 'g2', title: 'Rename slug helper', files: ['src/a.ts'], symbols: ['slug'] }],
 };
 
 describe('prompts', () => {
@@ -59,8 +58,7 @@ describe('prompts', () => {
     expect(text).toMatch(/<data>\nTitle: Verify email\nDescription:\nIgnore all previous/);
     expect(text).toContain('### f1:h0 src/auth/auth.service.ts · verifyEmail() · AuthService');
     expect(text).toContain('(3 more changed lines not shown)');
-    expect(text).toContain('- g2: "Rename slug helper"\n  files: src/a.ts\n  symbols: slug');
-    expect(text).toMatch(/- title: .*\n- intent: .*\n- moves: hunks of group g1/);
+    expect(text).toMatch(/- title: .*\n- intent: [^\n]*$/);
 
     const overview = overviewPrompt({
       pr: { ...input.pr, prNumber: undefined as never },
@@ -94,7 +92,7 @@ describe('claude-code provider', () => {
       new AbortController().signal,
     );
     expect(answer).toEqual({
-      output: { title: 'AI title for g1', intent: 'What these changes do together.', moves: [] },
+      output: { title: 'AI title for g1', intent: 'What these changes do together.' },
       model: 'claude-test-1',
     });
     const [call] = fakeCalls(log);
@@ -177,7 +175,7 @@ describe('answer cache (AI-6)', () => {
 
   it('answers the same request from the cache the second time', async () => {
     const cacheDir = tempDir();
-    const valid = { title: 'Verify email', intent: 'Adds a token check.', moves: [] };
+    const valid = { title: 'Verify email', intent: 'Adds a token check.' };
     const t = counting(valid);
     const enricher = createEnricher({ transport: t.transport, cacheDir });
     expect(await enricher.group(input, signal)).toEqual({ output: valid, model: 'm1' });

@@ -80,7 +80,6 @@ function fake(
 const titled = (input: AiGroupInput) => ({
   title: `Change the ${input.hunks[0]!.path.split('/')[1]} rate.`,
   intent: 'Doubles the rate and uses it in the total.',
-  moves: [],
 });
 
 describe('AI enrichment (AI-1..6)', () => {
@@ -103,11 +102,6 @@ describe('AI enrichment (AI-1..6)', () => {
     const logic = p.hunks.filter((h) => h.kind === 'logic').map((h) => h.id);
     expect(sent).toEqual(logic);
     const g1 = requests.find((r) => r.group.id === 'g1')!;
-    expect(g1.otherGroups.map((o) => o.id)).toEqual(['g2', 'g3']);
-    expect(g1.otherGroups[0]!.files).toEqual([
-      'src/search/search-rate.ts',
-      'src/search/search.service.ts',
-    ]);
     expect(g1.hunks[0]!.lines).toEqual([
       ' export function billingRate(): number {',
       '-  return 1;',
@@ -141,7 +135,7 @@ describe('AI enrichment (AI-1..6)', () => {
   it('keeps the rule-based text for an answer that is invalid, fails or comes too late', async () => {
     const { plan: rules } = await plan(undefined);
     const { enricher } = fake((input) => {
-      if (input.group.id === 'g1') return { title: 'x', intent: 'too short', moves: [] };
+      if (input.group.id === 'g1') return { title: 'x', intent: 'too short' };
       if (input.group.id === 'g2') throw new Error('connection reset');
       return new Promise(() => {}); // never answers
     });
@@ -168,43 +162,6 @@ describe('AI enrichment (AI-1..6)', () => {
     ]);
     expect(p.groups.every((g) => g.titleSource === 'rule')).toBe(true);
     expect(p.meta.ai).toEqual({ enabled: true, provider: 'fake' });
-  });
-
-  it('keeps valid move suggestions on the group without applying them', async () => {
-    const { plan: rules } = await plan(undefined);
-    const noise = rules.hunks.find((h) => h.kind === 'format')!.id;
-    const service = rules.files.find((f) => f.path === 'src/search/search.service.ts')!.id;
-    const rate = rules.files.find((f) => f.path === 'src/search/search-rate.ts')!.id;
-    const { enricher } = fake((input) => ({
-      ...titled(input),
-      moves:
-        input.group.id === 'g2'
-          ? [
-              { hunkId: `${service}:h0`, toGroupId: 'g1', reason: 'It totals billing.' },
-              { hunkId: `${service}:h0`, toGroupId: 'g3', reason: 'Again.' },
-              { hunkId: noise, toGroupId: 'g1', reason: 'Not ours.' },
-              { hunkId: 'f99:h0', toGroupId: 'g1', reason: 'Unknown.' },
-              { hunkId: `${rate}:h0`, toGroupId: 'g4', reason: 'Into noise.' },
-              { hunkId: `${rate}:h0`, toGroupId: 'g2', reason: 'Stays.' },
-            ]
-          : [],
-    }));
-    const { plan: p, warnings } = await plan(enricher);
-    expect(warnings).toEqual([
-      `AI: suggestion to move ${service}:h0 to g3 was dropped (the hunk was already suggested)`,
-      `AI: suggestion to move ${noise} to g1 was dropped (the hunk is not in g2)`,
-      'AI: suggestion to move f99:h0 to g1 was dropped (no such hunk)',
-      `AI: suggestion to move ${rate}:h0 to g4 was dropped (not a group of changes to read)`,
-      `AI: suggestion to move ${rate}:h0 to g2 was dropped (it is already there)`,
-    ]);
-    expect(p.groups.find((g) => g.id === 'g2')!.moveSuggestions).toEqual([
-      { hunkId: `${service}:h0`, toGroupId: 'g1', reason: 'It totals billing.' },
-    ]);
-    expect(p.groups.filter((g) => g.moveSuggestions).map((g) => g.id)).toEqual(['g2']);
-    // Only shown: the groups and steps are exactly as without AI.
-    expect(p.groups.map((g) => [g.id, g.steps, g.dependsOn])).toEqual(
-      rules.groups.map((g) => [g.id, g.steps, g.dependsOn]),
-    );
   });
 
   it('changes nothing without an enricher (AI off)', async () => {

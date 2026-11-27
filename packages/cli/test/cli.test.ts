@@ -402,7 +402,6 @@ describe('AI enrichment (CLI-8, AI-1)', () => {
           : {
               title: 'Verify email addresses',
               intent: 'Adds a token check after sign-up.',
-              moves: [],
             };
       return Response.json({
         model: 'claude-test-api',
