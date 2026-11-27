@@ -110,3 +110,21 @@ Each review leaves a report folder (`.bowi/<repo>-<pr or branch>/`, a few hundre
 - A pull or merge request: first run `$BOWI comments <report folder>`. If any comment is not marked `posted` or `sent as pending` (or there is a review summary, whose listing does not say whether it was sent), ask whether they want to post them before cleaning up, since deleting the folder loses them; posting stays their action (section 4). Offer to delete the folder only once they have posted or said they do not need to.
 
 Delete only on a yes: stop a `bowi serve` you started for that folder first, then remove exactly the folder Bowi printed, never `.bowi/` as a whole or other reviews' folders (remove `.bowi/` only if it is then empty). Fetched code stays in Bowi's cache, shared by all reviews and fetched again when needed; mention `$BOWI cache clear` only if they ask about disk space, as it empties the cache for every repository.
+
+## 6. Offer a review loop for work an agent implements
+
+When the review was of local changes (`--local`), and above all changes you made yourself in this session, the user is checking an agent's work before committing it. If the changes are your own, say so in your walkthrough: it is a self-review, and the report is where they check the real lines. Then, once per conversation and after the offer in section 4, offer in a short paragraph to make this their routine whenever an agent implements something for them:
+
+1. The agent implements and leaves the work uncommitted.
+2. It serves a Bowi report of the changes and gives the link, with a short summary of what it changed and where to look closely.
+3. The user reads the changes in the page and comments on any line, then says they are done.
+4. The agent reads the comments, fixes the code, runs Bowi again into the same folder and says which files each fix touched (marks of viewed files and reviewed steps start over when the changes change, so that tells them where to look).
+5. When the user is satisfied, they say commit.
+
+Skip the offer if their instruction file already mentions Bowi, or if they declined it in this conversation. Ask which of these they want, and do each one only on a yes:
+
+- **Every implementation ends with a report.** Add an instruction to the agent's personal instruction file: `~/.claude/CLAUDE.md` for Claude Code, `~/.codex/AGENTS.md` for Codex. Read the file first, append to it without rewriting the rest, and show what you added. Suggested text: "When you finish implementing a change in a git repository, review it with Bowi before I commit: leave the work uncommitted, run `bowi --local --serve --no-open` in the background, and give me the printed link with a short summary of what you changed and where to look closely. When I say I have commented, read the comments with `bowi comments <report folder>`, fix each one, run Bowi again into the same folder, and tell me which files each fix touched." Use `npx --yes @bowi/cli` in it instead of `bowi` if Bowi is not installed.
+- **Report folders stay out of every repository.** If `git check-ignore -q .bowi/` fails in the repository, add `.bowi/` to their global git ignore file: the path in `git config --global core.excludesFile`, else `~/.config/git/ignore` (create the folder if needed). Do not change a repository's own `.gitignore` for this.
+- **One branch per task.** A suggestion, nothing to change: `--local` reviews everything since the merge base with the default branch, commits and uncommitted work together, so a branch per task keeps a review to that task's changes.
+
+Mention only once, and only if they ask how to look without you, that `bowi --local --serve` run in another terminal does the same. Bowi shows what changed, not whether it works: keep giving them the steps to try the change.
